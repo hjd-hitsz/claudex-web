@@ -391,4 +391,6 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 
 ### 本地思考内容翻译验证
 
+中途进入运行中会话的回归执行 `TRANSLATION_TEST_MODEL_DIR=/path/to/installed/models PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/translation-active-history.mjs`。脚本使用生产构建、临时配置与隔离历史，保留原生历史摘要缺少状态字段的结构，实际调用本地 CPU 引擎，验证旧摘要翻译、当前摘要等待完成、原译文切换、刷新缓存、深浅主题、窄屏及 80% 至 200% 实际页面缩放。证据保存在 `.cache/translation-active-history/after`。修复前先将 `client/dist` 和 `build-info.json` 分别复制到 `.cache/translation-active-history/before/dist` 和 `build-info.json`，再加 `BROWSER_BEFORE=1` 运行，记录旧摘要零翻译请求及对照截图。测试恢复页面缩放并清理临时配置与浏览器；README 演示图展示已结束对话，沿用现有截图。
+
 构建后执行 `TRANSLATION_TEST_MODEL_DIR=/path/to/installed/models PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/thinking-translation.mjs`。脚本使用独立浏览器、临时配置和模拟对话，实际调用本地 CPU 引擎，验证默认关闭、完整消息触发、等待原文、Markdown 文字提取、原译文切换及关闭恢复原文，覆盖深浅主题、桌面与窄屏、80% 至 200% 实际浏览器缩放。已安装模型目录由运行者提供，截图和结果保存在 `.cache/thinking-translation/`，测试结束后清理浏览器与临时配置。

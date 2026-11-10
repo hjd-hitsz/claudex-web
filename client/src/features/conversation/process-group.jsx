@@ -96,8 +96,8 @@ export function ProcessGroup({
                   item={item}
                   complete={
                     item.status === "completed" ||
-                    (!working &&
-                      !["inProgress", "running"].includes(item.status))
+                    (!["inProgress", "running"].includes(item.status) &&
+                      (!working || item !== latest))
                   }
                   annotations={annotations.get(item.id)}
                   readOnly={readOnly}
