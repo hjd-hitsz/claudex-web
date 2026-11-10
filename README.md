@@ -76,8 +76,6 @@ wire_api = "responses"
 requires_openai_auth = true
 ```
 
-API Key 沿用 Codex CLI 已有的登录凭据。
-
 ## 配置 Claude Code
 
 在网页“设置 → 模型与服务配置”中为 Claude Code 点击“一键安装”，然后启用该后端。
