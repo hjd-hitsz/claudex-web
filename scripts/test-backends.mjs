@@ -22,6 +22,7 @@ const scripts = [
   "claude-project-instructions.mjs",
   "claude-sdk.mjs",
   "claude-thinking.mjs",
+  "claude-model-switch.mjs",
   "claude-runtime-lifecycle.mjs",
   "claude-runtime-restart.mjs",
   "claude-worker-upgrade.mjs",

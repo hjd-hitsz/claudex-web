@@ -92,6 +92,8 @@ Claude Code 的附加能力通过后端扩展描述提供，采用显式命令�
 
 列表与搜索汇总每页后端错误。一个后端读取失败时，保留同一范围内已经显示的该后端对话，其余后端照常更新；侧栏和搜索提供实际错误与重试。搜索查询、归档范围、页面卸载与列表修订共同隔离迟到结果。
 
+外部供应商的主模型及 `ANTHROPIC_DEFAULT_OPUS_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_HAIKU_MODEL` 统一由 `providerModelEnvironment` 根据本轮模型生成。初始化与持续会话每轮提交共用这份映射，通过原生会话级设置同步生效后再提交输入；新启动的子代理按当前映射选择模型，已经运行的任务继续归属其原会话与模型。
+
 ## 验证入口
 
 `npm run test:backends` 使用指定的真实 Claude Code 可执行文件、临时配置与会话、隔离 Messages 服务执行原生历史、目录、项目指令、工具及运行生命周期回归，日志和 CLI 版本保存在 `.cache/backend-acceptance`。`claude-runtime-restart.mjs` 通过真实 systemd 用户服务验证网页代理 SIGKILL、独立 cgroup、相同原生 PID 和后台 shell 保留、重连及忙时停止拒绝；`claude-worker-upgrade.mjs` 验证代码与配置更新代际及空闲替换。`npm run test:backends:live` 使用显式配置的模型服务验证模型调用，环境条件与命令见[开发者指南](../development.md#双后端开发与验收)。

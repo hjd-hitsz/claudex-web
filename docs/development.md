@@ -160,6 +160,8 @@ CLAUDE_EXECUTABLE=/absolute/path/to/claude MODEL_BASE_URL=https://model.example 
 
 脚本将“介绍这个文件夹里面各个文件的功能”的请求原文交给真实 Claude Code，以临时配置和原生计划模式读取指定目录。验证成功的工具响应包含实际源码 API、最终正文覆盖目录文件与公开 API、全部模型请求返回 200，以及目标文件 SHA-256 前后相同。`MODEL_API_KEY` 按服务认证要求设置，`VALIDATION_OUTPUT` 可指定证据目录，默认 `.cache/backend-acceptance/original-user-case`。证据包含 `answer.md`、工具事件、原生会话、请求响应和结果报告。该入口读取已有目录，写入仅发生在临时配置及证据目录中。
 
+`claude-model-switch.mjs` 在同一真实 CLI 会话连续执行 A → B → A，使用隔离 Messages 响应触发 Opus、Sonnet、Haiku 三类子代理，检查主请求、子代理请求、持久模型和设置通知均跟随本轮选择。设置 `MODEL_BASE_URL` 与 `MODEL_ID` 后使用真实模型响应，验证 Haiku 子代理。该模式将两个临时测试模型标识转发到同一个指定模型，上游请求限制为 1024 输出 tokens 并关闭思考；上下文容量为 65536，须与测试服务的加载配置一致。`VALIDATION_OUTPUT` 指定请求与报告目录，默认 `.cache/backend-acceptance/model-switch`。测试始终使用临时原生目录与网页状态目录。
+
 ### 客户端与既有网页行为查验
 
 2026-11-06 查验本机保存的网页客户端 `codex-lan-client 2.0.0`，目录为 `~/.local/share/codex-lan/client-source`。`src/shortcuts.jsx` 的文件建议逻辑在空查询或目录后缀时读取目录，其余查询调用 `fuzzyFileSearch` 并传入当前目录，保留 60 项及请求代次隔离；同文件的命令注册列出原有网页入口。`src/store.js` 的发送流程根据活动轮次选择 `turn/steer` 或 `turn/start`，通知分派处理 `turn/started` 与 `turn/completed`。这些代码作为既有网页交互和用户体验的查验依据，统一 18 项命令以当前仓库注册表为准。

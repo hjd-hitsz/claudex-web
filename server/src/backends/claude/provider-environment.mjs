@@ -11,6 +11,7 @@ export function claudeRuntimeEnvironment(backend) {
 }
 
 export function providerModelEnvironment(provider, model, effort) {
+  const selectedModel = model || provider.models[0];
   const rules = Object.entries(provider.modelCapabilities || {}).flatMap(
     ([name, metadata]) => {
       const capabilities = [];
@@ -33,9 +34,13 @@ export function providerModelEnvironment(provider, model, effort) {
     },
   );
   return {
+    ANTHROPIC_MODEL: selectedModel,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: selectedModel,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: selectedModel,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: selectedModel,
     CLAUDE_CODE_MODEL_CAPABILITIES: rules.join(";"),
     CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(
-      provider.modelCapabilities?.[model]?.contextWindow || "",
+      provider.modelCapabilities?.[selectedModel]?.contextWindow || "",
     ),
     ...((provider.protocol || "messages") === "messages" && {
       CLAUDE_CODE_EFFORT_LEVEL: effort || "unset",
@@ -66,9 +71,6 @@ export function providerRuntimeEnvironment(
   );
   env.ANTHROPIC_BASE_URL = proxy?.url || provider.baseUrl;
   env.ANTHROPIC_API_KEY = proxy?.token || provider.apiKey;
-  env.ANTHROPIC_MODEL = model || provider.models[0];
-  for (const level of ["OPUS", "SONNET", "HAIKU"])
-    env[`ANTHROPIC_DEFAULT_${level}_MODEL`] = env.ANTHROPIC_MODEL;
   return env;
 }
 

@@ -87,3 +87,25 @@ test("供应商环境保留结构化输出所需的原生功能并按实际选�
     "low",
   );
 });
+
+test("初始化与逐轮模型设置同步主模型及三个原生别名", () => {
+  const provider = { models: ["first", "second"], protocol: "messages" };
+  for (const model of [undefined, "second", "first"]) {
+    const current = model || "first";
+    const update = providerModelEnvironment(provider, model);
+    const initial = providerRuntimeEnvironment(
+      provider,
+      { dataDir: "/isolated" },
+      { model },
+    );
+    for (const key of [
+      "ANTHROPIC_MODEL",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    ]) {
+      assert.equal(update[key], current);
+      assert.equal(initial[key], current);
+    }
+  }
+});
