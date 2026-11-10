@@ -15,6 +15,7 @@ import { createTranslationEngine } from "../../packages/translation-engine/src/i
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output = join(root, ".cache/thinking-translation");
+const build = process.env.UI_BUILD_DIR || join(root, "client/dist");
 await mkdir(output, { recursive: true });
 const temporary = await mkdtemp(
   join(tmpdir(), "thinking-translation-browser-"),
@@ -53,9 +54,7 @@ const server = http.createServer(async (request, response) => {
   if (request.url === "/api/translate") return translate(request, response);
   try {
     const path = new URL(request.url, "http://fixture").pathname;
-    let bytes = await readFile(
-      join(root, "client/dist", path === "/" ? "index.html" : path),
-    );
+    let bytes = await readFile(join(build, path === "/" ? "index.html" : path));
     if (path === "/")
       bytes = bytes
         .toString()
@@ -103,8 +102,18 @@ try {
   assert.equal(await toggle.isChecked(), false);
   assert.equal(batches.length, 0);
   assert.equal((await service.status()).state, "disabled");
+  assert.equal(
+    await page.locator(".translation-settings").innerText(),
+    "思考内容翻译",
+  );
   await toggle.check();
-  await page.getByText("本地模型已就绪", { exact: true }).waitFor();
+  await page
+    .locator(".translation-settings [role=status]")
+    .waitFor({ state: "detached" });
+  assert.equal(
+    await page.locator(".translation-settings").innerText(),
+    "思考内容翻译",
+  );
   await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
   const item = {
     id: "translation-reasoning",
@@ -218,7 +227,14 @@ try {
             })
             .click();
           await toggle.scrollIntoViewIfNeeded();
-          await page.locator(".translation-settings summary").click();
+          assert.equal(
+            await page.locator(".translation-settings").innerText(),
+            "思考内容翻译",
+          );
+          assert.equal(
+            await page.locator(".translation-settings details").count(),
+            0,
+          );
           const metrics = await page
             .locator(".settings-body")
             .evaluate((element) => ({

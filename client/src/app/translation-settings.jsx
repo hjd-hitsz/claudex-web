@@ -23,33 +23,30 @@ export function TranslationSettings() {
         />
         思考内容翻译
       </label>
-      <p className="section-description">
-        消息接收完整后在服务器本地翻译。首次开启会下载约 300 MB 的英译中模型和
-        CPU 运行库，等待期间继续显示原文。
-      </p>
       {translation.enabled &&
         ["preparing", "downloading"].includes(translation.state) && (
           <div role="status">
             <span>
-              {["extracting", "runtime"].includes(progress?.stage)
-                ? "正在准备模型"
-                : "正在下载翻译模型"}
+              {progress?.stage === "downloading"
+                ? "正在下载翻译模型"
+                : "正在准备翻译"}
             </span>
-            {progress?.total > 0 && progress.stage !== "runtime" && (
-              <progress value={progress.received} max={progress.total} />
-            )}
-            {progress?.total > 0 && (
-              <span>
-                {Math.round((progress.received / progress.total) * 100)}%
-              </span>
+            {progress?.total > 0 && progress.stage === "downloading" && (
+              <>
+                <progress
+                  value={progress.received}
+                  max={progress.total}
+                  aria-label="翻译模型下载进度"
+                />
+                <span>
+                  {Math.round((progress.received / progress.total) * 100)}%
+                </span>
+              </>
             )}
           </div>
         )}
-      {translation.enabled && translation.state === "ready" && (
-        <p className="section-description">本地模型已就绪</p>
-      )}
       {translation.enabled && translation.error && (
-        <div className="inline-error">
+        <div className="inline-error" role="alert">
           {translation.error}
           <button
             className="secondary"
@@ -59,15 +56,6 @@ export function TranslationSettings() {
             重试
           </button>
         </div>
-      )}
-      {translation.modelDirectory && (
-        <details>
-          <summary>模型存储位置</summary>
-          <code>{translation.modelDirectory}</code>
-          <p className="section-description">
-            模型独立于程序安装目录保存，升级后继续复用，关闭翻译后保留下载。
-          </p>
-        </details>
       )}
     </div>
   );

@@ -14,11 +14,6 @@
   max-width: 100%;
   accent-color: var(--accent);
 }
-.translation-settings code {
-  display: block;
-  overflow-wrap: anywhere;
-  margin-block: 0.6em;
-}
 .translation-original {
   color: var(--muted);
   font-size: 0.85em;
