@@ -15,6 +15,7 @@ import {
 import {
   prepareWorkerDirectory,
   verifyWorkerSocket,
+  workerConnectionError,
 } from "./worker-location.mjs";
 
 export function createClaudeWorkerAdapter({
@@ -147,12 +148,17 @@ export function createClaudeWorkerAdapter({
   async function open() {
     stopping = false;
     await prepareWorkerDirectory(location.directory);
-    await verifyWorkerSocket(location.socket);
-    const connection = net.connect(location.socket);
-    await new Promise((resolve, reject) => {
-      connection.once("connect", resolve);
-      connection.once("error", reject);
-    });
+    let connection;
+    try {
+      await verifyWorkerSocket(location.socket);
+      connection = net.connect(location.socket);
+      await new Promise((resolve, reject) => {
+        connection.once("connect", resolve);
+        connection.once("error", reject);
+      });
+    } catch (error) {
+      throw workerConnectionError(error);
+    }
     socket = connection;
     let input = "";
     connection.setEncoding("utf8");
@@ -265,6 +271,7 @@ export function createClaudeWorkerAdapter({
     try {
       await connecting;
     } catch (error) {
+      if (error.cause) console.error("Claude 后台服务连接失败：", error.cause);
       snapshot = {
         ...snapshot,
         params: { ...snapshot.params, ready: false, error: error.message },

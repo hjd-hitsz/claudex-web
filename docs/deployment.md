@@ -182,7 +182,10 @@ Claude Code 的任务使用独立执行服务。关闭网页、重启网页服�
 ```bash
 systemctl --user list-units --all 'claudex-web-claude-*'
 journalctl --user -u 'claudex-web-claude-*' -n 100 --no-pager
+journalctl --user -u claudex-web.service -n 100 --no-pager
 ```
+
+网页提示无法连接 Claude 后台服务时会自动重试；持续失败时检查以上服务状态和日志。网页服务日志保留本地连接失败的详细原因。
 
 修改 Claude Code 运行配置或升级程序后，新网页服务自动核对执行服务。仍有对话、提问、整理或后台任务时继续使用原服务，空闲后完成更新。需要完全停止或更换执行服务时，先结束任务、处理待答提问并通过 `/stop` 清理后台终端；普通网页重启只重新连接。前台运行且没有 systemd 用户管理器时，执行服务日志保存在 `CLAUDEX_WEB_CONFIG_DIR/backends/claude/worker.log`。
 
