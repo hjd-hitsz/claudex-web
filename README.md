@@ -36,10 +36,10 @@ Claudex Web 提供 Codex 与 Claude Code 双后端：现有 ChatGPT 模型继续
 
 ## 快速开始
 
-稳定版 [v4.0.0](https://github.com/hjd-hitsz/claudex-web/releases/tag/v4.0.0)：
+稳定版 [v4.0.1](https://github.com/hjd-hitsz/claudex-web/releases/tag/v4.0.1)：
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.0/claudex-web-4.0.0.tgz
+npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
 ```
 
 准备一台 Linux 电脑，安装 Node.js 24+、npm、Git、OpenSSL、Linux PAM、`pamtester` 和 `/usr/bin/zsh`，并完成 Codex CLI 登录。Codex CLI 需支持 `codex app-server`，后台运行使用 systemd 用户服务。
@@ -49,7 +49,7 @@ npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.0
 以运行代理后端的普通用户安装 Claudex Web，然后启动服务：
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.0/claudex-web-4.0.0.tgz
+npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
 claudex-web service install
 claudex-web service status
 ```
@@ -107,7 +107,7 @@ claudex-web config init
 升级时，从目标版本的 Release 获取安装地址。当前版本的安装与服务更新命令为：
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.0/claudex-web-4.0.0.tgz
+npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
 claudex-web service install
 claudex-web service restart-when-idle
 ```

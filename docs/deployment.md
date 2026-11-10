@@ -4,16 +4,16 @@
 
 ## 安装发行包
 
-稳定版 [v4.0.0](https://github.com/hjd-hitsz/claudex-web/releases/tag/v4.0.0)：
+稳定版 [v4.0.1](https://github.com/hjd-hitsz/claudex-web/releases/tag/v4.0.1)：
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.0/claudex-web-4.0.0.tgz
+npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
 ```
 
 准备 Node.js 24+、npm、Codex CLI、OpenSSL、Linux PAM、`pamtester`、`/usr/bin/zsh` 和 systemd 后，以运行代理后端的普通用户安装：
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.0/claudex-web-4.0.0.tgz
+npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
 claudex-web service install
 loginctl enable-linger "$USER"
 claudex-web service status
@@ -29,8 +29,8 @@ curl --cacert "${CLAUDEX_WEB_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/claud
 从目标版本 Release 下载 `.tgz` 和同名 `.sha256` 文件，将两者放在同一目录，然后执行：
 
 ```bash
-sha256sum -c claudex-web-4.0.0.tgz.sha256
-npm install -g ./claudex-web-4.0.0.tgz
+sha256sum -c claudex-web-4.0.1.tgz.sha256
+npm install -g ./claudex-web-4.0.1.tgz
 claudex-web service install
 ```
 
@@ -192,7 +192,7 @@ journalctl --user -u 'claudex-web-claude-*' -n 100 --no-pager
 从目标版本的 Release 获取安装地址。当前版本的安装与服务更新命令为：
 
 ```bash
-npm install -g ./claudex-web-4.0.0.tgz
+npm install -g ./claudex-web-4.0.1.tgz
 claudex-web service install
 claudex-web service restart-when-idle
 ```
