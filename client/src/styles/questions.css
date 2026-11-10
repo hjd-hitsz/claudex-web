@@ -113,7 +113,7 @@
 .recorded-option > svg {
   flex: none;
   margin-top: 0.230769rem;
-  color: var(--green);
+  color: var(--check-color);
 }
 .recorded-answer {
   white-space: pre-wrap;

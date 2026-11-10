@@ -103,7 +103,6 @@
   width: 1em;
   height: 1em;
   margin: 0;
-  accent-color: var(--fg);
 }
 .markdown-composer .milkdown li > div {
   min-width: 0;

@@ -116,7 +116,6 @@
 .notification-settings input {
   width: 1.1em;
   height: 1.1em;
-  accent-color: var(--fg);
 }
 .notification-settings .section-description {
   margin: 0.384615rem 0 0;
@@ -148,6 +147,10 @@
 .theme-options > button.selected {
   border-color: var(--muted);
   background: var(--subtle);
+}
+.theme-options .lucide-check,
+.model-options .lucide-check {
+  color: var(--check-color);
 }
 .usage-meter {
   --quota-fill: var(--green);
