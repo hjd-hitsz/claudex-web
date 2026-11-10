@@ -12,6 +12,7 @@ import { createCompaction } from "./compaction.js";
 import { createEvents } from "./events.js";
 import { createConnection } from "./connection.js";
 import { createSession } from "./session.js";
+import { createTranslationSettings } from "./translation.js";
 import { createNotifications } from "./notifications.js";
 import { persist } from "../infrastructure/storage.js";
 
@@ -174,6 +175,11 @@ export function createApplication() {
     records,
     hasTracking: () => connection.hasTracking(),
   });
+  const translation = createTranslationSettings({
+    get,
+    set,
+    subscribe: store.subscribe,
+  });
   const notifications = createNotifications({
     get,
     set,
@@ -229,6 +235,8 @@ export function createApplication() {
     refreshUsage: account.refreshUsage,
     setCompletionNotifications: notifications.setEnabled,
     startNotifications: notifications.start,
+    startTranslationSettings: translation.start,
+    setThinkingTranslation: translation.setEnabled,
     ...backends,
     ...navigation,
     ...catalog,

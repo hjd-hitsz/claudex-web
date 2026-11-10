@@ -1,5 +1,8 @@
 import { X509Certificate } from "node:crypto";
-import { createSummaryTranslationHandler } from "../summary-translation.mjs";
+import {
+  createSummaryTranslationHandler,
+  createTranslationSettingsHandler,
+} from "../summary-translation.mjs";
 import { serveFile } from "../file-content.mjs";
 import { createStaticHandler } from "./static.mjs";
 export function createHttpHandler({
@@ -8,9 +11,13 @@ export function createHttpHandler({
   authentication,
   version,
   isReady,
+  translation,
 }) {
   const publicCertificate = new X509Certificate(tls.cert);
-  const translateSummary = createSummaryTranslationHandler();
+  const translateSummary = createSummaryTranslationHandler(
+    translation.translate,
+  );
+  const translationSettings = createTranslationSettingsHandler(translation);
   const serveStatic = createStaticHandler(config.staticDir);
   return async function handleHttp(request, response) {
     const ready = isReady();
@@ -60,6 +67,10 @@ export function createHttpHandler({
       return;
     if (["/api/files", "/api/media"].includes(path)) {
       await serveFile(request, response);
+      return;
+    }
+    if (path === "/api/translation") {
+      await translationSettings(request, response);
       return;
     }
     if (path === "/api/translate") {

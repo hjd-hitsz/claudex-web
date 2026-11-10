@@ -42,7 +42,7 @@ Claudex Web 提供 Codex 与 Claude Code 双后端：现有 ChatGPT 模型继续
 npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
 ```
 
-准备一台 Linux 电脑，安装 Node.js 24+、npm、Git、OpenSSL、Linux PAM、`pamtester` 和 `/usr/bin/zsh`，并完成 Codex CLI 登录。Codex CLI 需支持 `codex app-server`，后台运行使用 systemd 用户服务。
+准备一台 Linux 电脑，安装 Node.js 24.5+、npm、Git、OpenSSL、Linux PAM、`pamtester` 和 `/usr/bin/zsh`，并完成 Codex CLI 登录。Codex CLI 需支持 `codex app-server`，后台运行使用 systemd 用户服务。
 
 ### 1. 安装并启动
 
@@ -83,6 +83,8 @@ loginctl enable-linger "$USER"
 </details>
 
 前台运行、本地安装包的安装与下载校验见[部署与维护](docs/deployment.md)。
+
+思考内容翻译默认关闭。在“设置 → 思考内容翻译”开启后，服务器首次下载翻译模型，随后在本地处理完整的思考消息。下载和翻译期间继续显示原文，译文完成后可切换原文与译文。模型存储与迁移见[部署指南](docs/deployment.md#思考内容翻译)。
 
 ## 按需配置
 

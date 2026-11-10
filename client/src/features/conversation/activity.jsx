@@ -139,14 +139,25 @@ export function Activity({ item, cwd }) {
     </div>
   );
 }
-export function Reasoning({ item, cwd }) {
+export function Reasoning({ item, cwd, complete = false }) {
   return reasoningSummaries(item.summary).map((summary, index) => (
-    <ReasoningPart key={index} {...summary} cwd={cwd} />
+    <ReasoningPart key={index} {...summary} cwd={cwd} complete={complete} />
   ));
 }
-export function ReasoningPart({ title, body, cwd }) {
-  const heading = useSummaryTranslation(title, "title");
-  const content = useSummaryTranslation(body);
+export function ReasoningPart({ title, body, cwd, complete = false }) {
+  const heading = useSummaryTranslation(title, "title", complete);
+  const content = useSummaryTranslation(body, "body", complete);
+  const [original, setOriginal] = useState(false);
+  const canToggle = heading.translated || content.translated;
+  const toggle = canToggle ? (
+    <button
+      className="translation-original"
+      aria-pressed={original}
+      onClick={() => setOriginal((value) => !value)}
+    >
+      {original ? "查看译文" : "查看原文"}
+    </button>
+  ) : null;
   const status = heading.pending ? (
     <LoaderCircle size={12} className="spin" aria-label="正在翻译标题" />
   ) : null;
@@ -156,16 +167,13 @@ export function ReasoningPart({ title, body, cwd }) {
         <details className="activity reasoning-summary">
           <summary className="activity-summary" title={title}>
             <Brain size={15} />
-            <span>{heading.text}</span>
+            <span>{original ? title : heading.text}</span>
             {status}
             <ChevronRight className="summary-chevron" size={13} />
           </summary>
           <div className="activity-body">
-            {content.pending ? (
-              <span className="translation-status">正在翻译摘要…</span>
-            ) : (
-              <RichText text={content.text} cwd={cwd} />
-            )}
+            {toggle}
+            <RichText text={original ? body : content.text} cwd={cwd} />
             {content.error && (
               <button
                 className="translation-retry"
@@ -181,8 +189,9 @@ export function ReasoningPart({ title, body, cwd }) {
         <div className="activity reasoning-summary">
           <div className="activity-summary reasoning-title" title={title}>
             <Brain size={15} />
-            <span>{heading.text}</span>
+            <span>{original ? title : heading.text}</span>
             {status}
+            {toggle}
           </div>
         </div>
       )}

@@ -3,7 +3,15 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parsers } from "prettier/plugins/babel";
 
-const sourceRoots = ["client/src", "server/src", "shared", "scripts", "bin"];
+const sourceRoots = [
+  "client/src",
+  "server/src",
+  "shared",
+  "scripts",
+  "bin",
+  "packages/translation-engine/src",
+  "packages/translation-engine/native",
+];
 const sourceExtension = /\.(?:js|jsx|mjs|css)$/;
 export const MAX_SOURCE_LINES = 500;
 
@@ -73,6 +81,11 @@ async function resolveImport(path, specifier) {
 }
 
 function boundaryError(from, to) {
+  if (
+    from.startsWith("packages/translation-engine/") &&
+    !to.startsWith("packages/translation-engine/")
+  )
+    return "翻译引擎只能依赖自己的子项目与外部包";
   const inClient = from.startsWith("client/src/");
   if (inClient && to.startsWith("server/"))
     return "浏览器代码只能通过 shared/ 复用跨端逻辑";
@@ -148,6 +161,12 @@ export async function inspectArchitecture(root) {
       );
     const dependencies = [];
     for (const specifier of importSources(source, path)) {
+      if (
+        specifier.startsWith("@claudex-web/translation-engine/") ||
+        (name.startsWith("client/src/") &&
+          specifier === "@claudex-web/translation-engine")
+      )
+        errors.push(`${name}: 翻译引擎通过服务端公共入口访问`);
       if (!specifier.startsWith(".")) {
         if (
           name.startsWith("shared/") ||

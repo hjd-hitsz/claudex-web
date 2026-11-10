@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useStore, get } from "../../store.js";
 import {
   createSummaryTranslator,
   needsTranslation,
@@ -8,76 +9,79 @@ import {
 try {
   localStorage.removeItem("cx-summary-zh-v1");
 } catch {
-  // 浏览器禁用本地存储时，继续初始化翻译。
+  /* 旧缓存清理失败时使用当前模型的独立缓存。 */
 }
-
-let translationStorage;
+const translators = new Map();
+let storage;
 try {
-  translationStorage = sessionStorage;
+  storage = sessionStorage;
 } catch {
-  // 浏览器禁用会话存储时，译文保留在当前页面内存中。
+  /* 浏览器禁用会话存储时复用页面内存。 */
 }
-const translator = createSummaryTranslator(
-  translateSummaries,
-  translationStorage,
-);
-
-export function useSummaryTranslation(text, priority = "body") {
-  const [result, setResult] = useState({});
-  const mounted = useRef(false),
-    inFlight = useRef(false),
-    lastStarted = useRef(0);
-  const required = needsTranslation(text);
-  const cached = translator.getCached(text);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  useEffect(() => {
-    if (
-      !required ||
-      inFlight.current ||
-      result.source === text ||
-      cached !== undefined
-    )
-      return;
-    // 标题立即入队；正文按固定间隔取最新文本，持续流式更新也会推进翻译。
-    const timer = setTimeout(
-      () => {
-        inFlight.current = true;
-        lastStarted.current = Date.now();
-        translator.translate(text, priority).then(
-          (value) => {
-            inFlight.current = false;
-            if (mounted.current) setResult({ source: text, value });
-          },
-          (error) => {
-            inFlight.current = false;
-            if (mounted.current)
-              setResult({ source: text, error: error.message });
-          },
-        );
-      },
-      priority === "title"
-        ? 0
-        : Math.max(0, lastStarted.current + 300 - Date.now()),
+function translatorFor(key) {
+  if (!translators.has(key))
+    translators.set(
+      key,
+      createSummaryTranslator(
+        (texts) => {
+          const state = get().translation;
+          if (
+            !state.enabled ||
+            state.state !== "ready" ||
+            `${state.model?.id}:${state.model?.version}` !== key
+          )
+            throw new Error("翻译已关闭或模型尚未就绪");
+          return translateSummaries(texts);
+        },
+        storage,
+        `cx-summary-zh-edge-v1:${key}`,
+      ),
     );
-    return () => clearTimeout(timer);
-  }, [text, priority, required, result, cached]);
-  // 追加中的摘要继续展示已译前缀，新的译文返回后替换，避免反复闪回等待提示。
+  return translators.get(key);
+}
+export function useSummaryTranslation(
+  text,
+  priority = "body",
+  complete = false,
+) {
+  const { translation } = useStore();
+  const key = `${translation.model?.id}:${translation.model?.version}`;
+  const enabled =
+    translation.enabled &&
+    translation.state === "ready" &&
+    complete &&
+    needsTranslation(text);
+  const translator = enabled ? translatorFor(key) : null;
+  const cached = translator?.getCached(text);
+  const [result, setResult] = useState({});
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!enabled || cached !== undefined) return;
+    let active = true;
+    translator.translate(text, priority).then(
+      (value) => {
+        if (active) setResult({ source: text, key, value });
+      },
+      (error) => {
+        if (active) setResult({ source: text, key, error: error.message });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [text, key, enabled, cached, attempt, priority, translator]);
   const current =
-    cached !== undefined
-      ? { value: cached }
-      : result.source === text ||
-          (result.value && text.startsWith(result.source))
-        ? result
-        : {};
+    enabled && result.source === text && result.key === key ? result : {};
   return {
-    text: required ? (current.value ?? text) : text,
-    pending: required && !current.value && !current.error,
-    error: required ? current.error : undefined,
-    retry: () => setResult({}),
+    text: enabled ? (cached ?? current.value ?? text) : text,
+    translated:
+      enabled && (cached !== undefined || current.value !== undefined),
+    pending:
+      enabled && cached === undefined && !current.value && !current.error,
+    error: current.error,
+    retry: () => {
+      setResult({});
+      setAttempt((value) => value + 1);
+    },
   };
 }

@@ -1,9 +1,11 @@
+import { createTranslationService } from "./translation-service.mjs";
 import https from "node:https";
 import { WebSocketServer } from "ws";
 import { createHttpHandler } from "./http/router.mjs";
 import { createBackendManager } from "./backends/manager.mjs";
 import { sendRpcText } from "./rpc-transport.mjs";
 export function createWebApplication({ config, tls, authentication, version }) {
+  const translation = createTranslationService(config);
   const clients = new WebSocketServer({ noServer: true });
   const monitors = new WebSocketServer({ noServer: true });
   function send(client, message) {
@@ -30,6 +32,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
     tls,
     createHttpHandler({
       config,
+      translation,
       tls,
       authentication,
       version,
@@ -108,6 +111,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
   return {
     server,
     async start() {
+      await translation.initialize();
       await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(config.port, config.host, () => {
@@ -119,6 +123,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
     },
     async close() {
       clearInterval(heartbeat);
+      await translation.close();
       bridge.close();
       for (const client of [...clients.clients, ...monitors.clients])
         client.terminate();

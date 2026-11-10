@@ -10,7 +10,7 @@ Claudex Web 的现有网页交互终端、后端原生后台终端 `/stop` 命�
 
 ## 本地环境与源码启动
 
-开发环境需要 Linux、Node.js 24+、npm、OpenSSL、Linux PAM、pamtester、已登录的 Codex CLI 和 `/usr/bin/zsh`；开发 Claude Code 适配时另外安装配置中指定的 Claude Code 可执行文件。本项目使用根目录 npm workspaces 和单一 `package-lock.json` 管理前后端依赖。
+开发环境需要 Linux、Node.js 24.5+、npm、OpenSSL、Linux PAM、pamtester、已登录的 Codex CLI 和 `/usr/bin/zsh`；开发 Claude Code 适配时另外安装配置中指定的 Claude Code 可执行文件。本项目使用根目录 npm workspaces 和单一 `package-lock.json` 管理前后端依赖。
 
 克隆仓库后，在项目根目录安装依赖并创建配置：
 
@@ -39,7 +39,7 @@ npm start
 npm run dev
 ```
 
-打开 Vite 输出的 HTTPS 地址。Vite 与桥接复用证书，代理验证桥接证书；本地开发同样使用系统账户登录。开发服务器将 `/rpc`、`/healthz` 和 `/api` 代理到网页桥接端口，模型调用和工具执行按对话归属交给 Codex 或 Claude Code，摘要翻译由桥接直接调用远程翻译服务。
+打开 Vite 输出的 HTTPS 地址。Vite 与桥接复用证书，代理验证桥接证书；本地开发同样使用系统账户登录。开发服务器将 `/rpc`、`/healthz` 和 `/api` 代理到网页桥接端口，模型调用和工具执行按对话归属交给 Codex 或 Claude Code，思考内容翻译由桥接适配独立的本地翻译子项目。
 
 验证生产构建时，执行 `npm run build`，再通过网页桥接地址访问，默认 `https://127.0.0.1:8766`。生产服务直接读取 `client/dist`，前端更新后重新构建并刷新网页即可；桥接代码更新后需要重启网页服务。
 
@@ -65,7 +65,8 @@ server/
   src/bridge/          请求、事件、订阅与后端连接
   src/backends/        双后端配置、供应商、路由及原生适配
   src/workspace/       共用文件与网页终端
-  src/summary-translation.mjs  TranSmart 匿名 HTTP API 与本站翻译接口
+  src/summary-translation.mjs  本站翻译与设置 HTTP 接口
+  src/translation-service.mjs  翻译偏好、下载状态与引擎生命周期
   src/version.mjs      正式版本与 Git / 安装包构建来源
   tests/               配置和桥接集成测试
 scripts/               后端启动、组件测试、systemd 安装及发布脚本
@@ -78,6 +79,8 @@ docs/versioning.md     版本管理与发布流程
 CHANGELOG.md           未发布变更与正式版本总览
 package-lock.json      全项目依赖锁文件
 ```
+
+`packages/translation-engine` 独立维护模型下载、完整性校验、原生分词器和 ONNX CPU 推理，使用方法见[子项目说明](../packages/translation-engine/README.md)。Linux x64 源码构建需要 C 编译器，发行包包含已构建的分词器。模型由首次启用功能触发下载，测试夹具与模型数据分别管理。
 
 前端采用 React，Node.js 桥接服务负责静态资源和 WebSocket JSON-RPC 转发。组件职责、状态流转、协议和生命周期约束见[架构说明](architecture.md)。
 
@@ -385,3 +388,7 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 对话拖拽回归使用 `THREAD_FOLDER_DRAG=1 CHROME_PATH=/path/to/chromium node tests/browser/project-pins.mjs`，验证真实鼠标拖起、目标高亮、保存、刷新恢复、未分类及深浅主题，证据保存到 `.cache/project-pins-browser/after`。`node tests/integration/codex-folder-native.mjs` 使用隔离历史验证原生目录恢复，模型请求为零；`node tests/integration/thread-folder-native.mjs` 使用真实 Claude CLI 与本机模拟模型服务验证跨目录继续、旧正文及目标 AGENTS 指令，全部数据位于临时目录。网页项目以单个文件夹为归属边界。
 
 批注换行边界回归在构建后执行 `ANNOTATION_WRAPPING=1 CHROME_PATH=/path/to/chromium node tests/browser/annotations.mjs`，使用隔离浏览器与模拟历史，逐字覆盖窄字符、中文长文、深浅主题及删除后收起。结果保存在 `.cache/annotations-browser/wrapping-results.json`。
+
+### 本地思考内容翻译验证
+
+构建后执行 `TRANSLATION_TEST_MODEL_DIR=/path/to/installed/models PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/thinking-translation.mjs`。脚本使用独立浏览器、临时配置和模拟对话，实际调用本地 CPU 引擎，验证默认关闭、完整消息触发、等待原文、Markdown 文字提取、原译文切换及关闭恢复原文，覆盖深浅主题、桌面与窄屏、80% 至 200% 实际浏览器缩放。已安装模型目录由运行者提供，截图和结果保存在 `.cache/thinking-translation/`，测试结束后清理浏览器与临时配置。

@@ -94,6 +94,11 @@ export function ProcessGroup({
                 <Message
                   key={item.id}
                   item={item}
+                  complete={
+                    item.status === "completed" ||
+                    (!working &&
+                      !["inProgress", "running"].includes(item.status))
+                  }
                   annotations={annotations.get(item.id)}
                   readOnly={readOnly}
                   cwd={cwd}
@@ -106,7 +111,12 @@ export function ProcessGroup({
       {working && !open && latest && (
         <div className="process-content process-preview">
           {summary ? (
-            <ReasoningPart key={latest.id} {...summary} cwd={cwd} />
+            <ReasoningPart
+              key={latest.id}
+              {...summary}
+              cwd={cwd}
+              complete={latest.status === "completed"}
+            />
           ) : (
             <Message
               key={latest.id}

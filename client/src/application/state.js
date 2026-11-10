@@ -70,6 +70,7 @@ export function createAppState() {
     threadAccess: null,
     error: "",
     notice: "",
+    translation: { enabled: false, state: "disabled", error: "" },
     notifications: {
       supported: false,
       enabled: saved("cx-completion-notifications", true) === true,

@@ -8,3 +8,4 @@ client/dist/
 .DS_Store
 *.tgz
 build-info.json
+packages/translation-engine/bin/tokenizer-linux-*

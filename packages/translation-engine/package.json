@@ -1,0 +1,29 @@
+{
+  "name": "@claudex-web/translation-engine",
+  "version": "4.0.1",
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "description": "独立的本地英译中引擎与按需模型管理",
+  "engines": {
+    "node": ">=24.5"
+  },
+  "exports": "./src/index.mjs",
+  "bin": {
+    "claudex-translate": "bin/translate.mjs"
+  },
+  "files": [
+    "src/",
+    "native/",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node native/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "fflate": "0.8.2"
+  }
+}
