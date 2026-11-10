@@ -17,6 +17,8 @@
 .translation-original {
   color: var(--muted);
   font-size: 0.85em;
+  flex-shrink: 0;
+  white-space: nowrap;
   margin-inline-start: auto;
   padding: 0.3em 0.5em;
 }

@@ -105,13 +105,26 @@ export async function testTranslationLifecycle(app) {
     const toggle = view.root
       .findAllByType("button")
       .find((button) => button.props.className === "translation-original");
-    await act(async () => toggle.props.onClick());
+    assert.equal(toggle.parent.type, "summary");
+    let prevented = 0;
+    let stopped = 0;
+    const event = {
+      preventDefault() {
+        prevented++;
+      },
+      stopPropagation() {
+        stopped++;
+      },
+    };
+    await act(async () => toggle.props.onClick(event));
     assert.ok(
       visible().includes("Inspecting application settings and storage"),
     );
     assert.equal(batches.length, count);
-    await act(async () => toggle.props.onClick());
+    await act(async () => toggle.props.onClick(event));
     assert.ok(visible().includes("检查应用设置与存储"));
+    assert.equal(prevented, 2);
+    assert.equal(stopped, 2);
   } finally {
     if (view) await act(async () => view.unmount());
     globalThis.fetch = originalFetch;

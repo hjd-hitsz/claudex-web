@@ -153,7 +153,11 @@ export function ReasoningPart({ title, body, cwd, complete = false }) {
     <button
       className="translation-original"
       aria-pressed={original}
-      onClick={() => setOriginal((value) => !value)}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setOriginal((value) => !value);
+      }}
     >
       {original ? "查看译文" : "查看原文"}
     </button>
@@ -170,9 +174,9 @@ export function ReasoningPart({ title, body, cwd, complete = false }) {
             <span>{original ? title : heading.text}</span>
             {status}
             <ChevronRight className="summary-chevron" size={13} />
+            {toggle}
           </summary>
           <div className="activity-body">
-            {toggle}
             <RichText text={original ? body : content.text} cwd={cwd} />
             {content.error && (
               <button
