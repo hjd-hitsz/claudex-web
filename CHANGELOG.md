@@ -8,11 +8,17 @@
 
 ### 改进
 
+- 供应商协议选项明确显示为“Message API”和“Message API （兼容）”，新增供应商与预置 DeepSeek 默认使用原生 Message API。
+
 ### 修复
+
+- 首次部署可先启动网页，再从设置中安装 Codex 或 Claude Code；缺少 Codex CLI 时仍可进入网页完成配置。
 
 - Claude Code 对话切换模型后，Opus、Sonnet、Haiku 别名及新启动的子代理同步使用当前选择的模型。
 
 ### 维护
+
+- 安装文档改用自动选择最新稳定版本的命令并移除 Zsh 必装要求，README 按安装、Codex 自定义模型和 Claude Code 配置重新整理。
 
 ## [4.0.1] - 2026-11-10
 

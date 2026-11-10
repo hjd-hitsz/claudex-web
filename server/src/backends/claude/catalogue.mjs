@@ -140,13 +140,15 @@ export function createClaudeCatalogue({
         throw new Error("Claude Code 插件目录格式无效");
       const records = provider
         ? provider.models.map((value) => {
-            const metadata =
-              (provider.protocol || "messages") === "anthropic"
+            const metadata = {
+              ...((provider.protocol || "messages") === "anthropic"
                 ? models.find(
                     (model) =>
                       model.value === value || model.resolvedModel === value,
                   )
-                : provider.modelCapabilities?.[value];
+                : {}),
+              ...provider.modelCapabilities?.[value],
+            };
             return modelRecord(
               {
                 ...metadata,

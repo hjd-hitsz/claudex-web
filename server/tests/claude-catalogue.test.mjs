@@ -124,6 +124,58 @@ test("目录读取按供应商和cwd匹配活会话，并保留MCP真实工具",
   catalogue.close();
 });
 
+test("原生 Message API 的自定义模型使用供应商配置的模型能力", async () => {
+  const catalogue = createClaudeCatalogue({
+    backend: {
+      id: "claude",
+      dataDir: "/isolated",
+      executable: process.execPath,
+      args: ["--eval", "console.log('[]')", "--"],
+    },
+    providers: {
+      get: async () => ({
+        id: "custom",
+        protocol: "anthropic",
+        models: ["custom-model"],
+        modelCapabilities: {
+          "custom-model": {
+            supportedEffortLevels: ["low", "high", "max"],
+            supportsAdaptiveThinking: true,
+            supportsFastMode: false,
+          },
+        },
+      }),
+    },
+    queries: new Map([
+      [
+        "native",
+        {
+          cwd: process.cwd(),
+          providerId: "custom",
+          query: {
+            initializationResult: async () => ({ account: {} }),
+            request: async () => ({ response: { models: [] } }),
+            supportedCommands: async () => [],
+            supportedAgents: async () => [],
+            mcpServerStatus: async () => [],
+          },
+        },
+      ],
+    ]),
+  });
+  try {
+    const { models } = await catalogue.read({ cwd: process.cwd() });
+    assert.deepEqual(
+      models[0].supportedReasoningEfforts.map((item) => item.reasoningEffort),
+      ["low", "high", "max"],
+    );
+    assert.equal(models[0].supportsAdaptiveThinking, true);
+    assert.deepEqual(models[0].serviceTiers, []);
+  } finally {
+    catalogue.close();
+  }
+});
+
 test("CLI默认模型目录只在原生身份已认证时进入可选模型", async () => {
   for (const [account, expected] of [
     [{ tokenSource: "none", apiProvider: "firstParty" }, 0],

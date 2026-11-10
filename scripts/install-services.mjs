@@ -51,9 +51,6 @@ export async function installServices({ configDir = root, cli = false } = {}) {
 
   const backendPath = join(userUnits, "codex-app-server.service");
   if (manageCodex && !(await exists(backendPath))) {
-    const codex = execFileSync("which", [codexBackend.executable || "codex"], {
-      encoding: "utf8",
-    }).trim();
     await writeFile(
       backendPath,
       `[Unit]
@@ -64,8 +61,12 @@ After=network.target
 Type=simple
 WorkingDirectory=${unitPath(homedir())}
 Environment=${quote("PATH=" + dirname(process.execPath) + ":" + process.env.PATH)}
+Environment=${quote("CLAUDEX_WEB_CONFIG_DIR=" + configDir)}
+Environment=${quote("CLAUDEX_WEB_BACKENDS_FILE=" + config.backendsFile)}
+Environment=${quote("CODEX_HOME=" + codexBackend.dataDir)}
+Environment=${quote("CODEX_APP_SERVER_URL=" + codexBackend.url)}
 EnvironmentFile=-${unitPath(join(configDir, ".env.backend"))}
-ExecStart=${quote(codex)} -c thread_unload_delay_secs=0 app-server --listen ${quote(codexBackend.url)}
+ExecStart=${quote(process.execPath)} ${quote(join(root, "scripts/start-backend.mjs"))}
 Restart=on-failure
 RestartSec=5
 UMask=0077

@@ -4,16 +4,15 @@
 
 ## 安装发行包
 
-稳定版 [v4.0.1](https://github.com/hjd-hitsz/claudex-web/releases/tag/v4.0.1)：
+安装最新稳定版本。
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
+npm install -g 'hjd-hitsz/claudex-web#semver:*'
 ```
 
-准备 Node.js 24+、npm、Codex CLI、OpenSSL、Linux PAM、`pamtester`、`/usr/bin/zsh` 和 systemd 后，以运行代理后端的普通用户安装：
+准备 Node.js 24+、npm、OpenSSL、Linux PAM、`pamtester` 和 systemd，完成上方安装后，以运行服务的普通用户启动服务。进入网页后，在设置中安装并启用所需的 Codex 或 Claude Code。
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
 claudex-web service install
 loginctl enable-linger "$USER"
 claudex-web service status
@@ -26,7 +25,7 @@ curl --cacert "${CLAUDEX_WEB_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/claud
 
 ### 下载后安装与校验
 
-从目标版本 Release 下载 `.tgz` 和同名 `.sha256` 文件，将两者放在同一目录，然后执行：
+从[目标版本 Release](https://github.com/hjd-hitsz/claudex-web/releases) 下载 `.tgz` 和同名 `.sha256` 文件，将两者放在同一目录，然后执行以下命令。
 
 ```bash
 sha256sum -c claudex-web-4.0.1.tgz.sha256
@@ -34,7 +33,7 @@ npm install -g ./claudex-web-4.0.1.tgz
 claudex-web service install
 ```
 
-安装使用构建生成或对应版本 Release 提供的 `.tgz` 文件。安装过程中，npm 会获取运行依赖，目标电脑需具备相应缓存或能访问配置的 npm registry。
+仓库安装命令按 Git 标签选择最新稳定版源码；Release 的 `.tgz` 包含预构建网页资源，可用于固定版本安装。两种方式均通过 npm 获取运行依赖。
 
 文件差异与撤销校验需要服务环境能够运行 `git`。文件变更汇总也支持 Git 仓库以外的目录；“撤销”遇到后续修改冲突时会保留当前文件。升级后先等待当前任务和网页终端结束，再重启网页服务并刷新页面，以使用更新后的功能。
 
@@ -120,9 +119,9 @@ CLI 自动从当前 Node.js 的安装目录、服务 PATH 和用户 `~/.local/bi
 
 在设置页 Claude Code 的供应商列表中添加服务名称、API 地址、凭据和模型标识。多个供应商共用此 Claude Code 后端。在输入框的模型菜单选择“供应商 · 模型”，新对话会使用对应后端；已有 Claude 对话可在任务结束后更换供应商或模型并继续。
 
-API 地址需支持 Messages 请求及工具调用，填写服务基地址，例如 `https://model.example`，请求路径会追加 `/v1/messages`；服务有统一路径前缀时将其保留在基地址中。按服务提供的接口选择标准 Messages 或 Anthropic 协议。模型标识和支持的思考强度、速度档位以服务实际配置为准。API Key 保存在服务器，编辑时留空保留原凭据，勾选清除会移除已保存凭据。
+API 地址需支持 Messages 请求及工具调用，填写服务基地址，例如 `https://model.example`，请求路径会追加 `/v1/messages`；服务有统一路径前缀时将其保留在基地址中。默认选择“Message API”使用原生请求，选择“Message API （兼容）”会将消息中的系统指令合并到顶层 `system`，用于要求这种布局的服务。模型标识和支持的思考强度、速度档位以服务实际配置为准。API Key 保存在服务器，编辑时留空保留原凭据，勾选清除会移除已保存凭据。
 
-默认供应商 DeepSeek 仅提供 API Key 输入，接口、模型与能力参数由程序按官方文档配置，API Key 初始为空。点击“编辑”，填写 Key 并保存即可启用；编辑后保存空 Key 会清除已保存凭据并停用，模型菜单同步移除该供应商。DeepSeek 使用 `https://api.deepseek.com/anthropic`，预置 `deepseek-flash` 和 `deepseek-v4-pro`，上下文容量为 1,048,576 tokens，思考强度提供 low、high、max，支持思考开关，服务端默认强度为 high；接口与模型依据 [DeepSeek 官方文档](https://api-docs.deepseek.com/guides/anthropic_api/)。自行添加的供应商继续使用上述留空保留及勾选清除规则。
+默认供应商 DeepSeek 使用原生 Message API，仅提供 API Key 输入，接口、模型与能力参数由程序按官方文档配置，API Key 初始为空。点击“编辑”，填写 Key 并保存即可启用；编辑后保存空 Key 会清除已保存凭据并停用，模型菜单同步移除该供应商。DeepSeek 使用 `https://api.deepseek.com/anthropic`，预置 `deepseek-flash` 和 `deepseek-v4-pro`，上下文容量为 1,048,576 tokens，思考强度提供 low、high、max，支持思考开关，服务端默认强度为 high；接口与模型依据 [DeepSeek 官方文档](https://api-docs.deepseek.com/guides/anthropic_api/)。自行添加的供应商继续使用上述留空保留及勾选清除规则。
 
 自定义模型可填写可选的显示别名，留空沿用原名称。别名随供应商配置保存在服务器，其他浏览器连接同一服务后使用相同名称，实际调用使用原始模型标识。
 
@@ -189,10 +188,10 @@ journalctl --user -u 'claudex-web-claude-*' -n 100 --no-pager
 
 ## 升级和回退
 
-从目标版本的 Release 获取安装地址。当前版本的安装与服务更新命令为：
+更新到最新稳定版并重启服务。
 
 ```bash
-npm install -g ./claudex-web-4.0.1.tgz
+npm install -g 'hjd-hitsz/claudex-web#semver:*'
 claudex-web service install
 claudex-web service restart-when-idle
 ```

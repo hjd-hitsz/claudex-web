@@ -10,7 +10,7 @@ Claudex Web 的现有网页交互终端、后端原生后台终端 `/stop` 命�
 
 ## 本地环境与源码启动
 
-开发环境需要 Linux、Node.js 24+、npm、OpenSSL、Linux PAM、pamtester、已登录的 Codex CLI 和 `/usr/bin/zsh`；开发 Claude Code 适配时另外安装配置中指定的 Claude Code 可执行文件。本项目使用根目录 npm workspaces 和单一 `package-lock.json` 管理前后端依赖。
+开发环境需要 Linux、Node.js 24+、npm、OpenSSL、Linux PAM 和 pamtester；验证原生后端时，安装并配置对应的 Codex 或 Claude Code CLI。网页终端依次使用 `SHELL` 环境变量、系统账户的登录 shell、`/bin/sh`，支持 Bash、Zsh 等 shell。终端集成测试覆盖本机已安装的 sh、Bash 和 Zsh，专用浏览器回归的额外依赖见对应章节。本项目使用根目录 npm workspaces 和单一 `package-lock.json` 管理前后端依赖。
 
 克隆仓库后，在项目根目录安装依赖并创建配置：
 

@@ -165,10 +165,10 @@ export function ProviderSettings({ backend }) {
             API 协议
             <select
               name="protocol"
-              defaultValue={editing.protocol || "messages"}
+              defaultValue={editing.protocol || "anthropic"}
             >
-              <option value="messages">标准 Messages API</option>
-              <option value="anthropic">Anthropic 原生 API</option>
+              <option value="anthropic">Message API</option>
+              <option value="messages">Message API （兼容）</option>
             </select>
           </label>
           <label>

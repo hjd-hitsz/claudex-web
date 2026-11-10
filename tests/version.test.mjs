@@ -128,7 +128,7 @@ test("版本准备同步包与锁文件、汇总未发布内容并更新安装�
   for (const path of ["README.md", "docs/deployment.md"])
     await writeFile(
       join(dir, path),
-      "npm install -g ./claudex-web-1.2.3.tgz\n",
+      "npm install -g 'hjd-hitsz/claudex-web#semver:*'\nnpm install -g ./claudex-web-1.2.3.tgz\n",
     );
   initialize(dir);
   assert.equal(prepareVersion(dir, "minor", "2026-10-26"), "1.3.0");
@@ -142,7 +142,7 @@ test("版本准备同步包与锁文件、汇总未发布内容并更新安装�
   assert.match(notes, /- 展示构建来源。/);
   assert.match(
     await readFile(join(dir, "README.md"), "utf8"),
-    /v1\.3\.0\/claudex-web-1\.3\.0\.tgz/,
+    /npm install -g \.\/claudex-web-1\.3\.0\.tgz/,
   );
   assert.throws(() => prepareVersion(dir, "patch"), /已准备且尚未创建标签/);
   assert.throws(() => prepareVersion(dir, "1.2.4"), /大于当前版本/);
@@ -254,7 +254,7 @@ test("预发布逐次递增、转候选与正式版，并保留稳定下载入�
   for (const path of ["README.md", "docs/deployment.md"])
     await writeFile(
       join(dir, path),
-      "## 快速开始\n\n稳定版 https://example.test/releases/download/v1.2.3/claudex-web-1.2.3.tgz\n",
+      "## 快速开始\n\nnpm install -g 'hjd-hitsz/claudex-web#semver:*'\n\n稳定版 https://example.test/releases/download/v1.2.3/claudex-web-1.2.3.tgz\n",
     );
   commit(dir);
   for (const target of [
@@ -273,8 +273,12 @@ test("预发布逐次递增、转候选与正式版，并保留稳定下载入�
     );
     prepareVersion(dir, target);
     assert.equal(checkVersions(dir), target);
+    const readme = await readFile(join(dir, "README.md"), "utf8");
+    assert.equal(
+      readme.split("npm install -g 'hjd-hitsz/claudex-web#semver:*'").length,
+      2,
+    );
     if (target.includes("-")) {
-      const readme = await readFile(join(dir, "README.md"), "utf8");
       assert.ok(
         readme.includes("releases/download/v1.2.3/claudex-web-1.2.3.tgz"),
       );
@@ -284,7 +288,7 @@ test("预发布逐次递增、转候选与正式版，并保留稳定下载入�
         ),
       );
       assert.equal(readme.split("<!-- prerelease:start -->").length, 2);
-    }
+    } else assert.ok(!readme.includes("<!-- prerelease:start -->"));
     commit(dir);
     git(dir, "tag", `v${target}`);
     assert.equal(checkRelease(dir, `v${target}`), target);
