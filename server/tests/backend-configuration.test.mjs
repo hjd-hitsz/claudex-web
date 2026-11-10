@@ -6,6 +6,43 @@ import { join } from "node:path";
 import { createBackendConfiguration } from "../src/backends/configuration.mjs";
 import { createProviders } from "../src/backends/providers.mjs";
 
+test("新供应商默认原生 Message API，已有供应商沿用保存的协议", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "provider-protocol-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const configuration = createBackendConfiguration({
+    configDir: directory,
+    claudeHome: join(directory, "claude"),
+    codexHome: join(directory, "codex"),
+    upstreamUrl: "ws://127.0.0.1:8765",
+  });
+  const providers = createProviders(configuration);
+  const input = {
+    backendId: "claude",
+    name: "供应商",
+    baseUrl: "https://example.org",
+    models: ["model"],
+  };
+  await providers.save({ ...input, id: "native" });
+  assert.equal((await providers.get("claude", "native")).protocol, "anthropic");
+  await providers.save({ ...input, id: "compatible", protocol: "messages" });
+  await providers.save({ ...input, id: "compatible", name: "改名" });
+  assert.equal(
+    (await providers.get("claude", "compatible")).protocol,
+    "messages",
+  );
+  await configuration.update((data) => ({
+    ...data,
+    providers: [...data.providers, { ...input, id: "legacy" }],
+  }));
+  assert.equal(
+    (await providers.list()).find((provider) => provider.id === "legacy")
+      .protocol,
+    "messages",
+  );
+  await providers.save({ ...input, id: "legacy" });
+  assert.equal((await providers.get("claude", "legacy")).protocol, "messages");
+});
+
 test("配置恢复、独立凭据及失败写入保留旧配置", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "backend-config-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

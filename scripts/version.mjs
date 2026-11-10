@@ -10,6 +10,7 @@ import { releaseVersion, compareReleaseVersions } from "./release-version.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
 
 const emptyChanges = "### 新增\n\n### 改进\n\n### 修复\n\n### 维护\n";
+const stableInstallCommand = "npm install -g 'hjd-hitsz/claudex-web#semver:*'";
 const read = (dir, path) => readFileSync(join(dir, path), "utf8");
 const json = (dir, path) => JSON.parse(read(dir, path));
 const writeJson = (dir, path, value) =>
@@ -119,11 +120,7 @@ export function prepareVersion(
     path,
     content: read(dir, path)
       .replaceAll(`v${previous}`, tag)
-      .replaceAll(`claudex-web-${previous}.tgz`, `claudex-web-${target}.tgz`)
-      .replace(
-        `npm install -g ./claudex-web-${target}.tgz`,
-        `npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/${tag}/claudex-web-${target}.tgz`,
-      ),
+      .replaceAll(`claudex-web-${previous}.tgz`, `claudex-web-${target}.tgz`),
   }));
   if (target.includes("-")) {
     for (const doc of docs) {
@@ -145,9 +142,8 @@ export function prepareVersion(
   if (!target.includes("-")) {
     for (const doc of docs)
       doc.content = doc.content.replace(
-        /<!-- prerelease:start -->[\s\S]*?<!-- prerelease:end -->/,
-        () =>
-          `稳定版 [${tag}](https://github.com/hjd-hitsz/claudex-web/releases/tag/${tag})：\n\n\`\`\`bash\nnpm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/${tag}/claudex-web-${target}.tgz\n\`\`\``,
+        /<!-- prerelease:start -->[\s\S]*?<!-- prerelease:end -->\n*/,
+        "",
       );
   }
   const packages = manifests(dir);
@@ -200,8 +196,10 @@ export function checkRelease(dir = root, tag = process.env.GITHUB_REF_NAME) {
     assert.ok(
       read(dir, path).includes(
         `releases/download/${tag}/claudex-web-${version}.tgz`,
-      ),
-      `${path} 安装链接需要更新到 ${tag}`,
+      ) ||
+        (!version.includes("-") &&
+          read(dir, path).includes(stableInstallCommand)),
+      `${path} 需要提供最新稳定版安装命令或 ${tag} 的发行包链接`,
     );
   return version;
 }

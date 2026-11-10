@@ -8,6 +8,37 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createClaudeWorkerAdapter } from "../src/backends/claude/worker-client.mjs";
 import { workerRevision } from "../src/backends/claude/worker-revision.mjs";
 import { workerLocation } from "../src/backends/claude/worker-launcher.mjs";
+import {
+  verifyWorkerSocket,
+  workerConnectionError,
+} from "../src/backends/claude/worker-location.mjs";
+
+test("socket 连接错误提示恢复方式并保留原始错误", async () => {
+  const root = await mkdtemp(join(tmpdir(), "claude-ipc-missing-"));
+  try {
+    let original;
+    try {
+      await verifyWorkerSocket(join(root, "missing.sock"));
+    } catch (error) {
+      original = error;
+    }
+    assert.equal(original.code, "ENOENT");
+    const displayed = workerConnectionError(original);
+    assert.equal(displayed.code, "ENOENT");
+    assert.equal(displayed.cause, original);
+    assert.match(displayed.message, /正在重试/);
+    assert.equal(displayed.message, "Claude 后台连接失败，正在重试");
+    assert.doesNotMatch(displayed.message, /ENOENT|lstat|\.sock/);
+    const denied = workerConnectionError(
+      Object.assign(new Error("denied"), { code: "EACCES" }),
+    );
+    assert.match(denied.message, /检查服务权限/);
+    const other = new Error("unexpected");
+    assert.equal(workerConnectionError(other), other);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 async function until(predicate) {
   for (let attempt = 0; attempt < 200; attempt++) {

@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>在浏览器中，继续你的 Codex 与 Claude Code 工作。</strong><br>
-  从电脑到手机和平板，随时查看对话、审阅计划并批准执行、跟进任务、掌握账户额度、阅读文件与变更。
+  在电脑上部署，通过电脑、手机或平板访问同一工作环境。
 </p>
 
 <p align="center">
@@ -32,97 +32,73 @@
 
 </details>
 
-Claudex Web 提供 Codex 与 Claude Code 双后端：现有 ChatGPT 模型继续使用 Codex，其他供应商的模型通过 Claude Code 使用。输入区统一选择模型，Claude 对话可在空闲时切换供应商继续。配置方法见[部署指南](docs/deployment.md#claude-code-与模型配置)。
-
 ## 快速开始
 
-稳定版 [v4.0.1](https://github.com/hjd-hitsz/claudex-web/releases/tag/v4.0.1)：
+需要 Linux、Node.js 24+、npm 和 systemd。Debian / Ubuntu 安装系统依赖可执行以下命令。
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
+sudo apt-get install git openssl pamtester
 ```
 
-准备一台 Linux 电脑，安装 Node.js 24.5+、npm、Git、OpenSSL、Linux PAM、`pamtester` 和 `/usr/bin/zsh`，并完成 Codex CLI 登录。Codex CLI 需支持 `codex app-server`，后台运行使用 systemd 用户服务。
-
-### 1. 安装并启动
-
-以运行代理后端的普通用户安装 Claudex Web，然后启动服务：
+以运行服务的普通用户安装，自动选择最新稳定版本标签。
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
+npm install -g 'hjd-hitsz/claudex-web#semver:*'
 claudex-web service install
-claudex-web service status
 ```
 
-npm 全局命令所在目录需在 `PATH` 中。安装完成后，网页服务会自动启动，已有 Codex 配置继续保留。
+浏览器打开 `https://部署电脑的IP:8766`，使用该电脑上运行服务的系统用户名和密码登录。首次访问的证书配置见[证书安装指引](docs/deployment.md#证书配置)。
 
-### 2. 打开浏览器
+需要开机启动并在退出系统登录后继续运行时，执行 `loginctl enable-linger "$USER"`。
 
-- 本机访问：`https://127.0.0.1:8766`。
-- 同一网络的电脑、手机或平板：`https://电脑IP:8766`，将“电脑IP”替换为服务所在电脑的实际 IP，并允许防火墙访问 `8766` 端口。
+## 配置 Codex
 
-网页登录使用运行服务的系统用户名与密码，登录成功后沿用该电脑的 Codex 授权，任务以服务用户的完全访问权限执行。登录状态默认保留 30 天，刷新或重新打开浏览器会恢复有效登录。
+在网页“设置 → 模型与服务配置”中为 Codex 点击“一键安装”。
 
-首次访问时，浏览器可能提示证书不受信任。请按[证书安装指引](docs/deployment.md#证书配置)完成配置；登录页的“浏览器证书安装”提供证书下载和各设备的安装步骤。
-
-输入消息后，按 **Ctrl+Enter** 发送，**Enter** 换行。
-
-对话完成通知默认开启。首次使用时在“设置 → 通知”允许系统通知并授权；任务成功完成后，通知显示对话标题，点击即可返回对应对话。权限被阻止或环境不支持时，设置页会显示对应状态。
-
-<details>
-<summary>开机启动与退出系统登录后继续运行</summary>
-
-需要开机自动启动、退出系统登录后继续运行时，执行：
+### 使用 ChatGPT 账户
 
 ```bash
-loginctl enable-linger "$USER"
+codex login
 ```
 
-该命令可能需要管理员授权。
+### 使用自定义模型服务
 
-</details>
+编辑 `~/.codex/config.toml`。合并以下配置，把模型 ID 和地址替换为服务提供的值。`model` 和 `model_provider` 放在文件顶部、所有表头之前。
 
-前台运行、本地安装包的安装与下载校验见[部署与维护](docs/deployment.md)。
+```toml
+model = "your-model-id"
+model_provider = "custom"
 
-思考内容翻译默认关闭。在“设置 → 思考内容翻译”开启后，服务器首次下载翻译模型，随后在本地处理完整的思考消息。下载和翻译期间继续显示原文，译文完成后可切换原文与译文。模型存储与迁移见[部署指南](docs/deployment.md#思考内容翻译)。
+[model_providers.custom]
+name = "Custom"
+base_url = "https://model.example/v1"
+wire_api = "responses"
+requires_openai_auth = true
+```
 
-## 按需配置
+## 配置 Claude Code
 
-执行以下命令可创建用户配置并显示其位置，已有配置会保留：
+在网页“设置 → 模型与服务配置”中为 Claude Code 点击“一键安装”，然后启用该后端。
+
+### 使用 Claude 账户
+
+以运行服务的同一系统用户登录，然后在网页模型菜单中选择 Claude 原生模型。
 
 ```bash
-claudex-web config init
+claude auth login
 ```
 
-通常可直接使用初始配置。需要修改时，编辑命令显示的 `.env` 文件；默认位置为 `~/.config/claudex-web/.env`，升级后保留。
+### 使用自定义供应商和模型
 
-常用配置项：
+在网页“设置 → Claude Code”的供应商列表中添加服务。
 
-- `HOST`：监听地址，初始为 `0.0.0.0`，允许通过电脑 IP 访问；仅本机访问可改为 `127.0.0.1`。
-- `PORT`：网页端口，初始为 `8766`。
-- `DEFAULT_CWD`：首次使用时的默认工作目录，未设置时使用当前用户的主目录。
-
-修改配置前先结束当前任务和网页终端，保存后执行 `claudex-web service restart`；前台运行时重新启动网页进程。端口变更后使用新端口访问。完整配置见[部署与维护](docs/deployment.md#配置)。
-
-## 升级
-
-升级时，从目标版本的 Release 获取安装地址。当前版本的安装与服务更新命令为：
-
-```bash
-npm install -g https://github.com/hjd-hitsz/claudex-web/releases/download/v4.0.1/claudex-web-4.0.1.tgz
-claudex-web service install
-claudex-web service restart-when-idle
-```
-
-最后一个命令会等待当前任务和上下文整理结束后再重启，等待期间保持命令运行。升级后刷新网页，在“设置 → 关于”查看版本。
+DeepSeek 等预置供应商直接填写 API Key。
 
 ## 更多文档
 
-- [部署与维护](docs/deployment.md)：完整配置、服务管理、回退和故障排查。
-- [数据保存与迁移](docs/deployment.md#数据保存与迁移)：数据位置、摘要翻译与模型用量说明。
-- [开发者指南](docs/development.md)：从源码运行、参与开发和验证修改。
-- [架构设计](docs/architecture.md)：模块边界、状态与请求流程、代码规模约束和扩展方式。
-- [变更日志](CHANGELOG.md)：各版本的新增功能、改进与修复。
+- [部署与维护](docs/deployment.md)包含端口、证书、网络代理、服务管理、升级和故障排查。
+- [开发者指南](docs/development.md)介绍源码运行与开发验证，[架构设计](docs/architecture.md)说明模块边界。
+- [版本更新](https://github.com/hjd-hitsz/claudex-web/releases)与[变更日志](CHANGELOG.md)记录版本变化。
 
 ## 许可证
 

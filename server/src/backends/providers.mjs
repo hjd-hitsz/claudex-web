@@ -4,6 +4,7 @@ import { configuredProviders, providerPresets } from "./provider-presets.mjs";
 export function createProviders(configuration) {
   const publicProvider = ({ apiKey, ...provider }) => ({
     ...provider,
+    protocol: provider.protocol || "messages",
     hasApiKey: Boolean(apiKey),
   });
   async function list(backendId, { includeDisabled = false } = {}) {
@@ -45,8 +46,7 @@ export function createProviders(configuration) {
     )
       throw new Error("请填写有效的 API 地址");
     if (!input.name?.trim()) throw new Error("请填写供应商名称");
-    const protocol = input.protocol || "messages";
-    if (!["messages", "anthropic"].includes(protocol))
+    if (input.protocol && !["messages", "anthropic"].includes(input.protocol))
       throw new Error("请选择支持的 API 协议");
     const models = (input.models || []).map((m) =>
       typeof m === "string" ? m.trim() : m.id?.trim(),
@@ -90,7 +90,10 @@ export function createProviders(configuration) {
         id,
         backendId: backend.id,
         name: input.name.trim(),
-        protocol,
+        protocol:
+          input.protocol ||
+          previous?.protocol ||
+          (previous ? "messages" : "anthropic"),
         baseUrl: url.href.replace(/\/$/, ""),
         models,
         modelAliases:

@@ -3,14 +3,142 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import {
+  copyFile,
+  mkdtemp,
+  mkdir,
+  readFile,
+  writeFile,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { WebSocketServer } from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+
+test(
+  "缺少 Codex CLI 时可安装并访问网页，后续安装 CLI 后启动后端",
+  { timeout: 20000 },
+  async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "claudex-web-bootstrap-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const bin = join(directory, "bin");
+    const configDir = join(directory, "config");
+    await mkdir(bin);
+    const node = join(bin, "node");
+    await copyFile(process.execPath, node);
+    for (const name of ["systemctl", "systemd-analyze"])
+      await writeFile(join(bin, name), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const auth = await authenticationFixture(configDir);
+    const env = {
+      ...process.env,
+      HOME: join(directory, "home"),
+      PATH: bin,
+      HOST: "127.0.0.1",
+      PORT: "0",
+      NODE_OPTIONS: "",
+      CLAUDEX_WEB_CONFIG_DIR: configDir,
+      CLAUDEX_WEB_BACKENDS_FILE: join(directory, "custom-backends.json"),
+      CODEX_HOME: join(directory, "codex"),
+      CLAUDE_CONFIG_DIR: join(directory, "claude"),
+      CODEX_APP_SERVER_URL: "ws://127.0.0.1:1",
+      XDG_CONFIG_HOME: join(directory, "xdg-config"),
+      XDG_STATE_HOME: join(directory, "state"),
+    };
+    const cli = join(root, "bin/claudex-web.mjs");
+    execFileSync(node, [cli, "service", "install"], { env, stdio: "pipe" });
+    const backend = await readFile(
+      join(env.XDG_CONFIG_HOME, "systemd/user/codex-app-server.service"),
+      "utf8",
+    );
+    const launch = backend
+      .match(/^ExecStart=(.+)$/m)[1]
+      .match(/"(?:\\.|[^"\\])*"/g)
+      .map((value) => JSON.parse(value));
+    assert.equal(launch[0], node);
+    assert.equal(launch[1], join(root, "scripts/start-backend.mjs"));
+    const launchEnv = {
+      HOME: env.HOME,
+      XDG_CONFIG_HOME: env.XDG_CONFIG_HOME,
+      ...Object.fromEntries(
+        [...backend.matchAll(/^Environment=(.+)$/gm)].map((match) => {
+          const value = JSON.parse(match[1]);
+          const index = value.indexOf("=");
+          return [value.slice(0, index), value.slice(index + 1)];
+        }),
+      ),
+    };
+    assert.equal(
+      launchEnv.CLAUDEX_WEB_BACKENDS_FILE,
+      env.CLAUDEX_WEB_BACKENDS_FILE,
+    );
+    assert.throws(
+      () =>
+        execFileSync(launch[0], launch.slice(1), {
+          env: launchEnv,
+          stdio: "pipe",
+        }),
+      /spawn codex ENOENT/,
+    );
+
+    const child = spawn(node, [cli], {
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    t.after(async () => {
+      if (child.exitCode !== null) return;
+      const exited = once(child, "exit");
+      child.kill();
+      await exited;
+    });
+    const url = await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code) => reject(new Error(`网页提前退出：${code}`)));
+      child.stdout.on("data", (bytes) => {
+        const match = bytes.toString().match(/https:\/\/127\.0\.0\.1:\d+/);
+        if (match) resolve(match[0]);
+      });
+    });
+    const fetch = httpsFetch(auth.tls.cert);
+    assert.equal((await fetch(url)).status, 200);
+    assert.equal((await fetch(url + "/healthz")).status, 503);
+    const socket = new WebSocket(url.replace("https:", "wss:") + "/rpc", {
+      ca: auth.tls.cert,
+      headers: { Cookie: auth.cookie, Origin: url },
+    });
+    t.after(() => socket.terminate());
+    const firstMessage = once(socket, "message");
+    const snapshot = JSON.parse((await firstMessage)[0].toString());
+    assert.equal(snapshot.params.bridgeReady, true);
+    assert.equal(snapshot.params.ready, false);
+    socket.send(
+      JSON.stringify({ id: "settings", method: "lan/backends/list" }),
+    );
+    let response;
+    do {
+      response = JSON.parse((await once(socket, "message"))[0].toString());
+    } while (response.id !== "settings");
+    assert.deepEqual(
+      response.result.backends.map((entry) => entry.id),
+      ["codex", "claude"],
+    );
+
+    await writeFile(join(bin, "codex"), '#!/bin/sh\nprintf "%s\\n" "$*"\n', {
+      mode: 0o755,
+    });
+    const output = execFileSync(launch[0], launch.slice(1), {
+      env: launchEnv,
+      encoding: "utf8",
+    });
+    assert.match(
+      output,
+      /-c thread_unload_delay_secs=0 app-server --listen ws:\/\/127\.0\.0\.1:1/,
+    );
+  },
+);
 
 test(
   "发布包可全局安装、读取用户配置并安装服务，保留现有后端",
@@ -239,8 +367,12 @@ test(
     const backendPath = join(units, "codex-app-server.service");
     const backend = await readFile(backendPath, "utf8");
     assert.ok(backend.includes(`ws://127.0.0.1:${upstream.address().port}`));
-    assert.ok(backend.includes(join(fakeBin, "codex")));
-    assert.match(backend, /-c thread_unload_delay_secs=0 app-server/);
+    assert.ok(
+      backend.includes(
+        join(prefix, "lib/node_modules/claudex-web/scripts/start-backend.mjs"),
+      ),
+    );
+    assert.ok(backend.includes(`CODEX_HOME=${env.CODEX_HOME}`));
     run("backend");
     await writeFile(backendPath, "# existing backend configuration\n");
     run("service", "install");

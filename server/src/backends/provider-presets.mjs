@@ -5,7 +5,7 @@ export const providerPresets = [
     backendId: "claude",
     name: "DeepSeek",
     icon: "deepseek",
-    protocol: "messages",
+    protocol: "anthropic",
     baseUrl: "https://api.deepseek.com/anthropic",
     models: ["deepseek-flash", "deepseek-v4-pro"],
     modelAliases: {

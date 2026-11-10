@@ -29,3 +29,15 @@ export async function verifyWorkerSocket(path) {
   if (!info.isSocket() || info.uid !== process.getuid() || info.mode & 0o077)
     throw new Error("Claude IPC socket 必须由当前用户持有并使用0600权限。");
 }
+
+export function workerConnectionError(error) {
+  if (!["ENOENT", "ECONNREFUSED", "ECONNRESET", "EACCES"].includes(error.code))
+    return error;
+  const message =
+    error.code === "EACCES"
+      ? "Claude 后台访问被拒绝，请检查服务权限。"
+      : "Claude 后台连接失败，正在重试";
+  const result = new Error(message, { cause: error });
+  result.code = error.code;
+  return result;
+}

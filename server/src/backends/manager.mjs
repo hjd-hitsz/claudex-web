@@ -119,7 +119,10 @@ export function createBackendManager({
         },
         broadcast(message) {
           if (instances.get(backend.id) !== entry || closed) return;
-          if (message.method === "lan/state") return emitState();
+          if (message.method === "lan/state") {
+            if (entry.adapter?.ready) entry.error = null;
+            return emitState();
+          }
           broadcast({
             ...message,
             ...(backend.id !== "codex" && { backendId: backend.id }),
