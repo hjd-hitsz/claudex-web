@@ -169,9 +169,10 @@ export function isUserPrompt(message) {
     !message.isVisibleInTranscriptOnly &&
     !message.isSynthetic &&
     message.origin?.kind !== "task-notification" &&
-    // SDK 提交的输入带有来源或轮次归属；同一 promptId 下的原生附加记录仅继承入口。
+    // SDK 主对话附加记录仅继承入口；原生子代理任务由侧链及代理标识确认来源。
     !(
       message.entrypoint === "sdk-ts" &&
+      !(message.isSidechain === true && message.agentId) &&
       message.promptId &&
       !message.promptSource &&
       !message.turnOrigin &&

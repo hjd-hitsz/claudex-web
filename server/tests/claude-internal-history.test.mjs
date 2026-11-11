@@ -141,3 +141,62 @@ test("原生后台通知和中断记录保持内部归属，正文相同的人�
   );
   assert.equal(turns[0].completedAt, Date.parse(records[0].timestamp) / 1000);
 });
+
+test("原生 SDK 子代理侧链任务建立轮次并保留工具与回答", async () => {
+  const { agentTurns } =
+    await import("../src/backends/claude/agent-history.mjs");
+  const task = {
+    type: "user",
+    uuid: "task",
+    isSidechain: true,
+    agentId: "agent-1",
+    promptId: "parent-prompt",
+    entrypoint: "sdk-ts",
+    userType: "external",
+    parent_tool_use_id: "call-1",
+    message: { role: "user", content: "调查目录" },
+  };
+  const turns = agentTurns([
+    task,
+    {
+      type: "assistant",
+      uuid: "tool",
+      message: {
+        id: "tool-msg",
+        content: [
+          {
+            type: "tool_use",
+            id: "read-1",
+            name: "Read",
+            input: { file_path: "/workspace/readme" },
+          },
+        ],
+      },
+    },
+    {
+      type: "user",
+      uuid: "result",
+      message: {
+        content: [
+          { type: "tool_result", tool_use_id: "read-1", content: "文件正文" },
+        ],
+      },
+    },
+    {
+      type: "assistant",
+      uuid: "answer",
+      message: {
+        id: "answer-msg",
+        content: [{ type: "text", text: "调查结论" }],
+        stop_reason: "end_turn",
+      },
+    },
+  ]);
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0].items[0].authorLabel, "主代理");
+  assert.ok(JSON.stringify(turns).includes("调查结论"));
+  assert.ok(JSON.stringify(turns).includes("文件正文"));
+  assert.equal(isUserPrompt({ ...task, isSidechain: false }), false);
+  assert.equal(isUserPrompt({ ...task, agentId: undefined }), false);
+  assert.equal(isUserPrompt({ ...task, isMeta: true }), false);
+});
