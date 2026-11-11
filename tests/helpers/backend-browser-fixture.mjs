@@ -25,7 +25,7 @@ export function backendFixture(data) {
     },
   ];
   const messages = {
-    legacy: [
+    legacy: data.codexItems || [
       {
         id: "markdown-user",
         type: "userMessage",
@@ -78,7 +78,7 @@ export function backendFixture(data) {
       ? "/native/claudex-web/workspaces"
       : "/web/workspaces",
     projectlessRoots: ["/web/workspaces", "/native/claudex-web/workspaces"],
-    activeTurns: {},
+    activeTurns: data.activeTurns || {},
     executionStatuses: {},
     compactions: {},
     undoneFiles: [],
@@ -229,10 +229,14 @@ export function backendFixture(data) {
         result = {
           data: [
             {
-              id: p.threadId === "legacy" ? "legacy-turn" : "human",
-              status: "completed",
-              startedAt: 1,
-              completedAt: 2,
+              id:
+                data.activeTurns?.[p.threadId] ||
+                (p.threadId === "legacy" ? "legacy-turn" : "human"),
+              status: data.activeTurns?.[p.threadId]
+                ? "inProgress"
+                : "completed",
+              startedAt: data.turnStartedAt || 1,
+              completedAt: data.activeTurns?.[p.threadId] ? null : 2,
               items: messages[p.threadId] || [],
             },
           ],

@@ -1,6 +1,9 @@
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 const batchLengthLimit = 3000;
-const segmentLengthLimit = 1000;
-const cacheKey = "cx-summary-zh-session-v1";
+const defaultCacheKey = "cx-summary-zh-edge-v1";
 
 export function needsTranslation(text) {
   const prose = text.replace(/```[\s\S]*?```|`[^`]*`/g, "");
@@ -10,7 +13,11 @@ export function needsTranslation(text) {
 }
 
 // 标题优先发送；正文合并短时更新，并最多占用一个请求，给后续标题保留容量。
-export function createSummaryTranslator(requestBatch, storage) {
+export function createSummaryTranslator(
+  requestBatch,
+  storage,
+  cacheKey = defaultCacheKey,
+) {
   const cache = new Map();
   try {
     const entries = JSON.parse(storage?.getItem(cacheKey) || "[]");
@@ -120,77 +127,43 @@ export function createSummaryTranslator(requestBatch, storage) {
   };
 }
 
-export async function translateSummaries(texts) {
-  // 机器翻译只处理正文，代码、路径和 Markdown 强调标记在返回后原样恢复。
-  const protectedParts = texts.map(() => []);
-  const source = texts.map((text, index) =>
-    text.replace(
-      /```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|<[^>\n]+>|https?:\/\/[^\s)]+|(?:[A-Za-z]:[\\/]|~?\/|\.{1,2}\/)[^\s`*()[\]<>]+|\b[\w.@-]+(?:\/[\w.@+-]+)+|\*\*|__/g,
-      (part) => `<x${protectedParts[index].push(part) - 1}>`,
-    ),
-  );
-  const segments = source.map(splitTranslationText);
-  const queued = segments
-    .flat()
-    .filter((segment) =>
-      needsTranslation(segment.source.replace(/<x\d+>/g, "")),
-    );
-  let offset = 0;
-  while (offset < queued.length) {
-    const batch = [];
-    let length = 0;
-    while (
-      offset < queued.length &&
-      batch.length < 24 &&
-      length + queued[offset].source.length <= batchLengthLimit
-    ) {
-      const segment = queued[offset++];
-      batch.push(segment);
-      length += segment.source.length;
-    }
-    const translations = await requestTranslations(
-      batch.map((segment) => segment.source),
-    );
-    batch.forEach((segment, index) => (segment.value = translations[index]));
-  }
-  return segments.map((chunks, index) => {
-    const text = chunks
-      .map((chunk) => chunk.before + chunk.value + chunk.after)
-      .join("");
-    const parts = protectedParts[index];
-    const restored = new Set();
-    const result = text.replace(/<\s*x\s*(\d+)\s*>/gi, (match, id) => {
-      if (parts[id] === undefined || restored.has(id))
-        throw new Error("翻译格式异常，请重试");
-      restored.add(id);
-      return parts[id];
-    });
-    if (restored.size !== parts.length) throw new Error("翻译格式异常，请重试");
-    return result;
-  });
-}
+const markdown = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 
-function splitTranslationText(text) {
-  const chunks = [];
-  while (text.length) {
-    let end = Math.min(text.length, segmentLengthLimit);
-    if (end < text.length) {
-      const newline = text.lastIndexOf("\n", end);
-      const space = text.lastIndexOf(" ", end);
-      if (newline >= end / 2) end = newline;
-      else if (space >= end / 2) end = space;
-      const tag = text.lastIndexOf("<x", end - 1);
-      if (tag >= 0 && text.indexOf(">", tag) >= end) end = tag;
-      const last = text.charCodeAt(end - 1);
-      if (last >= 0xd800 && last <= 0xdbff) end--;
+export async function translateSummaries(texts) {
+  const documents = texts.map((source) => {
+    const leaves = [];
+    function visit(node) {
+      if (
+        ["code", "inlineCode", "html", "math", "inlineMath"].includes(node.type)
+      )
+        return;
+      if (node.type === "text" && needsTranslation(node.value))
+        leaves.push({
+          start: node.position.start.offset,
+          end: node.position.end.offset,
+          source: node.value,
+        });
+      node.children?.forEach(visit);
     }
-    const [, before, source, after] = text
-      .slice(0, end)
-      .match(/^(\s*)([\s\S]*?)(\s*)$/);
-    chunks.push({ before, source, after, value: source });
-    text = text.slice(end);
+    visit(markdown.parse(source));
+    return { source, leaves };
+  });
+  const leaves = documents.flatMap((document) => document.leaves);
+  for (let offset = 0; offset < leaves.length; offset += 24) {
+    const batch = leaves.slice(offset, offset + 24);
+    const translations = await requestTranslations(
+      batch.map((leaf) => leaf.source),
+    );
+    batch.forEach((leaf, index) => {
+      leaf.translation = translations[index];
+    });
   }
-  return chunks;
+  return documents.map(({ source, leaves }) => {
+    for (const leaf of [...leaves].reverse())
+      source =
+        source.slice(0, leaf.start) + leaf.translation + source.slice(leaf.end);
+    return source;
+  });
 }
 
 async function requestTranslations(texts) {
@@ -198,11 +171,11 @@ async function requestTranslations(texts) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ texts }),
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(300000),
   });
   if (response.status === 404) throw new Error("翻译暂不可用，请稍后重试");
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "翻译服务请求失败，请重试");
+  if (!response.ok) throw new Error(data.error || "翻译请求失败，请重试");
   if (
     !Array.isArray(data.translations) ||
     data.translations.length !== texts.length ||

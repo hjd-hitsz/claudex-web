@@ -5,7 +5,7 @@
   "description": "Codex 与 Claude Code 的浏览器工作台",
   "license": "GPL-3.0-only",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.5"
   },
   "bin": {
     "claudex-web": "bin/claudex-web.mjs"
@@ -22,21 +22,28 @@
     "scripts/start-backend.mjs",
     "scripts/restart-when-idle.mjs",
     ".env.example",
-    "docs/"
+    "docs/",
+    "packages/translation-engine/src/",
+    "packages/translation-engine/native/",
+    "packages/translation-engine/bin/",
+    "packages/translation-engine/package.json",
+    "packages/translation-engine/LICENSE",
+    "packages/translation-engine/README.md"
   ],
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "packages/translation-engine"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @claudex-web/client",
-    "build": "npm run build --workspace @claudex-web/client",
+    "build": "npm run build --workspace @claudex-web/translation-engine && npm run build --workspace @claudex-web/client",
     "icons:generate": "node scripts/generate-icons.mjs",
     "prepack": "npm run build",
     "start": "node --env-file-if-exists=.env server/src/server.mjs",
     "start:backend": "node --env-file-if-exists=.env scripts/start-backend.mjs",
     "test": "npm run test:unit && npm run test:components",
-    "test:unit": "node --test client/tests/*.test.js server/tests/*.test.mjs tests/architecture.test.mjs tests/version.test.mjs tests/release.test.mjs",
+    "test:unit": "node --test client/tests/*.test.js server/tests/*.test.mjs tests/architecture.test.mjs tests/version.test.mjs tests/release.test.mjs packages/translation-engine/tests/*.test.mjs",
     "test:components": "node scripts/test-components.mjs",
     "test:package": "npm run build && node --test tests/package.test.mjs",
     "version:check": "node scripts/version.mjs check",
@@ -63,6 +70,8 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.318",
     "node-pty": "1.1.0",
-    "ws": "8.22.0"
+    "ws": "8.22.0",
+    "@claudex-web/translation-engine": "file:packages/translation-engine",
+    "fflate": "0.8.2"
   }
 }

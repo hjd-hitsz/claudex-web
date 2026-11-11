@@ -1,0 +1,24 @@
+.translation-settings label {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+}
+.translation-settings [role="status"] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7em;
+  margin-block: 0.7em;
+}
+.translation-settings progress {
+  max-width: 100%;
+  accent-color: var(--accent);
+}
+.translation-original {
+  color: var(--muted);
+  font-size: 0.85em;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-inline-start: auto;
+  padding: 0.3em 0.5em;
+}

@@ -15,11 +15,13 @@ export function Message({
   annotations,
   readOnly = false,
   editable = false,
+  complete = item.status === "completed",
   cwd,
 }) {
   if (item.type === "plan")
     return <PlanMessage item={item} readOnly={readOnly} cwd={cwd} />;
-  if (item.type === "reasoning") return <Reasoning item={item} cwd={cwd} />;
+  if (item.type === "reasoning")
+    return <Reasoning item={item} cwd={cwd} complete={complete} />;
   if (item.type === "userInputRequest")
     return (
       <QuestionRecord

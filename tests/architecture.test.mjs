@@ -49,7 +49,21 @@ test("架构检查识别文件膨胀、逆向依赖、跨端耦合和循环，�
     "server/src/http/backend.mjs",
     "import '../backends/codex/adapter.mjs';\n",
   );
+  await file(
+    "packages/translation-engine/src/coupled.mjs",
+    "import '../../../server/src/a.mjs';\n",
+  );
+  await file(
+    "server/src/private-translation.mjs",
+    "import '@claudex-web/translation-engine/src/inference.mjs';\n",
+  );
+  await file(
+    "client/src/features/local-engine.js",
+    "import '@claudex-web/translation-engine';\n",
+  );
   const { errors } = await inspectArchitecture(root);
+  assert(errors.some((error) => error.includes("翻译引擎只能依赖")));
+  assert(errors.some((error) => error.includes("翻译引擎通过服务端公共入口")));
   assert(errors.some((error) => error.includes("超过 500 行")));
   assert(errors.some((error) => error.includes("domain 层")));
   assert(errors.some((error) => error.includes("通过 shared/")));

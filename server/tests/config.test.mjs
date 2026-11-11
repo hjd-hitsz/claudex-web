@@ -45,3 +45,18 @@ test("错误端口和协议在启动时报告", () => {
     /WebSocket/,
   );
 });
+
+test("翻译模型固定使用当前用户的数据目录", () => {
+  const directory = join(homedir(), ".local", "share", "claudex-web", "models");
+  assert.equal(readConfig({}).translationModelDir, directory);
+  assert.equal(
+    readConfig({ XDG_DATA_HOME: "/data", CLAUDEX_WEB_CONFIG_DIR: "/config" })
+      .translationModelDir,
+    directory,
+  );
+  assert.equal(
+    readConfig({ XDG_DATA_HOME: "/data", CLAUDEX_WEB_MODEL_DIR: "/models" })
+      .translationModelDir,
+    directory,
+  );
+});

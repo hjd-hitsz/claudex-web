@@ -34,6 +34,13 @@ export function readConfig(env = process.env) {
     backendsFile: env.CLAUDEX_WEB_BACKENDS_FILE
       ? resolve(env.CLAUDEX_WEB_BACKENDS_FILE)
       : join(configDir, "backends.json"),
+    translationModelDir: join(
+      homedir(),
+      ".local",
+      "share",
+      "claudex-web",
+      "models",
+    ),
     sessionDays,
     pamService,
     pamtesterPath: env.AUTH_PAMTESTER

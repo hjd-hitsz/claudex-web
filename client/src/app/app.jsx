@@ -1,7 +1,14 @@
 import { ExecutionError } from "../features/conversation/execution-error.jsx";
 import React, { lazy, Suspense, useEffect } from "react";
 import { Check, LoaderCircle } from "lucide-react";
-import { useStore, get, set, setReadingThread, newChat } from "../store.js";
+import {
+  useStore,
+  get,
+  set,
+  setReadingThread,
+  newChat,
+  startTranslationSettings,
+} from "../store.js";
 import { Conversation } from "../features/conversation/conversation.jsx";
 import { Composer } from "../features/composer/composer.jsx";
 import { ContextWorkspace } from "../features/workspace/context-panel.jsx";
@@ -15,6 +22,7 @@ const TerminalPanel = lazy(() =>
 );
 
 export function App() {
+  useEffect(() => startTranslationSettings(), []);
   const s = useStore();
   const readingId =
     !s.loading && s.threadAccess?.status !== "loadError" ? s.current?.id : null;

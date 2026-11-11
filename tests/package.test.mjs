@@ -155,6 +155,10 @@ test(
     );
     const paths = pack.files.map((file) => file.path);
     for (const path of [
+      "packages/translation-engine/src/index.mjs",
+      "packages/translation-engine/bin/tokenizer-linux-x64",
+      "packages/translation-engine/README.md",
+      "packages/translation-engine/LICENSE",
       "bin/claudex-web.mjs",
       "client/dist/index.html",
       "client/dist/app.js",
@@ -189,6 +193,7 @@ test(
     assert.ok(
       paths.every((path) => !/(^|\/)(tests|node_modules|\.git)\//.test(path)),
     );
+    assert.ok(paths.every((path) => !/\.(onnx|data|so)$/.test(path)));
     assert.ok(!paths.includes(".env"));
     assert.ok(!paths.includes("client/src/main.jsx"));
     const prefix = join(dir, "prefix");

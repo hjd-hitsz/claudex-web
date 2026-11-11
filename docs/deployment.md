@@ -10,7 +10,7 @@
 npm install -g 'hjd-hitsz/claudex-web#semver:*'
 ```
 
-准备 Node.js 24+、npm、OpenSSL、Linux PAM、`pamtester` 和 systemd，完成上方安装后，以运行服务的普通用户启动服务。进入网页后，在设置中安装并启用所需的 Codex 或 Claude Code。
+准备 Node.js 24.5+、npm、OpenSSL、Linux PAM、`pamtester` 和 systemd，完成上方安装后，以运行服务的普通用户启动服务。进入网页后，在设置中安装并启用所需的 Codex 或 Claude Code。
 
 ```bash
 claudex-web service install
@@ -216,8 +216,20 @@ claudex-web service restart-when-idle
 - Codex 每个项目上次选择的模型和思考强度保存在服务所在电脑的 `CLAUDEX_WEB_CONFIG_DIR/project-models.json`。Claude Code 项目选择保存在 `CLAUDEX_WEB_CONFIG_DIR/backends/claude/project-models.json`，迁移服务时分别保留。同项目新建沿用当前选择，跨项目及重新打开网页时恢复目标项目设置，清空浏览器数据后可再次从服务端读取。保存失败时会提示重试。切换模型时保留当前思考强度，目标模型缺少该档位时采用最近的可用档位，距离相同时选较低档。
 - “未分类”对话的文件保存在 `CLAUDEX_WEB_CONFIG_DIR/workspaces/chat-XXXXXX`，首次发送时分配。迁移电脑时随 Claudex Web 配置目录一起保留。
 - 网页配置 `.env` 与新建后端服务使用的 `.env.backend` 位于用户配置目录，迁移时应一并保留；已有后端服务的配置按原部署方式迁移。
-- 摘要翻译由服务所在电脑调用免费、免认证的 TranSmart 服务，浏览器仅访问当前网页服务；待译摘要会发送至 TranSmart，代码、路径和链接在发送前替换为占位符。
+- 思考内容翻译的开关保存在 `CLAUDEX_WEB_CONFIG_DIR/translation.json`，模型保存在独立的用户数据目录。译文缓存在当前标签页的内存与会话存储中，关闭标签页后结束该缓存会话。
 - 自动对话标题使用 Codex 模型，会产生少量额外模型用量。
+
+## 思考内容翻译
+
+功能默认关闭。在“设置 → 思考内容翻译”开启后，服务器从 Microsoft 组件服务取得模型和分词组件，并通过 npm 获取 CPU 运行库，首次合计下载约 300 MB。校验后保留英译中所需文件，当前版本安装后约占 147 MiB。Linux x64（glibc 2.34+）服务器使用单线程 CPU 推理，客户端可使用任意受支持的浏览器。源码构建需要 C 编译器，预构建发行包已包含分词器。
+
+思考消息接收完整后再翻译，流式阶段、下载及翻译等待期间继续显示原文。译文完成后可切换原文与译文，代码、公式及链接目标保持原始内容。翻译正文只在浏览器与本站服务间传输，推理在服务器本地完成。首次下载通过 HTTPS 获取组件目录及 SHA-256，组件文件沿用 Microsoft 返回的下载地址，完整校验后启用。
+
+模型固定保存在运行服务的当前用户的 `~/.local/share/claudex-web/models`。目录按模型及版本组织，下载在临时目录中完成，校验后原子切换已安装版本。
+
+关闭功能会停止下载并释放引擎，已完成的模型继续保留。重新开启和程序升级复用已安装版本，准备完成后可离线翻译。首次下载失败时，在设置中查看错误并点击“重试”。文件缺失或校验失败时，重试会重新下载完整组件。
+
+迁移或离线部署时，将完整模型目录复制到目标服务账户的 `~/.local/share/claudex-web/models`，保留该账户的读取权限，再开启功能。目录中保留 `installed.json`、版本子目录和 `ready.json` 校验记录。模型可在相同 Linux x64 部署间复用。
 
 ## 故障定位
 
@@ -227,7 +239,7 @@ claudex-web service restart-when-idle
 
 Claude Code 请求失败时，错误提示显示认证、额度、连接或接口协议等实际问题，并可展开诊断详情。检查并修改对应供应商配置后，可以编辑失败消息重新提交。模型执行期间的草稿和附件继续保留。
 
-摘要翻译失败时，页面保留原文并提供重试入口。检查服务所在电脑能否访问 `transmart.qq.com`，以及翻译服务是否正常响应。升级后翻译仍不可用时，等待任务与网页终端结束，再重启网页服务。
+思考内容翻译失败时，页面保留原文并提供重试入口。先在设置中检查开关、下载进度和实际错误。首次下载需允许服务账户访问 `edge.microsoft.com` 、返回的 Microsoft 下载地址及所配置的 npm registry，并确认 npm、tar 可用且模型目录可写。已安装模型启动时会校验文件，损坏或缺失后点击设置中的“重试”重新下载。
 
 ### 对话被占用
 

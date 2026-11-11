@@ -259,12 +259,15 @@ export function createEvents({
       });
     if (method === "error") report(p.error || p.message || "任务失败");
     if (method === "item/started" || method === "item/completed") {
-      if (p.item.type === "contextCompaction") {
+      if (["contextCompaction", "reasoning"].includes(p.item.type)) {
         p.item = {
           ...p.item,
           status: method === "item/started" ? "inProgress" : "completed",
         };
-        const entry = get().compactions[p.threadId];
+        const entry =
+          p.item.type === "contextCompaction"
+            ? get().compactions[p.threadId]
+            : null;
         if (isCompacting(entry) && !entry.turnId)
           set({
             compactions: {
