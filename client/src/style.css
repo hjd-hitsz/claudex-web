@@ -32,6 +32,8 @@
 @import "./styles/auth.css";
 
 @import "./styles/backends.css";
+@import "./styles/settings-layout.css";
+@import "./styles/service-maintenance.css";
 
 @import "./styles/surface-resize.css";
 @import "./styles/resize-handles.css";

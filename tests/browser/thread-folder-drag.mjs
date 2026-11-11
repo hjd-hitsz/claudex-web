@@ -106,9 +106,9 @@ export async function testThreadFolderDragBrowser({
     );
   }
   for (const theme of ["dark", "light"]) {
-    await evaluate(
-      `localStorage.setItem('cx-theme',JSON.stringify(${JSON.stringify(theme)}))`,
-    );
+    await page("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-color-scheme", value: theme }],
+    });
     await page("Page.reload", {});
     await waitFor("document.querySelector('button[title=\"/demo/Beacon\"]')");
     await click('.project-heading > button[title="/demo/Beacon"]');

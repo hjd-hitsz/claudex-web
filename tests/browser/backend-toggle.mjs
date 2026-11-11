@@ -96,7 +96,11 @@ try {
     await expandGroup("project");
   }
   async function setTheme(name) {
-    await page.getByRole("button", { name, exact: true }).click();
+    if (before) await page.getByRole("button", { name, exact: true }).click();
+    else
+      await page.emulateMedia({
+        colorScheme: name === "深色" ? "dark" : "light",
+      });
   }
   async function toggleClaude() {
     await settings.click();

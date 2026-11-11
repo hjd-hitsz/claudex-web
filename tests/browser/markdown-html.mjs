@@ -506,9 +506,9 @@ try {
       ),
       "关闭大图后恢复焦点",
     );
-    await click(".account-button");
-    await clickText("深色");
-    await click(".modal-heading button");
+    await page("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-color-scheme", value: "dark" }],
+    });
     await waitFor(
       'document.querySelector(".file-markdown-preview picture img").currentSrc==="data:image/png;base64,"+htmlFixture.files["docs/images/desktop-dark.png"]',
     );
@@ -516,9 +516,7 @@ try {
       'document.querySelector(".file-markdown-preview").scrollTop=0',
     );
     await screenshot("desktop-dark");
-    await click(".account-button");
-    await clickText("跟随系统");
-    await click(".modal-heading button");
+
     await page("Emulation.setEmulatedMedia", {
       features: [{ name: "prefers-color-scheme", value: "dark" }],
     });

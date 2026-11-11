@@ -59,7 +59,6 @@ export const {
   addAttachment,
   attachFile,
   cancelMessageEdit,
-  setTheme,
   copy,
   applySession,
   checkSession,

@@ -1,3 +1,4 @@
+import { ServiceUpdateNotice } from "./service-maintenance.jsx";
 import { ExecutionError } from "../features/conversation/execution-error.jsx";
 import React, { lazy, Suspense, useEffect } from "react";
 import { Check, LoaderCircle } from "lucide-react";
@@ -80,6 +81,7 @@ export function App() {
       <Sidebar />
       <main className="main-shell">
         <Header />
+        <ServiceUpdateNotice />
         {!s.connected && (
           <div className="connection-banner">
             <LoaderCircle size={14} className="spin" />

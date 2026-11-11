@@ -52,7 +52,7 @@ export function createAppState() {
     projectOrder: null,
     projectlessDirectories: {},
     pins: saved("cx-pins", []),
-    theme: saved("cx-theme", "system"),
+    theme: "system",
     draft: "",
     attachments: [],
     skills: [],

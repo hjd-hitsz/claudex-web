@@ -1,3 +1,4 @@
+import { ServiceUpdateEntry } from "./service-maintenance.jsx";
 import React, { useState } from "react";
 
 import { PanelLeft, ChevronRight, Plus, MoreHorizontal } from "lucide-react";
@@ -46,6 +47,7 @@ export function Header() {
         )}
       </div>
       <div className="topbar-actions">
+        <ServiceUpdateEntry compact />
         <IconButton
           icon={Plus}
           title="在当前目录新建对话"

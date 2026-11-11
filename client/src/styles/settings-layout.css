@@ -1,0 +1,234 @@
+.modal-settings {
+  width: 680px;
+  max-height: min(88dvh, 920px);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 80px #0002,
+    0 4px 16px #0001;
+}
+.modal-settings .modal-heading {
+  padding: 24px 28px 20px;
+}
+.modal-settings .modal-heading h2 {
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+.modal-settings .settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 0 28px 28px;
+  font-size: 14px;
+  line-height: 20px;
+  scrollbar-gutter: stable;
+}
+.modal-settings .settings-body h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.modal-settings .settings-body .primary,
+.modal-settings .settings-body .secondary {
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.modal-settings .settings-body input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+}
+.settings-group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--sidebar);
+}
+.settings-group > * {
+  padding: 16px 20px;
+}
+.modal-settings .notification-settings,
+.modal-settings .translation-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.modal-settings .notification-settings label,
+.modal-settings .translation-settings label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 22px;
+  margin: 0;
+  font-size: 14px;
+}
+.modal-settings .notification-settings .section-description {
+  flex-basis: 100%;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.modal-settings .backend-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-settings .backend-settings > h3 {
+  margin-bottom: 0;
+}
+.modal-settings .backend-card {
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--sidebar);
+}
+.modal-settings .backend-heading {
+  min-height: 32px;
+  gap: 6px;
+}
+.modal-settings .backend-heading strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.modal-settings .backend-connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.modal-settings .backend-connection::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.modal-settings .backend-connection[data-ready="true"]::before {
+  background: var(--green);
+}
+.modal-settings .backend-heading > button {
+  margin-left: auto;
+}
+.modal-settings .backend-settings button,
+.modal-settings .proxy-row select,
+.modal-settings .proxy-row input {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--bg);
+  font-size: 13px;
+}
+.modal-settings .backend-heading > button[data-update="true"] {
+  color: var(--link);
+  border-color: color-mix(in srgb, var(--link) 35%, var(--border));
+}
+.modal-settings .backend-heading > button[data-current="true"] {
+  color: var(--muted);
+  background: var(--hover);
+  opacity: 1;
+}
+.modal-settings .backend-settings button:hover {
+  background: var(--hover);
+}
+.modal-settings .backend-version {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.modal-settings .codex-model-settings {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.modal-settings .codex-model-settings summary {
+  padding-block: 4px;
+  color: var(--muted);
+}
+.modal-settings .proxy-settings {
+  margin: 12px 0 0;
+  padding: 0;
+}
+.modal-settings .proxy-row {
+  gap: 8px;
+  font-size: 13px;
+}
+.modal-settings .proxy-protocol {
+  gap: 10px;
+}
+.modal-settings .provider-settings {
+  width: 100%;
+  gap: 10px;
+  margin-top: 12px;
+}
+.modal-settings .provider-settings > .backend-heading {
+  width: 100%;
+}
+.modal-settings .provider-settings > button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--link);
+}
+.modal-settings .login-settings {
+  gap: 12px;
+}
+.modal-settings .login-settings > p {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+}
+.modal-settings .certificate-help {
+  margin-top: 8px;
+  padding-top: 12px;
+  font-size: 13px;
+}
+.modal-settings .certificate-help summary {
+  min-height: 28px;
+  color: var(--muted);
+}
+.modal-settings .inline-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+@media (max-width: 560px) {
+  .modal-settings .modal-heading {
+    padding: 20px;
+  }
+  .modal-settings .settings-body {
+    gap: 24px;
+    padding: 0 20px 20px;
+  }
+  .modal-settings .backend-card,
+  .settings-group > * {
+    padding: 16px;
+  }
+  .modal-settings .proxy-row {
+    align-items: stretch;
+  }
+}
+
+.modal-settings .settings-preferences {
+  padding: 12px 20px;
+}
+.modal-settings .settings-preferences > * {
+  padding: 0;
+  min-height: 40px;
+}
+.modal-settings .settings-preferences label {
+  min-height: 24px;
+  line-height: 20px;
+}
+@media (max-width: 560px) {
+  .modal-settings .settings-preferences {
+    padding: 12px 16px;
+  }
+  .modal-settings .backend-heading > button {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+}

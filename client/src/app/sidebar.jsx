@@ -1,3 +1,4 @@
+import { ServiceUpdateEntry } from "./service-maintenance.jsx";
 import { ThreadListErrors } from "./thread-list-errors.jsx";
 import React, { useState } from "react";
 import {
@@ -150,6 +151,7 @@ export function Sidebar() {
           )}
         </div>
         <div className="sidebar-footer">
+          <ServiceUpdateEntry />
           <AccountFooter />
         </div>
       </ResizableSidebar>

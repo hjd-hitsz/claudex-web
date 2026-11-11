@@ -654,11 +654,9 @@ try {
         "/demo/Atlas",
       );
       for (const theme of ["dark", "light"]) {
-        await evaluate(
-          "localStorage.setItem('cx-theme',JSON.stringify(" +
-            JSON.stringify(theme) +
-            "))",
-        );
+        await page("Emulation.setEmulatedMedia", {
+          features: [{ name: "prefers-color-scheme", value: theme }],
+        });
         await page("Page.reload", {});
         await waitFor(
           "document.querySelector('[aria-label=\"取消固定 Atlas\"]') && document.querySelector('[aria-label=消息]') && !document.querySelector('[aria-label=消息]').disabled",

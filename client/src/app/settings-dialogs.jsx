@@ -1,10 +1,10 @@
+import { ServiceMaintenanceSettings } from "./service-maintenance.jsx";
 import { BackendSettings } from "./backend-settings.jsx";
 import React from "react";
-import { Check, Sun, Moon, Monitor } from "lucide-react";
-import { useStore, set, selectModel, setTheme } from "../store.js";
+import { Check } from "lucide-react";
+import { useStore, set, selectModel } from "../store.js";
 import { ServiceTierToggle } from "../features/composer/service-tier-toggle.jsx";
 import { ReasoningEffortControl } from "../features/composer/reasoning-effort.jsx";
-import { VersionDetails } from "./version.jsx";
 import { LogoutButton } from "./auth.jsx";
 import { TranslationSettings } from "./translation-settings.jsx";
 import { NotificationSettings } from "./notification-settings.jsx";
@@ -12,33 +12,27 @@ export function SettingsDialog() {
   const s = useStore();
   return (
     <div className="settings-body">
-      <h3>网页登录</h3>
-      <LogoutButton />
-      <h3>通知</h3>
-      <NotificationSettings />
-      <h3>翻译</h3>
-      <TranslationSettings />
+      <ServiceMaintenanceSettings focus={s.modal?.section === "maintenance"} />
       <BackendSettings />
-      <h3>外观</h3>
-      <div className="theme-options">
-        {[
-          ["light", Sun, "浅色"],
-          ["dark", Moon, "深色"],
-          ["system", Monitor, "跟随系统"],
-        ].map(([v, Icon, label]) => (
-          <button
-            key={v}
-            className={s.theme === v ? "selected" : ""}
-            onClick={() => setTheme(v)}
-          >
-            <Icon size={21} />
-            {label}
-            {s.theme === v && <Check size={14} />}
-          </button>
-        ))}
-      </div>
-      <h3>关于</h3>
-      <VersionDetails />
+      <section
+        className="settings-section"
+        aria-labelledby="preferences-settings-title"
+      >
+        <h3 id="preferences-settings-title">通知与翻译</h3>
+        <div className="settings-group settings-preferences">
+          <NotificationSettings />
+          <TranslationSettings />
+        </div>
+      </section>
+      <section
+        className="settings-section"
+        aria-labelledby="login-settings-title"
+      >
+        <h3 id="login-settings-title">网页登录</h3>
+        <div className="settings-group">
+          <LogoutButton />
+        </div>
+      </section>
     </div>
   );
 }

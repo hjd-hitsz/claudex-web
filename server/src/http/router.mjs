@@ -1,3 +1,4 @@
+import { createMaintenanceHandler } from "./maintenance.mjs";
 import { X509Certificate } from "node:crypto";
 import {
   createSummaryTranslationHandler,
@@ -12,7 +13,9 @@ export function createHttpHandler({
   version,
   isReady,
   translation,
+  maintenance,
 }) {
+  const handleMaintenance = createMaintenanceHandler(maintenance);
   const publicCertificate = new X509Certificate(tls.cert);
   const translateSummary = createSummaryTranslationHandler(
     translation.translate,
@@ -65,6 +68,10 @@ export function createHttpHandler({
       !authentication.authorize(request, response)
     )
       return;
+    if (path.startsWith("/api/maintenance")) {
+      await handleMaintenance(request, response, path);
+      return;
+    }
     if (["/api/files", "/api/media"].includes(path)) {
       await serveFile(request, response);
       return;

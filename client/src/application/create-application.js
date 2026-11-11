@@ -14,7 +14,6 @@ import { createConnection } from "./connection.js";
 import { createSession } from "./session.js";
 import { createTranslationSettings } from "./translation.js";
 import { createNotifications } from "./notifications.js";
-import { persist } from "../infrastructure/storage.js";
 
 // 依赖在此处组装；控制器通过显式接口协作，各自持有请求版本和生命周期状态。
 export function createApplication() {
@@ -64,10 +63,6 @@ export function createApplication() {
       panelAgent: { ...agent, parentId: get().current?.id },
       contextOpen: true,
     });
-  }
-  function setTheme(theme) {
-    set({ theme });
-    persist("cx-theme", theme);
   }
   let skillsRevision = 0;
   async function loadSkills() {
@@ -226,7 +221,6 @@ export function createApplication() {
     notice,
     copy,
     openSubAgent,
-    setTheme,
     loadSkills,
     setReadingThread: records.setReadingThread,
     selectModel: models.selectModel,

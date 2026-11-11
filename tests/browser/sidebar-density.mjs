@@ -208,7 +208,9 @@ export async function testSidebarDensity({
   assert.equal(await rows("/demo/Atlas"), 5, "刷新恢复固定默认展开及五条限制");
   assert.equal(await rows("/demo/Beacon"), 0, "刷新恢复未固定默认折叠");
   assert.equal(await rows(""), 0);
-  await evaluate("localStorage.setItem('cx-theme',JSON.stringify('dark'))");
+  await page("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: "dark" }],
+  });
   await page("Page.reload", {});
   await ready();
   await capture("desktop-dark");
@@ -225,7 +227,9 @@ export async function testSidebarDensity({
       ...(type === "keyDown" ? { text: "\r" } : {}),
     });
   assert.equal(await rows("/demo/Atlas"), 5);
-  await evaluate("localStorage.setItem('cx-theme',JSON.stringify('light'))");
+  await page("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: "light" }],
+  });
   await page("Page.reload", {});
   await ready();
   for (const scale of [0.8, 1, 1.25, 1.5, 2]) {

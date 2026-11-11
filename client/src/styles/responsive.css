@@ -306,12 +306,6 @@
   .modal-actions {
     padding: 1rem;
   }
-  .theme-options > button {
-    flex-direction: column;
-    font-size: 0.846154rem;
-    padding: 1rem 0.615385rem;
-    gap: 0.538462rem;
-  }
   .settings-body {
     padding: 0 1.384615rem 1.538462rem;
   }

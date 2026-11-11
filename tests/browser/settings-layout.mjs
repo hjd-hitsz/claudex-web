@@ -104,11 +104,11 @@ try {
     const claude = page
       .locator(".backend-card")
       .filter({ has: page.locator("strong", { hasText: /^Claude Code$/ }) });
-    assert.match(
-      await codex.textContent(),
-      /当前版本：0.162.1.*最新版本：0.167.0/,
-    );
-    assert.match(await claude.textContent(), /未安装.*最新版本：2.1.318/s);
+    assert.match(await codex.textContent(), /0.162.1/);
+    await codex
+      .getByRole("button", { name: "更新至 0.167.0", exact: true })
+      .waitFor();
+    assert.match(await claude.textContent(), /未安装/s);
     assert.equal(await page.getByText("执行程序", { exact: true }).count(), 0);
     assert.equal(
       await page.getByRole("button", { name: "检查连接", exact: true }).count(),
@@ -122,12 +122,21 @@ try {
       .getByRole("checkbox", { name: "启用 Codex", exact: true })
       .click();
     await claude.getByRole("button", { name: "一键安装", exact: true }).click();
-    await claude.getByText(/当前版本：2.1.318/).waitFor();
+    await claude
+      .locator(".backend-version")
+      .filter({ hasText: "2.1.318" })
+      .waitFor();
     assert.equal(
       await page.getByRole("button", { name: "重新检测" }).count(),
       0,
     );
-    assert.equal(await page.getByText(/已是最新/).count(), 0);
+    assert.equal(
+      await page
+        .locator(".backend-settings")
+        .getByText(/已是最新/)
+        .count(),
+      0,
+    );
     assert.equal(
       await page.evaluate(
         () =>
@@ -138,10 +147,8 @@ try {
       0,
     );
     assert.equal(
-      await claude
-        .getByRole("button", { name: "一键更新", exact: true })
-        .count(),
-      1,
+      await claude.getByRole("button", { name: /^更新至 / }).count(),
+      0,
     );
     const writes = await page.evaluate(() =>
       window.fixtureRequests.filter((r) => r.method === "lan/backends/save"),
@@ -252,13 +259,7 @@ try {
             .getByLabel("网络代理", { exact: true })
             .selectOption("http");
           await proxy.getByLabel("代理端口").fill("8080");
-          await page
-            .locator(".theme-options")
-            .getByRole("button", {
-              name: theme === "dark" ? "深色" : "浅色",
-              exact: true,
-            })
-            .click();
+          await page.emulateMedia({ colorScheme: theme });
           await proxy.scrollIntoViewIfNeeded();
           const metrics = await page
             .locator(".settings-body")

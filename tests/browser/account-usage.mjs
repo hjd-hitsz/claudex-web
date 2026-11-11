@@ -525,7 +525,7 @@ try {
     await waitFor("document.querySelector('.modal-settings')");
     assert(
       await evaluate(
-        "!document.querySelector('.settings-account') && !document.querySelector('.settings-body progress') && !document.querySelector('.settings-body').textContent.includes('账户与用量') && ['外观','关于'].every(text=>document.querySelector('.settings-body').textContent.includes(text))",
+        "!document.querySelector('.settings-account') && !document.querySelector('.settings-body progress') && !document.querySelector('.settings-body').textContent.includes('账户与用量') && document.querySelector('.settings-body').firstElementChild.classList.contains('service-maintenance-settings') && !document.querySelector('.theme-options')",
       ),
     );
     await waitFor("document.querySelector('.codex-model-settings')");

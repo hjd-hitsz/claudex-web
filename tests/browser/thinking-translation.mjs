@@ -219,13 +219,7 @@ try {
           });
           if (await sidebar.isVisible()) await sidebar.click();
           await page.getByRole("button", { name: "设置", exact: true }).click();
-          await page
-            .locator(".theme-options")
-            .getByRole("button", {
-              name: theme === "light" ? "浅色" : "深色",
-              exact: true,
-            })
-            .click();
+          await page.emulateMedia({ colorScheme: theme });
           await toggle.scrollIntoViewIfNeeded();
           assert.equal(
             await page.locator(".translation-settings").innerText(),

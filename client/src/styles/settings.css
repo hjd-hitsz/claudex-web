@@ -131,24 +131,6 @@
 .inline-error {
   margin: 0.384615rem 0 0;
 }
-.theme-options {
-  display: flex;
-  gap: 0.692308rem;
-}
-.theme-options > button {
-  display: flex;
-  flex: 1;
-  gap: 0.615385rem;
-  font-size: 0.923077rem;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 1.153846rem 0.769231rem;
-}
-.theme-options > button.selected {
-  border-color: var(--muted);
-  background: var(--subtle);
-}
-.theme-options .lucide-check,
 .model-options .lucide-check {
   color: var(--check-color);
 }

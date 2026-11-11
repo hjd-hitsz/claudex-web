@@ -473,15 +473,14 @@ try {
   await pause(300);
   await inspect("desktop-light", true);
   await inspectDetails("desktop-usage-expanded");
-  await click(".account-button");
-  await waitFor('document.querySelector(".theme-options")');
-  await clickText("深色");
-  await click(".modal-heading button");
+  await page("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: "dark" }],
+  });
   await inspect("desktop-dark", true);
   await click('.context-tools button[aria-label="折叠对话详情"]');
-  await click(".account-button");
-  await clickText("浅色");
-  await click(".modal-heading button");
+  await page("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: "light" }],
+  });
   await page("Emulation.setDeviceMetricsOverride", {
     width: 390,
     height: 844,

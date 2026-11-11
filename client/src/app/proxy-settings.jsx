@@ -10,6 +10,14 @@ export function ProxySettings({ backend, disabled }) {
   const [error, setError] = useState("");
   const custom = mode === "http";
   useEffect(() => {
+    if (!status && !error) return;
+    const timer = setTimeout(() => {
+      setStatus("");
+      setError("");
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [status, error]);
+  useEffect(() => {
     setMode(backend.proxy?.mode || "system");
     setHost(backend.proxy?.host || "127.0.0.1");
     setPort(String(backend.proxy?.port || ""));

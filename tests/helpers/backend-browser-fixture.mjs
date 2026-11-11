@@ -261,6 +261,11 @@ export function backendFixture(data) {
         0,
       );
     }
+    setBackendInstallation(id, patch) {
+      const backend = backends.find((backend) => backend.id === id);
+      backend.installation = { ...backend.installation, ...patch };
+      this.emit("lan/state", state());
+    }
     setBackendReady(id, ready) {
       backends.find((backend) => backend.id === id).ready = ready;
       this.emit("lan/state", state());

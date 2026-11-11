@@ -1,3 +1,5 @@
+import { hasBackendWork } from "../../shared/backend-activity.mjs";
+import { createServiceMaintenance } from "./service-maintenance.mjs";
 import { createTranslationService } from "./translation-service.mjs";
 import https from "node:https";
 import { WebSocketServer } from "ws";
@@ -5,6 +7,15 @@ import { createHttpHandler } from "./http/router.mjs";
 import { createBackendManager } from "./backends/manager.mjs";
 import { sendRpcText } from "./rpc-transport.mjs";
 export function createWebApplication({ config, tls, authentication, version }) {
+  let requestsInFlight = 0;
+  const maintenance = createServiceMaintenance({
+    config,
+    version,
+    isBusy: () =>
+      !bridge.maintenanceState().params.ready ||
+      requestsInFlight > 0 ||
+      hasBackendWork(bridge.state().params),
+  });
   const translation = createTranslationService(config);
   const clients = new WebSocketServer({ noServer: true });
   const monitors = new WebSocketServer({ noServer: true });
@@ -33,6 +44,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
     createHttpHandler({
       config,
       translation,
+      maintenance,
       tls,
       authentication,
       version,
@@ -86,12 +98,28 @@ export function createWebApplication({ config, tls, authentication, version }) {
       } catch {
         return;
       }
-      bridge.receive(client, message).catch((error) =>
+      if (maintenance.switching) {
         send(client, {
           id: message.id,
-          error: { code: -32000, message: error.message },
-        }),
-      );
+          error: {
+            code: -32000,
+            message: "服务正在更新或重启，请等待连接恢复",
+          },
+        });
+        return;
+      }
+      requestsInFlight++;
+      bridge
+        .receive(client, message)
+        .finally(() => {
+          requestsInFlight--;
+        })
+        .catch((error) =>
+          send(client, {
+            id: message.id,
+            error: { code: -32000, message: error.message },
+          }),
+        );
     });
   });
   const heartbeat = setInterval(() => {
@@ -111,6 +139,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
   return {
     server,
     async start() {
+      maintenance.initialize();
       await translation.initialize();
       await new Promise((resolve, reject) => {
         server.once("error", reject);
@@ -123,6 +152,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
     },
     async close() {
       clearInterval(heartbeat);
+      maintenance.close();
       await translation.close();
       await bridge.close();
       for (const client of [...clients.clients, ...monitors.clients])

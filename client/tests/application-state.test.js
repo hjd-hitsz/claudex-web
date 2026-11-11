@@ -109,3 +109,14 @@ test("计划模式按对话保存并在新实例恢复，迟到结果只更新�
   restored.set({ current: null });
   assert.equal(restored.get().mode, "default");
 });
+
+test("主题跟随系统，已有手动主题偏好不再覆盖系统主题", (t) => {
+  const previous = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem: (key) => (key === "cx-theme" ? JSON.stringify("dark") : null),
+  };
+  t.after(() => {
+    globalThis.localStorage = previous;
+  });
+  assert.equal(createAppState().get().theme, "system");
+});

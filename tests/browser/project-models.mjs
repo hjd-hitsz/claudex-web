@@ -493,7 +493,9 @@ try {
       assert.equal(await effort(), "思考强度：中");
       await screenshot("existing-thread-return");
       proof.push({ stage: "new-thread-choice-isolated", model: "model-a" });
-      await evaluate("localStorage.setItem('cx-theme',JSON.stringify('dark'))");
+      await page("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-color-scheme", value: "dark" }],
+      });
       await page("Page.reload", {});
       await waitFor(
         "document.querySelector('[aria-label=调整思考强度]') && !document.querySelector('[aria-label=消息]').disabled",
@@ -718,7 +720,9 @@ try {
           await call("Target.disposeBrowserContext", { browserContextId });
         }
       }
-      await evaluate("localStorage.setItem('cx-theme',JSON.stringify('dark'))");
+      await page("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-color-scheme", value: "dark" }],
+      });
       await page("Page.reload", {});
       await waitFor("document.querySelector('[aria-label=调整思考强度]')");
       await click("[aria-label=调整思考强度]");
@@ -733,9 +737,9 @@ try {
         "document.querySelector('.sidebar').getBoundingClientRect().right <= 1",
       );
       await screenshot("mobile-dark");
-      await evaluate(
-        "localStorage.setItem('cx-theme',JSON.stringify('light'))",
-      );
+      await page("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-color-scheme", value: "light" }],
+      });
       await page("Page.reload", {});
       await waitFor("document.querySelector('[aria-label=调整思考强度]')");
       await click("[aria-label=调整思考强度]");
