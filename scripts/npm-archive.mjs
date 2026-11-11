@@ -32,7 +32,7 @@ export function prepareNpmArchive(path, dir) {
       `npm install -g ${npmPackageName}`,
     ),
   );
-  const [pack] = JSON.parse(
+  const packed = JSON.parse(
     execFileSync(
       "npm",
       [
@@ -49,5 +49,7 @@ export function prepareNpmArchive(path, dir) {
       },
     ),
   );
+  // npm 11 返回数组，npm 12 按包名组织打包结果。
+  const [pack] = Array.isArray(packed) ? packed : Object.values(packed);
   return join(dir, pack.filename);
 }
