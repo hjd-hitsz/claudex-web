@@ -43,7 +43,7 @@
     "start": "node --env-file-if-exists=.env server/src/server.mjs",
     "start:backend": "node --env-file-if-exists=.env scripts/start-backend.mjs",
     "test": "npm run test:unit && npm run test:components",
-    "test:unit": "node --test client/tests/*.test.js server/tests/*.test.mjs tests/architecture.test.mjs tests/version.test.mjs tests/release.test.mjs packages/translation-engine/tests/*.test.mjs",
+    "test:unit": "node --test client/tests/*.test.js server/tests/*.test.mjs tests/architecture.test.mjs tests/version.test.mjs tests/release.test.mjs tests/npm-release.test.mjs packages/translation-engine/tests/*.test.mjs",
     "test:components": "node scripts/test-components.mjs",
     "test:package": "npm run build && node --test tests/package.test.mjs",
     "version:check": "node scripts/version.mjs check",
@@ -73,5 +73,17 @@
     "ws": "8.22.0",
     "@claudex-web/translation-engine": "file:packages/translation-engine",
     "fflate": "0.8.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hjd-hitsz/claudex-web.git"
+  },
+  "homepage": "https://github.com/hjd-hitsz/claudex-web#readme",
+  "bugs": {
+    "url": "https://github.com/hjd-hitsz/claudex-web/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

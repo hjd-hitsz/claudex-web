@@ -7,7 +7,7 @@
 安装最新稳定版本。
 
 ```bash
-npm install -g 'hjd-hitsz/claudex-web#semver:*'
+npm install -g claudex-web
 ```
 
 准备 Node.js 24.5+、npm、OpenSSL、Linux PAM、`pamtester` 和 systemd，完成上方安装后，以运行服务的普通用户启动服务。进入网页后，在设置中安装并启用所需的 Codex 或 Claude Code。
@@ -194,7 +194,7 @@ journalctl --user -u claudex-web.service -n 100 --no-pager
 更新到最新稳定版并重启服务。
 
 ```bash
-npm install -g 'hjd-hitsz/claudex-web#semver:*'
+npm install -g claudex-web
 claudex-web service install
 claudex-web service restart-when-idle
 ```

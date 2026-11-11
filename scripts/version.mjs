@@ -10,7 +10,7 @@ import { releaseVersion, compareReleaseVersions } from "./release-version.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
 
 const emptyChanges = "### 新增\n\n### 改进\n\n### 修复\n\n### 维护\n";
-const stableInstallCommand = "npm install -g 'hjd-hitsz/claudex-web#semver:*'";
+const stableInstallCommand = "npm install -g claudex-web";
 const read = (dir, path) => readFileSync(join(dir, path), "utf8");
 const json = (dir, path) => JSON.parse(read(dir, path));
 const writeJson = (dir, path, value) =>

@@ -37,13 +37,13 @@
 需要 Linux、Node.js 24+、npm 和 systemd。Debian / Ubuntu 安装系统依赖可执行以下命令。
 
 ```bash
-sudo apt-get install git openssl pamtester
+sudo apt-get install openssl pamtester
 ```
 
-以运行服务的普通用户安装，自动选择最新稳定版本标签。
+以运行服务的普通用户安装，安装 npm 上的最新稳定版本。
 
 ```bash
-npm install -g 'hjd-hitsz/claudex-web#semver:*'
+npm install -g claudex-web
 claudex-web service install
 ```
 
