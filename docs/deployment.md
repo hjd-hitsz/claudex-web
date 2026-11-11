@@ -28,8 +28,8 @@ curl --cacert "${CLAUDEX_WEB_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/claud
 从[目标版本 Release](https://github.com/hjd-hitsz/claudex-web/releases) 下载 `.tgz` 和同名 `.sha256` 文件，将两者放在同一目录，然后执行以下命令。
 
 ```bash
-sha256sum -c claudex-web-4.0.1.tgz.sha256
-npm install -g ./claudex-web-4.0.1.tgz
+sha256sum -c claudex-web-4.1.0.tgz.sha256
+npm install -g ./claudex-web-4.1.0.tgz
 claudex-web service install
 ```
 
