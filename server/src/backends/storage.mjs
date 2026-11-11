@@ -12,9 +12,9 @@ export function createStorage(path, initial) {
       throw error;
     }
   }
-  function update(change) {
+  function update(change, readCurrent = true) {
     const operation = writing.then(async () => {
-      const next = await change(await read());
+      const next = await change(readCurrent ? await read() : undefined);
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
       const temporary = `${path}.${randomUUID()}.tmp`;
       try {
@@ -31,5 +31,9 @@ export function createStorage(path, initial) {
     writing = operation.catch(() => {});
     return operation;
   }
-  return { read: () => writing.then(read), update };
+  return {
+    read: () => writing.then(read),
+    update,
+    replace: (value) => update(() => value, false),
+  };
 }

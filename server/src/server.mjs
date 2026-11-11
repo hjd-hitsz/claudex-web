@@ -15,6 +15,15 @@ const application = createWebApplication({
   version: readVersion(),
 });
 await application.start();
+let closing;
+function shutdown() {
+  closing ||= application.close().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+process.once("SIGTERM", shutdown);
+process.once("SIGINT", shutdown);
 console.log(
   `Claudex Web listening on https://${config.host}:${application.server.address().port}`,
 );

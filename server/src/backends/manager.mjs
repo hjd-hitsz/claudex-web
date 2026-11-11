@@ -1,4 +1,6 @@
 import { createThreadFolders } from "../thread-folders.mjs";
+import { createTokenUsageStore } from "../token-usage.mjs";
+import { createTokenUsageReconciliation } from "../token-usage-reconciliation.mjs";
 import { createCliInstallation } from "./cli-installation.mjs";
 import { join } from "node:path";
 import { readProjectlessDirectories } from "../thread-projects.mjs";
@@ -30,6 +32,7 @@ export function createBackendManager({
   factories = {},
 }) {
   const folders = createThreadFolders(config.configDir);
+  const tokenUsage = createTokenUsageStore(config.configDir);
   const workspace = createWorkspace({ broadcast, configDir: config.configDir });
   const configuration = createBackendConfiguration(config);
   const providers = createProviders(configuration);
@@ -47,6 +50,11 @@ export function createBackendManager({
     closed = false,
     sequence = 0;
   let changing = Promise.resolve();
+  const usageReconciliation = createTokenUsageReconciliation({
+    store: tokenUsage,
+    call,
+    current: (entry) => !closed && instances.get(entry.backend.id) === entry,
+  });
   const publicBackends = () =>
     [...instances.values()].map(({ backend, adapter, error }) => ({
       ...backend,
@@ -121,19 +129,23 @@ export function createBackendManager({
           if (instances.get(backend.id) !== entry || closed) return;
           if (message.method === "lan/state") {
             if (entry.adapter?.ready) entry.error = null;
+            usageReconciliation.start(entry);
             return emitState();
           }
-          broadcast({
+          const notification = {
             ...message,
             ...(backend.id !== "codex" && { backendId: backend.id }),
             ...(message.id !== undefined && {
               id: resourceId(backend.id, message.id),
             }),
             params: mapResult(message.params, backend.id, message.method),
-          });
+          };
+          tokenUsage.observe(notification);
+          broadcast(notification);
         },
       });
       await entry.adapter.connect();
+      usageReconciliation.start(entry);
     } catch (error) {
       entry.error = error.message;
     }
@@ -161,15 +173,28 @@ export function createBackendManager({
           return client.readyState;
         },
         methods,
-        deliver(message) {
-          const method = methods.get(message.id);
+        async deliver(message) {
+          const { method, threadId, usageRevision, forkUsage } =
+            methods.get(message.id) || {};
           methods.delete(message.id);
+          if (!message.error && method === "thread/delete")
+            tokenUsage.remove(threadId);
+          if (!message.error && method === "thread/archive")
+            tokenUsage.archive(threadId);
+          if (!message.error && method === "thread/unarchive")
+            tokenUsage.archive(threadId, false);
           send(client, {
             ...message,
             ...(message.result && {
-              result: folders.result(
-                mapResult(message.result, entry.backend.id, method),
+              result: await tokenUsage.result(
+                folders.result(
+                  mapResult(message.result, entry.backend.id, method),
+                  method,
+                ),
                 method,
+                usageRevision,
+                forkUsage,
+                entry.adapter.readTokenUsage,
               ),
             }),
           });
@@ -178,29 +203,52 @@ export function createBackendManager({
     }
     return entry.proxies.get(client);
   }
-  function call(entry, method, params) {
+  function call(entry, method, params, { signal } = {}) {
+    if (signal?.aborted) return Promise.reject(signal.reason);
+    const usageRevision = tokenUsage.revision(
+      params.threadId && resourceId(entry.backend.id, params.threadId),
+    );
     return new Promise((resolve, reject) => {
       const id = `manager-${++sequence}`;
-      const timer = setTimeout(() => reject(new Error("后端读取超时")), 120000);
+      const fail = (error) => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        reject(error);
+      };
+      const abort = () => fail(signal.reason);
+      const timer = setTimeout(() => fail(new Error("后端读取超时")), 120000);
+      signal?.addEventListener("abort", abort, { once: true });
       const client = {
         readyState: 3,
-        deliver(message) {
+        readOnly: Boolean(signal),
+        async deliver(message) {
           clearTimeout(timer);
-          if (message.error) reject(new Error(message.error.message));
-          else
-            resolve(
-              folders.result(
-                mapResult(message.result, entry.backend.id, method),
-                method,
-              ),
-            );
+          signal?.removeEventListener("abort", abort);
+          if (signal?.aborted) return;
+          try {
+            if (message.error) reject(new Error(message.error.message));
+            else
+              resolve(
+                await tokenUsage.result(
+                  folders.result(
+                    mapResult(message.result, entry.backend.id, method),
+                    method,
+                  ),
+                  method,
+                  usageRevision,
+                  undefined,
+                  entry.adapter.readTokenUsage,
+                ),
+              );
+          } catch (error) {
+            reject(error);
+          }
         },
       };
       Promise.resolve(
         entry.adapter.receive(client, { id, method, params }),
       ).catch((error) => {
-        clearTimeout(timer);
-        reject(error);
+        fail(error);
       });
     });
   }
@@ -367,7 +415,19 @@ export function createBackendManager({
     if (workspace.handles(method) && entry.adapter.workspaceOwner === "bridge")
       return reply(await workspace.request(method, params));
     const recipient = proxy(entry, client);
-    recipient.methods.set(message.id, method);
+    if (method === "thread/fork" && !(await tokenUsage.forkSource(params)))
+      await call(entry, "thread/read", {
+        threadId: target.nativeId,
+        includeTurns: false,
+      });
+    recipient.methods.set(message.id, {
+      method,
+      threadId: params.threadId,
+      usageRevision: tokenUsage.revision(params.threadId),
+      ...(method === "thread/fork" && {
+        forkUsage: await tokenUsage.forkSource(params),
+      }),
+    });
     await entry.adapter.receive(recipient, {
       ...message,
       ...(!method && { id: target.nativeId }),
@@ -399,14 +459,17 @@ export function createBackendManager({
           ready: initialized,
           activeTurns: params.activeTurns,
           compactions: params.compactions,
+          tokenUsageReconciliation: usageReconciliation.snapshot(),
         },
       };
     },
     close() {
       closed = true;
+      usageReconciliation.stop();
       cli.close?.();
       workspace.close();
       for (const i of instances.values()) i.adapter?.close();
+      return usageReconciliation.flush().then(() => tokenUsage.flush());
     },
     get ready() {
       return state().params.ready;

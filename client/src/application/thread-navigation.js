@@ -111,6 +111,7 @@ export function createThreadNavigation({
       const backendId = resourceTarget(id).backendId;
       if (get().backendId !== backendId) await activateBackend(backendId);
       if (epoch !== opening) return;
+      const usageSnapshot = { value: get().tokenUsage[id] };
       const r = await rpc("thread/read", { threadId: id, includeTurns: false });
       if (epoch !== opening || records.deletedThreads.has(id)) return;
       const known = get().threads.find((thread) => thread.id === id);
@@ -144,9 +145,10 @@ export function createThreadNavigation({
             )
           : sortThreads([thread, ...get().threads]),
         current: thread,
-        ...(thread.tokenUsage && {
-          tokenUsage: { ...get().tokenUsage, [id]: thread.tokenUsage },
-        }),
+        ...(thread.tokenUsage &&
+          get().tokenUsage[id] === usageSnapshot.value && {
+            tokenUsage: { ...get().tokenUsage, [id]: thread.tokenUsage },
+          }),
         providerId: thread.providerId || "",
         attachments: getAttachmentDraft(id).attachments,
         cwd: thread.cwd || r.cwd,
@@ -179,13 +181,17 @@ export function createThreadNavigation({
       await loadHistory(epoch, {
         onFirstPage: () => {
           set({ loading: false });
-          access = refreshThreadAccess({ preserveServiceTier });
+          access = refreshThreadAccess({
+            preserveServiceTier,
+            usageSnapshot,
+          });
         },
       });
       await ordering;
       if (epoch !== opening || records.deletedThreads.has(id)) return;
       set({ loading: false });
-      await (access || refreshThreadAccess({ preserveServiceTier }));
+      await (access ||
+        refreshThreadAccess({ preserveServiceTier, usageSnapshot }));
     } catch (e) {
       if (epoch === opening)
         set({
@@ -202,6 +208,7 @@ export function createThreadNavigation({
   async function refreshThreadAccess({
     preserveServiceTier = true,
     background = false,
+    usageSnapshot = { value: get().tokenUsage[get().current?.id] },
   } = {}) {
     if (
       get().loading ||
@@ -252,6 +259,13 @@ export function createThreadNavigation({
       };
       set({
         threadAccess: { threadId: id, status: "ready" },
+        ...(settings.thread?.tokenUsage &&
+          get().tokenUsage[id] === usageSnapshot.value && {
+            tokenUsage: {
+              ...get().tokenUsage,
+              [id]: settings.thread.tokenUsage,
+            },
+          }),
         ...(get().mode === selection.mode &&
           settings.collaborationMode?.mode && {
             mode: settings.collaborationMode.mode,

@@ -124,7 +124,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
     async close() {
       clearInterval(heartbeat);
       await translation.close();
-      bridge.close();
+      await bridge.close();
       for (const client of [...clients.clients, ...monitors.clients])
         client.terminate();
       clients.close();

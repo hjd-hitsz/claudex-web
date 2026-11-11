@@ -250,6 +250,7 @@ export function createClaudeSessions({
           ...fork,
           nativeAliases: [sessionId],
           forkedFromId: s.id,
+          tokenUsage: index === records.length - 1 ? s.tokenUsage : null,
           queue: [],
           active: null,
           turns: Object.fromEntries(

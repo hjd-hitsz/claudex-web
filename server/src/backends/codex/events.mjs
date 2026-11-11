@@ -111,7 +111,7 @@ export function createBridgeEvents({
     }
     if (!request.timedOut) send(request.client, { ...message, id: request.id });
     releaseUnusedThreads();
-    if (!message.error && !request.timedOut) {
+    if (!message.error && !request.timedOut && !request.client?.readOnly) {
       if (request.method === "turn/start")
         threadNaming.schedule(
           { id: request.threadId },

@@ -10,6 +10,7 @@ import { createCompactionRecovery } from "./compaction-recovery.mjs";
 import { createBridgeEvents } from "./events.mjs";
 import { createRequestHandler } from "./requests.mjs";
 import { createProductMethods } from "../../bridge/product-methods.mjs";
+import { readCodexTokenUsage } from "./token-usage.mjs";
 
 export function createCodexAdapter({
   backend,
@@ -127,6 +128,7 @@ export function createCodexAdapter({
   }
   return {
     capabilities: codexCapabilities,
+    readTokenUsage: (thread) => readCodexTokenUsage(thread, transport.call),
     workspaceOwner: "backend",
     state,
     receive(client, message) {

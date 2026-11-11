@@ -69,6 +69,8 @@ async function fixture(t, shutdown = async () => {}, installation) {
       },
       releaseUnusedThreads() {},
       receive(client, message) {
+        if (message.method === "thread/list")
+          return send(client, { id: message.id, result: { data: [] } });
         events.push(`request:${generation}:${message.method}`);
         send(client, {
           id: message.id,
@@ -95,7 +97,7 @@ async function fixture(t, shutdown = async () => {}, installation) {
     factories: { claude: factory, ...(installation && { installation }) },
   });
   t.after(async () => {
-    manager.close();
+    await manager.close();
     await chmod(settingsDirectory, 0o700);
     await rm(directory, { recursive: true, force: true });
   });

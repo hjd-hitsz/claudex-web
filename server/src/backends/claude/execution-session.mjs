@@ -32,7 +32,13 @@ export async function createExecutionSession({
   beginActivity,
 }) {
   const threadId = session.id;
-  const usage = createTokenUsage({ threadId, session, save, emit });
+  const usage = createTokenUsage({
+    threadId,
+    session,
+    save,
+    emit: (method, params) =>
+      emit(method, { ...params, turnId: getCurrent()?.turn?.id }),
+  });
   const provider = await providers.get(
     backend.id,
     queued.providerId ?? session.providerId,

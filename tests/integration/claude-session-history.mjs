@@ -236,7 +236,13 @@ try {
     list.data.map((s) => s.id),
     [id],
   );
+  const tokenUsage = { last: { totalTokens: 100 }, modelContextWindow: 200000 };
+  await sessions.update(id, { tokenUsage });
   const fork = await sessions.request("thread/fork", { threadId: id });
+  assert.deepEqual(
+    (await sessions.session(fork.thread.id)).tokenUsage,
+    tokenUsage,
+  );
   assert.equal((await sessions.turns(fork.thread.id)).length, 1);
   await sessions.request("thread/name/set", { threadId: id, name: "renamed" });
   assert.equal((await sessions.session(id)).name, "renamed");
@@ -304,10 +310,12 @@ try {
     [first, wakeId, afterWake],
   );
   assert.equal(withWake[1].items[0].text, "Background task completed");
+  await sessions.update(resumedId, { tokenUsage });
   const wakeFork = await sessions.request("thread/fork", {
     threadId: resumedId,
     lastTurnId: wakeId,
   });
+  assert.equal((await sessions.session(wakeFork.thread.id)).tokenUsage, null);
   assert.deepEqual(
     (await sessions.turns(wakeFork.thread.id)).map((turn) => turn.id),
     [first, wakeId],

@@ -16,6 +16,7 @@ import { testTranslationLifecycle } from "./translation-lifecycle.mjs";
 import { testComposerKeyboard } from "./composer-keyboard.mjs";
 import { testTerminalLifecycle } from "./terminal-lifecycle.mjs";
 import { testThreadSorting } from "./thread-sorting.mjs";
+import { testTokenUsage } from "./token-usage.mjs";
 import { testProjectSnapshot } from "./project-snapshot.mjs";
 import { testQuestionInteraction } from "./question-interaction.mjs";
 import { testAuthentication } from "./auth.mjs";
@@ -169,6 +170,7 @@ await testFolderPicker(app, fixture);
       (respond) => (fixture.responseFor = respond),
       (method, params) => fixture.socket.emit(method, params),
     );
+    await testTokenUsage(app, fixture);
     await testThreadArchive(
       app,
       requests,

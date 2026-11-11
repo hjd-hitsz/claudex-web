@@ -41,7 +41,7 @@ for (const shell of ["/bin/sh", "/bin/bash", "/bin/zsh"])
         },
       });
       t.after(async () => {
-        manager.close();
+        await manager.close();
         if (originalShell === undefined) delete process.env.SHELL;
         else process.env.SHELL = originalShell;
         await rm(root, { recursive: true, force: true });

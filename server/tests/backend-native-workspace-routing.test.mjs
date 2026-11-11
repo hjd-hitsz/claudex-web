@@ -35,6 +35,8 @@ test("Codex 文件、模糊搜索与终端请求保持原生参数、结果和�
         connect() {},
         close() {},
         receive(client, message) {
+          if (message.method === "thread/list")
+            return send(client, { id: message.id, result: { data: [] } });
           calls.push(message);
           send(client, {
             id: message.id,
@@ -45,7 +47,7 @@ test("Codex 文件、模糊搜索与终端请求保持原生参数、结果和�
     },
   });
   t.after(async () => {
-    manager.close();
+    await manager.close();
     await rm(root, { recursive: true, force: true });
   });
   await manager.connect();
