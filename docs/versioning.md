@@ -124,6 +124,6 @@ GitHub cron 补偿 ─┘                                      ↓
 
 `Publish npm package`（`npm-publish.yml`）监听 `Publish release` 和 `Publish scheduled releases` 的成功运行，并使用 GitHub 托管 runner 的 OIDC 身份发布。`@hjd-hitsz/claudex-web` 包设置的 Trusted Publisher 绑定 GitHub 所有者 `hjd-hitsz`、仓库 `claudex-web`、工作流 `npm-publish.yml`，允许直接 `npm publish`。该信任关系在后续版本继续使用。工作流固定 npm 12.2.2，并授予 `id-token: write`。
 
-即时发布按来源提交选取公开标签，定时发布读取已到期计划并要求 Release 已公开。下载原始 `.tgz` 及校验文件，旧名称附件迁移包元数据与 README 安装命令后重新打包，保留全部编译内容。核对包名、版本、构建提交和标签，临时全局安装验证后上传 npm。稳定版使用 `latest`，预发布使用 `next`。注册表已有同版本时核对 SHA-512，内容一致则复用，内容不同则报错。上传后轮询公开状态并校验下载字节，最长等待 15 分钟，超时后通过同版本重试继续核对。
+即时发布按来源提交选取公开标签，定时发布读取已到期计划并要求 Release 已公开。下载原始 `.tgz` 及校验文件，旧名称附件迁移包元数据与 README 安装命令后重新打包，保留全部编译内容。核对包名、版本、构建提交和标签，临时全局安装验证后上传 npm。稳定版使用 `latest`，预发布使用 `next`。注册表已有同版本时下载并核对 SHA-512。原名附件要求压缩包字节一致，旧包名迁移按文件清单和逐文件字节核对，兼容不同压缩环境；内容不同则报错。上传后轮询公开状态并校验下载字节，最长等待 15 分钟，超时后通过同版本重试继续核对。
 
 重试使用 Actions 的 `Publish npm package` 手动入口，`tag` 填已有公开标签。GitHub Release、npm 与安装验证分别核对，两个渠道全部通过后报告完整发布。npm 包创建和 Trusted Publisher 变更需要维护者完成账户认证。首次 npm 上架使用 GitHub 已发布的 `v4.0.1` 编译产物，包元数据迁移到 `@hjd-hitsz/claudex-web`，后续源码改动积累在未发布区域。

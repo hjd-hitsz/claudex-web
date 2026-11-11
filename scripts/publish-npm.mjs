@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout } from "node:timers/promises";
 import { readReleaseSchedule } from "./publish-release.mjs";
 import { releaseVersion } from "./release-version.mjs";
-import { npmPackageName, prepareNpmArchive } from "./npm-archive.mjs";
+import {
+  npmPackageName,
+  prepareNpmArchive,
+  verifyArchiveContents,
+} from "./npm-archive.mjs";
 
 const registry = "https://registry.npmjs.org";
 const run = (command, args) =>
@@ -113,8 +117,19 @@ async function publish(repo, release) {
     assert.equal(build.channel, "release");
     const existing = await lookup(version);
     if (existing) {
-      verifyNpmIntegrity(existing.dist, bytes);
-      console.log(`${tag} 已在 npm 发布，原始附件完整性一致`);
+      const response = await fetch(existing.dist.tarball, {
+        signal: AbortSignal.timeout(30000),
+      });
+      assert.ok(response.ok, `npm 安装包下载失败，HTTP ${response.status}`);
+      const downloaded = Buffer.from(await response.arrayBuffer());
+      verifyNpmIntegrity(existing.dist, downloaded);
+      if (path === original) verifyNpmIntegrity(existing.dist, bytes);
+      else {
+        const registered = join(dir, "registered.tgz");
+        writeFileSync(registered, downloaded);
+        verifyArchiveContents(path, registered);
+      }
+      console.log(`${tag} 已在 npm 发布，下载完整性与发行内容核对通过`);
       return;
     }
     const prefix = join(dir, "install");

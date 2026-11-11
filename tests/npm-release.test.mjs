@@ -11,7 +11,12 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { npmPackageName, prepareNpmArchive } from "../scripts/npm-archive.mjs";
+import {
+  npmPackageName,
+  prepareNpmArchive,
+  verifyArchiveContents,
+} from "../scripts/npm-archive.mjs";
+import { gzipSync, gunzipSync } from "node:zlib";
 import {
   npmReleaseReady,
   verifyNpmIntegrity,
@@ -45,6 +50,16 @@ test("旧名称附件迁移作用域后保留编译字节，多次打包保持�
     return prepareNpmArchive(original, outputDir);
   });
   assert.deepEqual(readFileSync(outputs[0]), readFileSync(outputs[1]));
+  const recompressed = join(dir, "recompressed.tgz");
+  writeFileSync(
+    recompressed,
+    gzipSync(gunzipSync(readFileSync(outputs[0])), { level: 1 }),
+  );
+  verifyArchiveContents(outputs[0], recompressed);
+  assert.throws(
+    () => verifyArchiveContents(outputs[0], original),
+    /内容不一致/,
+  );
   const extract = (file) =>
     execFileSync("tar", ["-xOf", outputs[0], `package/${file}`], {
       encoding: "utf8",

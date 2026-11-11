@@ -30,7 +30,7 @@
 
 全局 npm 命令入口为 `bin/claudex-web.mjs`。发行包由根 `package.json` 的 `files` 白名单控制，`prepack` 构建前端。全局安装的配置放在用户配置目录，与 npm 包分离；源码运行继续读取项目根 `.env`。修改安装和分发逻辑时维护两种运行方式，保留已有 Codex 后端服务及用户配置。
 
-npm 发布由 `.github/workflows/npm-publish.yml` 在 GitHub 发布工作流成功后自动执行，也支持按公开标签手动重试。发布已有 GitHub Release 的附件，旧包名附件仅迁移 npm 身份与安装说明，核对 SHA-256、包版本、标签提交、临时安装及 npm 内容完整性；定时草稿到期公开后才上传 npm。同版本重试保持已发布内容，稳定版使用 `latest`，预发布使用 `next`。npm Trusted Publisher 固定绑定该工作流，采用 OIDC 直接发布。
+npm 发布由 `.github/workflows/npm-publish.yml` 在 GitHub 发布工作流成功后自动执行，也支持按公开标签手动重试。发布已有 GitHub Release 的附件，旧包名附件仅迁移 npm 身份与安装说明，核对 SHA-256、包版本、标签提交、临时安装及 npm 内容完整性；定时草稿到期公开后才上传 npm。同版本重试保持已发布内容；旧包名迁移按文件清单和逐文件字节核对，其他附件保持压缩包字节一致。稳定版使用 `latest`，预发布使用 `next`。npm Trusted Publisher 固定绑定该工作流，采用 OIDC 直接发布。
 
 GitHub Release 由 `.github/workflows/release.yml` 在推送版本标签后检查并发布，附件包含预构建 npm 包和 SHA-256 文件。版本标签必须匹配根包版本，并提供 `docs/releases/标签名.md`；发布页每项变更在末尾括号内标注对应提交及链接。发布时同步维护 README 和部署文档的下载链接，验证发布附件可安装。
 
