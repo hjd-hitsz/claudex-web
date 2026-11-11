@@ -47,7 +47,7 @@ v2.0.0 标签上的干净代码             2.0.0                    正式发�
 
 ## 准备和发布
 
-README 和部署文档的默认安装命令使用 `npm install -g claudex-web`，由 npm 的 `latest` 分发标签选择最新稳定版本。版本准备保留此命令，单独更新固定版本下载与校验示例；预发布提供对应版本的独立安装入口，转正式版时移除预发布入口。
+README 和部署文档的默认安装命令使用 `npm install -g @hjd-hitsz/claudex-web`，由 npm 的 `latest` 分发标签选择最新稳定版本。版本准备保留此命令，单独更新固定版本下载与校验示例；预发布提供对应版本的独立安装入口，转正式版时移除预发布入口。
 
 用户指定具体版本号或 `patch`、`minor`、`major` 级别后，直接使用该版本，或从当前正式版本计算目标版本并执行发布；同一发布批次沿用该目标完成准备、提交、推送、发布和失败重试。用户尚未指定版本或级别、或需要改变已指定目标时，再确认建议版本及依据。
 
@@ -122,8 +122,8 @@ GitHub cron 补偿 ─┘                                      ↓
 
 ## npm 自动发布
 
-`Publish npm package`（`npm-publish.yml`）监听 `Publish release` 和 `Publish scheduled releases` 的成功运行，并使用 GitHub 托管 runner 的 OIDC 身份发布。npm 包设置的 Trusted Publisher 绑定 GitHub 所有者 `hjd-hitsz`、仓库 `claudex-web`、工作流 `npm-publish.yml`，允许直接 `npm publish`。该信任关系在后续版本继续使用。工作流固定 npm 12.2.2，并授予 `id-token: write`。
+`Publish npm package`（`npm-publish.yml`）监听 `Publish release` 和 `Publish scheduled releases` 的成功运行，并使用 GitHub 托管 runner 的 OIDC 身份发布。`@hjd-hitsz/claudex-web` 包设置的 Trusted Publisher 绑定 GitHub 所有者 `hjd-hitsz`、仓库 `claudex-web`、工作流 `npm-publish.yml`，允许直接 `npm publish`。该信任关系在后续版本继续使用。工作流固定 npm 12.2.2，并授予 `id-token: write`。
 
-即时发布按来源提交选取公开标签，定时发布读取已到期计划并要求 Release 已公开。下载原始 `.tgz` 及校验文件，核对包名、版本、构建提交和标签，临时全局安装验证后上传 npm。稳定版使用 `latest`，预发布使用 `next`。注册表已有同版本时核对 SHA-512，内容一致则复用，内容不同则报错。上传后轮询公开状态并校验下载字节，最长等待 15 分钟，超时后通过同版本重试继续核对。
+即时发布按来源提交选取公开标签，定时发布读取已到期计划并要求 Release 已公开。下载原始 `.tgz` 及校验文件，旧名称附件迁移包元数据与 README 安装命令后重新打包，保留全部编译内容。核对包名、版本、构建提交和标签，临时全局安装验证后上传 npm。稳定版使用 `latest`，预发布使用 `next`。注册表已有同版本时核对 SHA-512，内容一致则复用，内容不同则报错。上传后轮询公开状态并校验下载字节，最长等待 15 分钟，超时后通过同版本重试继续核对。
 
-重试使用 Actions 的 `Publish npm package` 手动入口，`tag` 填已有公开标签。GitHub Release、npm 与安装验证分别核对，两个渠道全部通过后报告完整发布。npm 包创建和 Trusted Publisher 变更需要维护者完成账户认证。首次 npm 上架使用 GitHub 已发布的 `v4.0.1` 原始附件，后续源码改动积累在未发布区域。
+重试使用 Actions 的 `Publish npm package` 手动入口，`tag` 填已有公开标签。GitHub Release、npm 与安装验证分别核对，两个渠道全部通过后报告完整发布。npm 包创建和 Trusted Publisher 变更需要维护者完成账户认证。首次 npm 上架使用 GitHub 已发布的 `v4.0.1` 编译产物，包元数据迁移到 `@hjd-hitsz/claudex-web`，后续源码改动积累在未发布区域。

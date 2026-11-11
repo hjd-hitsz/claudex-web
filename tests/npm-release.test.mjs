@@ -1,11 +1,62 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { npmPackageName, prepareNpmArchive } from "../scripts/npm-archive.mjs";
 import {
   npmReleaseReady,
   verifyNpmIntegrity,
   selectNpmReleases,
 } from "../scripts/publish-npm.mjs";
+
+test("旧名称附件迁移作用域后保留编译字节，多次打包保持一致", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "claudex-npm-archive-test-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const source = join(dir, "package");
+  mkdirSync(source);
+  writeFileSync(
+    join(source, "package.json"),
+    JSON.stringify({
+      name: "claudex-web",
+      version: "4.0.1",
+      files: ["app.js"],
+      scripts: { prepack: "exit 1" },
+    }),
+  );
+  writeFileSync(join(source, "app.js"), "compiled output\n");
+  writeFileSync(
+    join(source, "README.md"),
+    "npm install -g claudex-web\nnpm install -g @openai/codex\n",
+  );
+  const original = join(dir, "original.tgz");
+  execFileSync("tar", ["-czf", original, "-C", dir, "package"]);
+  const outputs = ["first", "second"].map((name) => {
+    const outputDir = join(dir, name);
+    mkdirSync(outputDir);
+    return prepareNpmArchive(original, outputDir);
+  });
+  assert.deepEqual(readFileSync(outputs[0]), readFileSync(outputs[1]));
+  const extract = (file) =>
+    execFileSync("tar", ["-xOf", outputs[0], `package/${file}`], {
+      encoding: "utf8",
+    });
+  assert.equal(extract("app.js"), "compiled output\n");
+  assert.equal(JSON.parse(extract("package.json")).name, npmPackageName);
+  assert.equal(
+    extract("README.md"),
+    `npm install -g ${npmPackageName}\nnpm install -g @openai/codex\n`,
+  );
+  assert.equal(prepareNpmArchive(outputs[0], dir), outputs[0]);
+});
 
 test("标签工作流按提交选公开版本，定时工作流只处理计划内公开版本", () => {
   const releases = [

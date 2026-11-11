@@ -40,7 +40,7 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
       - run: npm install --global npm@12.2.2
-      - name: Verify and publish the original release archive
+      - name: Verify and publish the release archive
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}

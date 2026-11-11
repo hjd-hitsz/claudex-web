@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -255,11 +256,13 @@ if (
         { cwd: root, encoding: "utf8" },
       ),
     );
-    const path = join(dir, pack.filename);
+    const filename = `claudex-web-${version}.tgz`;
+    const path = join(dir, filename);
+    renameSync(join(dir, pack.filename), path);
     const checksum = createHash("sha256")
       .update(readFileSync(path))
       .digest("hex");
-    writeFileSync(`${path}.sha256`, `${checksum}  ${pack.filename}\n`);
+    writeFileSync(`${path}.sha256`, `${checksum}  ${filename}\n`);
     const tag = `v${version}`;
     const notes = join(dir, "release-notes.md");
     writeFileSync(

@@ -1,5 +1,5 @@
 {
-  "name": "claudex-web",
+  "name": "@hjd-hitsz/claudex-web",
   "version": "4.0.1",
   "type": "module",
   "description": "Codex 与 Claude Code 的浏览器工作台",

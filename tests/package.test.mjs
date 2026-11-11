@@ -359,7 +359,10 @@ test(
     const web = await readFile(join(units, "claudex-web.service"), "utf8");
     assert.ok(
       web.includes(
-        join(prefix, "lib/node_modules/claudex-web/bin/claudex-web.mjs"),
+        join(
+          prefix,
+          "lib/node_modules/@hjd-hitsz/claudex-web/bin/claudex-web.mjs",
+        ),
       ),
     );
     assert.ok(web.includes(`CLAUDEX_WEB_CONFIG_DIR=${configDir}`));
@@ -369,7 +372,10 @@ test(
     assert.ok(backend.includes(`ws://127.0.0.1:${upstream.address().port}`));
     assert.ok(
       backend.includes(
-        join(prefix, "lib/node_modules/claudex-web/scripts/start-backend.mjs"),
+        join(
+          prefix,
+          "lib/node_modules/@hjd-hitsz/claudex-web/scripts/start-backend.mjs",
+        ),
       ),
     );
     assert.ok(backend.includes(`CODEX_HOME=${env.CODEX_HOME}`));

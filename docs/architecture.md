@@ -284,7 +284,7 @@ Claude 网页桥接重启或异常退出时，独立执行服务继续持有模�
 
 根 `package.json` 与单一锁文件管理 workspaces。翻译子项目的源码、许可证、CLI 与构建后的原生分词器随发行包交付，模型权重、Microsoft 分词运行库和 ONNX Runtime CPU 文件在用户启用后独立下载。
 
-npm 分发由独立的 `npm-publish.yml` 工作流监听即时及定时 GitHub 发布工作流的成功结果，以 OIDC 身份上传已公开的原始 Release 附件。`publish-npm.mjs` 持有附件下载、校验、临时安装、注册表完整性核对与同版本重试；发布时间继续由发布计划和 Release 草稿状态约束，稳定版与预发布分别进入 `latest` 与 `next`。
+npm 分发由独立的 `npm-publish.yml` 工作流监听即时及定时 GitHub 发布工作流的成功结果，以 OIDC 身份上传已公开的 Release 附件，旧包名附件仅迁移 npm 身份与安装说明。`publish-npm.mjs` 持有附件下载、校验、临时安装、注册表完整性核对与同版本重试；发布时间继续由发布计划和 Release 草稿状态约束，稳定版与预发布分别进入 `latest` 与 `next`。
 
 发行白名单包含 `client/dist`、`server/src`、`shared`、命令入口、运行脚本、许可证和构建信息。增加共享运行模块或动态分块时，验证实际打包清单、生产响应和临时全局安装。生产版本来源由 `server/src/version.mjs` 统一读取，网页在构建时固定，桥接在启动时固定；干净标签构建可交付稳定版本或 alpha、beta、rc 预发布版本；发布工具维护版本顺序和 GitHub 成熟度标记，预发布保留稳定下载入口及 Latest。流程见[版本管理](versioning.md)。
 

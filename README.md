@@ -43,7 +43,7 @@ sudo apt-get install openssl pamtester
 以运行服务的普通用户安装，安装 npm 上的最新稳定版本。
 
 ```bash
-npm install -g claudex-web
+npm install -g @hjd-hitsz/claudex-web
 claudex-web service install
 ```
 

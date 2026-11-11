@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout } from "node:timers/promises";
 import { readReleaseSchedule } from "./publish-release.mjs";
 import { releaseVersion } from "./release-version.mjs";
+import { npmPackageName, prepareNpmArchive } from "./npm-archive.mjs";
 
 const registry = "https://registry.npmjs.org";
 const run = (command, args) =>
@@ -25,20 +26,45 @@ export function npmReleaseReady(release, schedule, now = Date.now()) {
 
 export function verifyNpmIntegrity(dist, bytes) {
   const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
-  assert.equal(
-    dist.integrity,
-    integrity,
-    "npm 同版本内容与 GitHub 发行附件不一致",
-  );
+  assert.equal(dist.integrity, integrity, "npm 同版本内容与待发布安装包不一致");
 }
 
 async function lookup(version) {
-  const response = await fetch(`${registry}/claudex-web/${version}`, {
-    signal: AbortSignal.timeout(30000),
-  });
+  const response = await fetch(
+    `${registry}/${encodeURIComponent(npmPackageName)}/${version}`,
+    {
+      signal: AbortSignal.timeout(30000),
+    },
+  );
   if (response.status === 404) return null;
   assert.ok(response.ok, `npm 版本查询失败，HTTP ${response.status}`);
   return response.json();
+}
+
+// 重试已发布版本时也实际验证工作流身份，及时暴露失效的发布授权。
+async function verifyGithubNpmIdentity() {
+  const url = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+  url.searchParams.set("audience", "npm:registry.npmjs.org");
+  const identity = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}`,
+    },
+    signal: AbortSignal.timeout(30000),
+  });
+  assert.ok(identity.ok, `GitHub OIDC 身份读取失败，HTTP ${identity.status}`);
+  const { value } = await identity.json();
+  assert.ok(value, "GitHub OIDC 响应缺少身份令牌");
+  const exchange = await fetch(
+    `${registry}/-/npm/v1/oidc/token/exchange/package/${encodeURIComponent(npmPackageName)}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${value}` },
+      signal: AbortSignal.timeout(30000),
+    },
+  );
+  assert.ok(exchange.ok, `npm OIDC 发布授权验证失败，HTTP ${exchange.status}`);
+  assert.ok((await exchange.json()).token, "npm OIDC 响应缺少发布凭据");
+  console.log("GitHub OIDC 身份与 npm 发布授权验证通过");
 }
 
 async function publish(repo, release) {
@@ -60,17 +86,20 @@ async function publish(repo, release) {
       "--pattern",
       `${filename}.sha256`,
     ]);
-    const path = join(dir, filename);
-    const bytes = readFileSync(path);
-    const checksum = createHash("sha256").update(bytes).digest("hex");
+    const original = join(dir, filename);
+    const checksum = createHash("sha256")
+      .update(readFileSync(original))
+      .digest("hex");
     assert.equal(
-      readFileSync(`${path}.sha256`, "utf8").trim(),
+      readFileSync(`${original}.sha256`, "utf8").trim(),
       `${checksum}  ${filename}`,
     );
+    const path = prepareNpmArchive(original, dir);
+    const bytes = readFileSync(path);
     const manifest = JSON.parse(
       run("tar", ["-xOf", path, "package/package.json"]),
     );
-    assert.equal(manifest.name, "claudex-web");
+    assert.equal(manifest.name, npmPackageName);
     assert.equal(manifest.version, version);
     const build = JSON.parse(
       run("tar", ["-xOf", path, "package/build-info.json"]),
@@ -175,6 +204,7 @@ export function selectNpmReleases(
 async function main() {
   const repo = process.env.GITHUB_REPOSITORY;
   assert.ok(repo, "发布需要 GITHUB_REPOSITORY");
+  if (process.env.GITHUB_ACTIONS === "true") await verifyGithubNpmIdentity();
   const schedule = readReleaseSchedule();
   const releases = JSON.parse(
     run("gh", [

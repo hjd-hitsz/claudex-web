@@ -128,7 +128,7 @@ test("版本准备同步包与锁文件、汇总未发布内容并更新安装�
   for (const path of ["README.md", "docs/deployment.md"])
     await writeFile(
       join(dir, path),
-      "npm install -g claudex-web\nnpm install -g ./claudex-web-1.2.3.tgz\n",
+      "npm install -g @hjd-hitsz/claudex-web\nnpm install -g ./claudex-web-1.2.3.tgz\n",
     );
   initialize(dir);
   assert.equal(prepareVersion(dir, "minor", "2026-10-26"), "1.3.0");
@@ -254,7 +254,7 @@ test("预发布逐次递增、转候选与正式版，并保留稳定下载入�
   for (const path of ["README.md", "docs/deployment.md"])
     await writeFile(
       join(dir, path),
-      "## 快速开始\n\nnpm install -g claudex-web\n\n稳定版 https://example.test/releases/download/v1.2.3/claudex-web-1.2.3.tgz\n",
+      "## 快速开始\n\nnpm install -g @hjd-hitsz/claudex-web\n\n稳定版 https://example.test/releases/download/v1.2.3/claudex-web-1.2.3.tgz\n",
     );
   commit(dir);
   for (const target of [
@@ -274,7 +274,10 @@ test("预发布逐次递增、转候选与正式版，并保留稳定下载入�
     prepareVersion(dir, target);
     assert.equal(checkVersions(dir), target);
     const readme = await readFile(join(dir, "README.md"), "utf8");
-    assert.equal(readme.split("npm install -g claudex-web").length, 2);
+    assert.equal(
+      readme.split("npm install -g @hjd-hitsz/claudex-web").length,
+      2,
+    );
     if (target.includes("-")) {
       assert.ok(
         readme.includes("releases/download/v1.2.3/claudex-web-1.2.3.tgz"),
