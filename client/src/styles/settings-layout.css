@@ -213,19 +213,31 @@
 }
 
 .modal-settings .settings-preferences {
-  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
 }
 .modal-settings .settings-preferences > * {
   padding: 0;
-  min-height: 40px;
+  min-height: 0;
+  gap: 6px 12px;
 }
 .modal-settings .settings-preferences label {
   min-height: 24px;
   line-height: 20px;
 }
+.modal-settings .settings-preferences > * > .section-description,
+.modal-settings .settings-preferences > * > [role="status"],
+.modal-settings .settings-preferences > * > .inline-error {
+  flex-basis: 100%;
+  min-width: 0;
+  margin: 0 0 0 28px;
+  overflow-wrap: anywhere;
+}
 @media (max-width: 560px) {
   .modal-settings .settings-preferences {
-    padding: 12px 16px;
+    padding: 16px;
   }
   .modal-settings .backend-heading > button {
     padding-inline: 8px;

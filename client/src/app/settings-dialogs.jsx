@@ -18,7 +18,7 @@ export function SettingsDialog() {
         className="settings-section"
         aria-labelledby="preferences-settings-title"
       >
-        <h3 id="preferences-settings-title">通知与翻译</h3>
+        <h3 id="preferences-settings-title">其他设置</h3>
         <div className="settings-group settings-preferences">
           <NotificationSettings />
           <TranslationSettings />
