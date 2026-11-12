@@ -18,6 +18,7 @@ export function conversationGroups(items, requests = [], turns = []) {
       item.turnId &&
       item.type === "agentMessage" &&
       item.phase === "final_answer" &&
+      item.delivery !== "async" &&
       !item.questions?.length
     )
       closedTurns.add(item.turnId);
@@ -77,6 +78,7 @@ export function conversationGroups(items, requests = [], turns = []) {
     const answer =
       !question &&
       item.type === "agentMessage" &&
+      item.delivery !== "async" &&
       (item.phase === "final_answer" ||
         (item.phase !== "commentary" &&
           lastInTurn.get(item.turnId) === item.id));

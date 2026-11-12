@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { conversationGroups } from "../src/domain/conversation-groups.js";
+import { asyncReplies } from "../../tests/fixtures/async-replies.mjs";
 const item = (id, type, props = {}) => ({
   id,
   type,
@@ -17,6 +18,77 @@ const thought = item("thought", "reasoning", { summary: ["**检查结果**"] });
 const answer = item("answer", "agentMessage", {
   phase: "final_answer",
   text: "检查完成。",
+});
+test("异步投递的 final_answer 收入同轮过程，连续补充保持一个汇总区域", () => {
+  const replies = asyncReplies.map((reply) => ({ ...reply, turnId: "turn-1" }));
+  const groups = conversationGroups([
+    user,
+    progress,
+    item("steer", "userMessage"),
+    replies[0],
+    tool,
+    item("next-steer", "userMessage"),
+    replies[1],
+    thought,
+  ]);
+  assert.deepEqual(
+    groups.map((group) => group.id),
+    ["user", "steer", "next-steer", "process-turn-1"],
+  );
+  assert.deepEqual(
+    groups.at(-1).items.map((entry) => entry.id),
+    [
+      "progress",
+      "steer",
+      "async-first",
+      "tool",
+      "next-steer",
+      "async-second",
+      "thought",
+    ],
+  );
+  const completed = conversationGroups(
+    [user, ...replies, tool, answer],
+    [],
+    [{ id: "turn-1", status: "completed" }],
+  );
+  assert.deepEqual(
+    completed.map((group) => group.id),
+    ["user", "process-turn-1", "answer"],
+  );
+  assert.equal(
+    completed[1].items.filter((entry) => entry.delivery === "async").length,
+    2,
+  );
+});
+
+test("历史异步回复保持收纳，末条异步消息及缺少阶段的异步消息遵循同一规则", () => {
+  for (const phase of ["final_answer", null, undefined]) {
+    const reply = { ...asyncReplies[0], turnId: "turn-1", phase };
+    const groups = conversationGroups([user, progress, reply]);
+    assert.deepEqual(
+      groups.map((group) => group.id),
+      ["user", "process-turn-1"],
+    );
+    assert.equal(groups[1].items.at(-1), reply);
+  }
+});
+
+test("异步 final_answer 保留后续提问的待答状态，轮次结束后再收纳", () => {
+  const reply = { ...asyncReplies[0], turnId: "turn-1" };
+  const question = item("later-question", "agentMessage", {
+    text: "",
+    questions: [{ title: "选择检查范围" }],
+  });
+  const groups = conversationGroups([user, progress, reply, question]);
+  assert.equal(groups.at(-1).item, question);
+  const completed = conversationGroups(
+    [user, progress, reply, question],
+    [],
+    [{ id: "turn-1", status: "completed" }],
+  );
+  assert.equal(completed.length, 2);
+  assert.equal(completed[1].items.at(-1).questionClosed, true);
 });
 test("进度、命令与思考摘要整体合并，用户消息和最终回答保持独立", () => {
   const groups = conversationGroups([user, progress, tool, thought, answer]);

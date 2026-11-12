@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { actionableMessages } from "../src/domain/message-actions.js";
+import { asyncReplies } from "../../tests/fixtures/async-replies.mjs";
 const progress = {
   id: "progress",
   turnId: "turn-1",
@@ -15,6 +16,20 @@ const answer = {
   phase: "final_answer",
   text: "检查结果。",
 };
+test("异步回复保持过程语义，完成后仅真实最终回答提供操作", () => {
+  const replies = asyncReplies.map((item) => ({ ...item, turnId: "turn-1" }));
+  for (const turns of [[], [{ id: "turn-1", status: "completed" }]]) {
+    assert.deepEqual([...actionableMessages(replies, turns)], []);
+    assert.deepEqual(
+      [...actionableMessages([progress, ...replies, answer], turns)],
+      ["answer"],
+    );
+    assert.deepEqual(
+      [...actionableMessages([answer, ...replies], turns)],
+      ["answer"],
+    );
+  }
+});
 test("首次调用中的进度消息始终不显示回复操作栏", () => {
   assert.deepEqual([...actionableMessages([progress], [], "turn-1")], []);
   assert.deepEqual(

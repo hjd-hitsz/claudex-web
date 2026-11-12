@@ -2,7 +2,11 @@ export function actionableMessages(items, turns, activeTurnId) {
   const lastAnswers = new Map();
   const status = new Map(turns.map((turn) => [turn.id, turn.status]));
   for (const item of items) {
-    if (item.type === "agentMessage" && item.turnId)
+    if (
+      item.type === "agentMessage" &&
+      item.delivery !== "async" &&
+      item.turnId
+    )
       lastAnswers.set(item.turnId, item);
   }
   return new Set(

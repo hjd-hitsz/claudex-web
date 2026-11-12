@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import React, { act } from "react";
 import { create } from "react-test-renderer";
+import { asyncReplies } from "../fixtures/async-replies.mjs";
 
 export async function testProcessSteering(app, fixture) {
   const { requests } = fixture;
@@ -83,6 +84,7 @@ export async function testProcessSteering(app, fixture) {
       assert.equal(await sending, true);
     });
     await emitItem(userMessage("first-steer", "请考虑通用能力。"));
+    await emitItem(asyncReplies[0]);
     await emitItem({
       id: "guided-command",
       type: "commandExecution",
@@ -90,6 +92,7 @@ export async function testProcessSteering(app, fixture) {
       status: "completed",
     });
     await emitItem(userMessage("last-steer", "同时检查内存占用。"));
+    await emitItem(asyncReplies[1]);
     await emitItem({
       id: "latest-progress",
       type: "agentMessage",
@@ -124,10 +127,14 @@ export async function testProcessSteering(app, fixture) {
     );
     assert(JSON.stringify(view.toJSON()).includes("开始检查模型。"));
     assert(JSON.stringify(view.toJSON()).includes("继续验证能力上限。"));
+    for (const reply of asyncReplies)
+      assert(JSON.stringify(view.toJSON()).includes(reply.text));
     await act(async () =>
       history().props.onToggle({ currentTarget: { open: false } }),
     );
     assert(!JSON.stringify(view.toJSON()).includes("开始检查模型。"));
+    for (const reply of asyncReplies)
+      assert(!JSON.stringify(view.toJSON()).includes(reply.text));
     assert(JSON.stringify(view.toJSON()).includes("继续验证能力上限。"));
     await emitItem({
       id: "guided-answer",
@@ -178,6 +185,29 @@ export async function testProcessSteering(app, fixture) {
         .length,
       2,
     );
+    for (const reply of asyncReplies)
+      assert(JSON.stringify(view.toJSON()).includes(reply.text));
+    await act(async () => view.unmount());
+    await act(async () => {
+      view = create(
+        React.createElement(app.ReadOnlyConversation, {
+          items: savedItems,
+          cwd: "/fixture",
+          turns: [{ id: turnId, status: "completed" }],
+        }),
+      );
+    });
+    assert.equal(
+      view.root.findAllByProps({ className: "process-history" }).length,
+      1,
+    );
+    for (const reply of asyncReplies)
+      assert(!JSON.stringify(view.toJSON()).includes(reply.text));
+    await act(async () =>
+      history().props.onToggle({ currentTarget: { open: true } }),
+    );
+    for (const reply of asyncReplies)
+      assert(JSON.stringify(view.toJSON()).includes(reply.text));
     await act(async () => view.unmount());
     fixture.responseFor = previousResponse;
     console.log(
