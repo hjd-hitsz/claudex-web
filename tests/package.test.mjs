@@ -133,9 +133,9 @@ test(
       env: launchEnv,
       encoding: "utf8",
     });
-    assert.match(
+    assert.equal(
       output,
-      /-c thread_unload_delay_secs=0 app-server --listen ws:\/\/127\.0\.0\.1:1/,
+      "-c thread_unload_delay_secs=0 app-server --listen ws://127.0.0.1:1\n",
     );
   },
 );
@@ -389,7 +389,13 @@ test(
     assert.equal(await readFile(join(configDir, ".env"), "utf8"), config);
     run("service", "status");
     const log = await readFile(env.SERVICE_TEST_LOG, "utf8");
-    assert.match(log, /-c thread_unload_delay_secs=0 app-server --listen/);
+    assert.ok(
+      log
+        .split("\n")
+        .includes(
+          `${join(fakeBin, "codex")} -c thread_unload_delay_secs=0 app-server --listen ws://127.0.0.1:${upstream.address().port}`,
+        ),
+    );
     assert.match(
       log,
       /--user enable --now codex-app-server.service claudex-web.service/,

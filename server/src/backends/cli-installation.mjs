@@ -4,6 +4,11 @@ import { constants } from "node:fs";
 import { dirname, delimiter, join } from "node:path";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
+import {
+  cliEnvironment,
+  cliFailure,
+  installCliPackage,
+} from "./cli-package.mjs";
 
 const execute = promisify(execFile);
 const packages = {
@@ -64,6 +69,7 @@ export function createCliInstallation({
           const executable = await locate(id);
           const { stdout } = await run(executable, ["--version"], {
             timeout: 10000,
+            env: cliEnvironment(),
           });
           const version = stdout.match(/\b\d+\.\d+\.\d+(?:-[\w.-]+)?\b/)?.[0];
           if (!version) throw new Error("无法识别 CLI 版本：" + stdout.trim());
@@ -76,7 +82,16 @@ export function createCliInstallation({
         installed: local.status === "fulfilled",
         ...(local.status === "fulfilled"
           ? local.value
-          : { currentVersion: "", error: local.reason.message }),
+          : {
+              currentVersion: "",
+              executable: null,
+              error: `${id === "codex" ? "Codex" : "Claude Code"} CLI 无法运行，可点击一键安装修复。`,
+              errorDetails:
+                local.reason.details ||
+                local.reason.stderr ||
+                local.reason.message,
+            }),
+        ...(local.status === "fulfilled" && { errorDetails: "" }),
         ...(latest.status === "fulfilled"
           ? { latestVersion: latest.value }
           : { latestError: latest.reason.message }),
@@ -88,23 +103,23 @@ export function createCliInstallation({
   }
   async function install(id) {
     if (!packages[id]) throw new Error("未知后端");
-    patch(id, { installing: true, installError: "" });
+    patch(id, { installing: true, installError: "", installErrorDetails: "" });
     try {
-      const npm = join(dirname(process.execPath), "npm");
-      await run(npm, ["install", "--global", `${packages[id]}@latest`], {
-        timeout: 300000,
-        maxBuffer: 4 * 1024 * 1024,
-        env: {
-          ...process.env,
-          PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH || ""}`,
-        },
-      });
+      const version = await installCliPackage(id, packages[id], run);
       if (pending.has(id)) await pending.get(id);
       await refresh(id);
-      if (!state(id).installed) throw new Error(state(id).error);
+      if (!state(id).installed)
+        throw cliFailure("安装后的 CLI 校验失败，可查看错误详情并重新安装。", {
+          details: state(id).errorDetails,
+        });
+      if (state(id).currentVersion !== version)
+        throw cliFailure("安装后的 CLI 版本不一致，可查看错误详情并重试。", {
+          details: `期望版本 ${version}，实际版本 ${state(id).currentVersion}。`,
+        });
     } catch (error) {
       patch(id, {
-        installError: `npm 安装失败：${error.stderr?.trim() || error.message}`,
+        installError: error.message,
+        installErrorDetails: error.details || error.stderr || error.message,
       });
       throw error;
     } finally {

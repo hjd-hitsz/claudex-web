@@ -6,6 +6,12 @@ const config = readConfig();
 const { backends } = await createBackendConfiguration(config).read();
 const backend = backends.find((b) => b.id === "codex" && b.enabled);
 if (!backend) throw new Error("Codex 后端未启用");
+const url = new URL(backend.url);
+if (url.protocol !== "ws:" || url.pathname !== "/" || url.search || url.hash)
+  throw new Error(
+    "Codex 本机监听地址须使用 ws://主机:端口，且不含路径、查询参数或片段",
+  );
+const listenUrl = `ws://${url.hostname}:${url.port || 80}`;
 const child = spawn(
   backend.executable || "codex",
   [
@@ -14,7 +20,7 @@ const child = spawn(
     "thread_unload_delay_secs=0",
     "app-server",
     "--listen",
-    backend.url,
+    listenUrl,
   ],
   { stdio: "inherit", env: { ...process.env, CODEX_HOME: backend.dataDir } },
 );

@@ -13,6 +13,8 @@ test("未安装时仍取得最新版本，安装使用固定 npm 包并重新检
     fetchVersion: async () => "2.1.318",
     run: async (command, args) => {
       calls.push([command, args]);
+      if (args[0] === "view")
+        return { stdout: JSON.stringify({ version: "2.1.318" }) };
       if (args[0] === "install") installed = true;
       return { stdout: "2.1.318 (Claude Code)" };
     },
@@ -24,10 +26,12 @@ test("未安装时仍取得最新版本，安装使用固定 npm 包并重新检
   assert.equal(cli.state("claude").currentVersion, "2.1.318");
   assert.equal(cli.state("claude").installed, true);
   assert.equal(cli.state("claude").installing, false);
-  assert.deepEqual(calls[0][1], [
+  assert.deepEqual(calls.find(([, args]) => args[0] === "install")[1], [
     "install",
     "--global",
-    "@anthropic-ai/claude-code@latest",
+    "--include=optional",
+    "--ignore-scripts=false",
+    "@anthropic-ai/claude-code@2.1.318",
   ]);
   await assert.rejects(cli.install("arbitrary"), /未知后端/);
 });
@@ -35,6 +39,7 @@ test("未安装时仍取得最新版本，安装使用固定 npm 包并重新检
 test("版本查询合并并发，离线保留当前与上次最新版本，安装失败可重试", async () => {
   let offline = false,
     failInstall = true,
+    installed = false,
     queries = 0;
   const cli = createCliInstallation({
     locate: async () => "/npm/bin/codex",
@@ -44,8 +49,11 @@ test("版本查询合并并发，离线保留当前与上次最新版本，安�
       return "1.2.3";
     },
     run: async (command, args) => {
+      if (args[0] === "view")
+        return { stdout: JSON.stringify({ version: "1.2.3" }) };
       if (args[0] === "install" && failInstall) throw new Error("npm 权限不足");
-      return { stdout: "codex-cli 1.2.2" };
+      if (args[0] === "install") installed = true;
+      return { stdout: installed ? "codex-cli 1.2.3" : "codex-cli 1.2.2" };
     },
   });
   await Promise.all([cli.refresh("codex"), cli.refresh("codex")]);
@@ -55,12 +63,13 @@ test("版本查询合并并发，离线保留当前与上次最新版本，安�
   assert.equal(cli.state("codex").currentVersion, "1.2.2");
   assert.equal(cli.state("codex").latestVersion, "1.2.3");
   assert.match(cli.state("codex").latestError, /网络不可用/);
-  await assert.rejects(cli.install("codex"), /权限不足/);
+  await assert.rejects(cli.install("codex"), /安装失败/);
   assert.equal(cli.state("codex").installing, false);
-  assert.match(cli.state("codex").installError, /权限不足/);
+  assert.match(cli.state("codex").installErrorDetails, /权限不足/);
   failInstall = false;
   await cli.install("codex");
   assert.equal(cli.state("codex").installError, "");
+  assert.equal(cli.state("codex").installErrorDetails, "");
 });
 
 test("桥接生命周期自动检测两个 CLI，每小时执行且关闭后停止", async (t) => {

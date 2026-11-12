@@ -70,6 +70,7 @@ export function BackendSettings() {
         );
         const connected =
           cli.installed !== false && backend.enabled && backend.ready;
+        const diagnostic = cli.installErrorDetails || cli.errorDetails;
         const connection =
           cli.installed === false
             ? "未安装"
@@ -152,6 +153,12 @@ export function BackendSettings() {
               <p role="status">
                 {cli.latestError || cli.error || backend.error}
               </p>
+            )}
+            {diagnostic && (
+              <details className="cli-error-details">
+                <summary>错误详情</summary>
+                <pre>{diagnostic}</pre>
+              </details>
             )}
             {backend.type === "codex" && (
               <CodexModelSettings backend={backend} />

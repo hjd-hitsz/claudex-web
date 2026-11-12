@@ -81,10 +81,26 @@
   margin-bottom: 0;
 }
 .modal-settings .backend-card {
+  min-width: 0;
   padding: 16px 20px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--sidebar);
+}
+.modal-settings .cli-error-details {
+  margin-top: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+.modal-settings .cli-error-details summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+.modal-settings .cli-error-details pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .modal-settings .backend-heading {
   min-height: 32px;
