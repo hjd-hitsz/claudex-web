@@ -26,8 +26,23 @@ export function ModelSelect() {
       choice.model === s.model,
   );
   const locked = s.busy || s.loading;
+  const unavailable = s.model
+    ? hidden.includes(s.model) && s.backendId === "codex"
+      ? `当前模型已隐藏：${s.model}`
+      : `当前模型不可用：${s.model}`
+    : "请选择模型";
+  const label = current
+    ? `${current.providerName} · ${current.displayName || current.model}`
+    : choices.length || (s.backendId === "codex" && hidden.includes(s.model))
+      ? unavailable
+      : s.models.find((model) => model.model === s.model)?.displayName ||
+        s.model ||
+        "请选择模型";
   return (
     <label className="select-control model-select">
+      <span className="model-select-value" aria-hidden="true">
+        {label}
+      </span>
       <select
         aria-label="模型"
         value={current ? key(current) : s.model}
@@ -50,11 +65,7 @@ export function ModelSelect() {
           <>
             {!current && (
               <option value={s.model} disabled>
-                {s.model
-                  ? hidden.includes(s.model) && s.backendId === "codex"
-                    ? `当前模型已隐藏：${s.model}`
-                    : `当前模型不可用：${s.model}`
-                  : "请选择模型"}
+                {unavailable}
               </option>
             )}
             {choices.map((choice) => (

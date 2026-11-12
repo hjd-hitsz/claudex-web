@@ -156,8 +156,3 @@
     font-size: 0.692308rem;
   }
 }
-@media (max-width: 350px) {
-  .composer:has(.stop-button) .model-select select {
-    max-width: 85px;
-  }
-}

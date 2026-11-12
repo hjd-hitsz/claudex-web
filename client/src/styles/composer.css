@@ -47,9 +47,30 @@
   padding: 0.307692rem 1.615385rem 0.307692rem 0.538462rem;
   font-size: 0.923077rem;
   cursor: pointer;
-  max-width: 190px;
-  text-overflow: ellipsis;
   min-width: 0;
+}
+.model-select {
+  max-width: 100%;
+}
+.model-select-value {
+  padding: 0.307692rem 1.615385rem 0.307692rem 0.538462rem;
+  font-size: 0.923077rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.model-select select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+.model-select:has(select:focus-visible) {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+.model-select:has(select:disabled) {
+  opacity: 0.38;
 }
 .select-control svg {
   position: absolute;

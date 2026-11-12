@@ -26,9 +26,6 @@
   .workspace:has(.workspace-panel:not([style*="none"])) .welcome h1 {
     font-size: 1.769231rem;
   }
-  .model-select select {
-    max-width: 153px;
-  }
 }
 @container app-shell (max-width: 62rem) {
   .sidebar {
@@ -227,8 +224,7 @@
   .composer-tools .icon-button svg {
     width: 1.230769rem;
   }
-  .model-select select {
-    max-width: 125px;
+  .model-select-value {
     font-size: 0.846154rem;
     padding-left: 0.307692rem;
     padding-right: 1.307692rem;
@@ -346,9 +342,6 @@
   }
 }
 @media (max-width: 350px) {
-  .model-select select {
-    max-width: 117px;
-  }
   .composer-tools .icon-button {
     width: 1.769231rem;
   }
