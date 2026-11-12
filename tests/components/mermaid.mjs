@@ -62,6 +62,11 @@ export async function testMermaid(app) {
     await complete(calls[0]);
     assert.equal(containers.size, 0);
     assert(view.root.findByProps({ "aria-label": "Mermaid 图表" }));
+    await act(async () =>
+      view.root.findByProps({ "aria-expanded": false }).props.onClick(),
+    );
+    assert(view.root.findByProps({ "aria-expanded": true }));
+    assert(view.root.findByProps({ className: "mermaid-diagram is-expanded" }));
     assert(view.root.findByProps({ className: "hljs-keyword" }));
     assert(view.root.findAllByType("math").length > 0);
     await act(async () =>
@@ -86,6 +91,11 @@ export async function testMermaid(app) {
     await act(async () =>
       view.root.findByProps({ "aria-pressed": true }).props.onClick(),
     );
+    assert(view.root.findByProps({ "aria-expanded": true }));
+    await act(async () =>
+      view.root.findByProps({ "aria-expanded": true }).props.onClick(),
+    );
+    assert(view.root.findByProps({ "aria-expanded": false }));
 
     await update(markdown("flowchart LR\n  A[\n"));
     await waitForRender();

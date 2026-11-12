@@ -147,15 +147,39 @@
 .mermaid-actions {
   display: flex;
   align-items: center;
-  gap: 0.615385rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.307692rem;
+}
+.mermaid-block > .code-heading {
+  flex-wrap: wrap;
+  gap: 0.307692rem 0.615385rem;
+}
+.mermaid-actions select {
+  max-width: 100%;
+  padding: 0.307692rem;
+  border: 0;
+  border-radius: 4px;
+  background: var(--subtle);
+}
+.mermaid-zoom {
+  display: inline-flex;
+  align-items: center;
+}
+.mermaid-zoom > button:not(.icon-button) {
+  min-width: 3.384615rem;
+  padding: 0.307692rem;
+  font-variant-numeric: tabular-nums;
 }
 .mermaid-actions > button:not(.icon-button) {
   padding: 0.307692rem 0.461538rem;
   border-radius: 4px;
 }
 .mermaid-diagram {
-  padding: 1.230769rem;
+  padding: 0.923077rem;
+  max-height: min(36rem, 70vh);
   overflow: auto;
+  scrollbar-gutter: stable;
   background: var(--bg);
   text-align: center;
 }
@@ -164,6 +188,9 @@
   max-width: 100%;
   height: auto;
   margin: 0 auto;
+}
+.mermaid-diagram.is-expanded {
+  max-height: none;
 }
 .markdown .mermaid-status {
   margin: 0.923077rem 1.230769rem 0;

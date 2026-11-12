@@ -11,6 +11,10 @@ export function renderMermaid(source, theme) {
       suppressErrorRendering: true,
       theme,
       fontFamily: "Inter, Noto Sans SC, sans-serif",
+      fontSize: 13,
+      themeVariables: { fontSize: "13px" },
+      flowchart: { nodeSpacing: 24, rankSpacing: 28, padding: 10 },
+      sequence: { actorFontSize: 13, messageFontSize: 13, noteFontSize: 13 },
     });
     const container = document.createElement("div");
     container.className = "mermaid-render-target";
