@@ -90,6 +90,8 @@ package-lock.json      全项目依赖锁文件
 
 CLI 安装回归使用 `server/tests/cli-package.test.mjs` 验证原生平台包选择、下载失败保留旧安装、重试顺序、npm 成功后 CLI 失效及版本不一致。构建后以 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/cli-installation.mjs` 检查设置中的简短提示、诊断展开和安装重试，覆盖深浅主题、窄屏及 80% 至 200% 实际浏览器缩放。截图和构建来源保存在 `.cache/cli-installation/after`。设置 `BROWSER_BEFORE=1` 使用 `.cache/cli-installation-before` 的构建复现原始堆栈撑宽窗口。README 图片展示聊天、文件与侧栏，安装错误通过专项截图核对。
 
+单元和发行包测试通过 `--import ./tests/helpers/test-console.mjs` 预加载测试专用 `Console`，将控制台日志统一送入 stderr。Node.js 将该文本流独立转换为测试日志事件，stdout 专供二进制测试事件，避免旧版测试运行器混读 Unicode 日志导致反序列化错误。模块加载、测试执行和清理阶段均使用同一入口，直接运行单个测试时同样携带此参数。`tests/test-console.test.mjs` 连续十次启动两个并行测试进程，核对中文、emoji、多参数、对象和调用栈日志完整保留，并核对真实断言失败仍返回非零退出状态。上游问题见 [nodejs/node#65934](https://github.com/nodejs/node/issues/65934)。
+
 ## 双后端开发与验收
 
 双后端的统一范围由[产品契约](architecture/backends.md)定义；`shared/product-contract.mjs` 只注册工作区和对话方法的路由分组。原生能力分别接入统一用例，文件与网页终端由共用工作区服务提供。文件模糊查询按所属后端路由，Codex 保留原生 app-server 调用，Claude Code 使用原生 `file_suggestions` 控制请求及 CLI 文件索引；两端共用输入建议，回归同时核对原有 Codex 路径和 Claude 新增实现。CLI/SDK 生命周期、原生历史及参数发生变化时，同时检查首次请求、流式展示、轮次完成、刷新恢复和错误重试。Claude 执行服务通过受限本机 IPC 独立于网页桥接运行，网页关闭仅释放连接；源码与安装来源的代码身份按实际发行文件计算。

@@ -28,6 +28,8 @@
 
 `npm run architecture:check` 检查源码行数、缺失依赖、循环依赖和分层方向，并纳入 `npm run check` 与 CI。调整依赖边界时同步更新架构文档、检查实现及回归；验证新增状态的所有者、迟到响应隔离、断线恢复与卸载清理。按需加载的文件面板保留首次挂载后的编辑缓冲区，终端与文件分块同时验证生产路由及发行包安装。
 
+Node.js 单元与发行包测试统一预加载 `tests/helpers/test-console.mjs`，控制台文本经 stderr 与 stdout 二进制测试事件隔离。直接运行单文件时沿用该入口。日志传输修改同时验证 Unicode、并发输出、清理日志及真实失败退出状态。
+
 全局 npm 命令入口为 `bin/claudex-web.mjs`。发行包由根 `package.json` 的 `files` 白名单控制，`prepack` 构建前端。全局安装的配置放在用户配置目录，与 npm 包分离；源码运行继续读取项目根 `.env`。修改安装和分发逻辑时维护两种运行方式，保留已有 Codex 后端服务及用户配置。
 
 npm 发布由 `.github/workflows/npm-publish.yml` 在 GitHub 发布工作流成功后自动执行，也支持按公开标签重试。发布前核对发行包校验和、包版本、标签提交和临时安装结果，发布后核对 npm 公开下载及内容一致性；定时草稿到期公开后才上传 npm。同版本重试保持已发布内容，稳定版使用 `latest`，预发布使用 `next`。npm Trusted Publisher 绑定实际仓库及该工作流，采用 OIDC 直接发布。
