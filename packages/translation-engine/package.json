@@ -1,6 +1,6 @@
 {
   "name": "@claudex-web/translation-engine",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "type": "module",
   "license": "GPL-3.0-only",
   "description": "独立的本地英译中引擎与按需模型管理",
