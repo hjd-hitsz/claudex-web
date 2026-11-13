@@ -8,6 +8,7 @@ import { historyPerformanceFixture } from "../fixtures/history-performance.mjs";
 import { checkComposerSize } from "../helpers/composer-size.mjs";
 import { checkComposerEditing } from "../helpers/composer-editing.mjs";
 import { checkComposerMath } from "../helpers/composer-math.mjs";
+import { checkComposerBlocks } from "../helpers/composer-blocks.mjs";
 import {
   holdDocumentEditor,
   checkComposerInitialization,
@@ -25,6 +26,12 @@ await mkdir(output, { recursive: true });
 const { chromium } = await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE));
 const server = http.createServer(async (request, response) => {
   if (serveDemoSession(request, response)) return;
+  if (request.url === "/api/translation") {
+    response
+      .writeHead(200, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ enabled: false, state: "disabled", error: "" }));
+    return;
+  }
   try {
     const path = new URL(request.url, "http://fixture").pathname;
     let content = await readFile(
@@ -35,7 +42,7 @@ const server = http.createServer(async (request, response) => {
         .toString()
         .replace(
           "<head>",
-          `<head><script>{const saved=Object.entries(localStorage).filter(([key])=>key==='cx-current'||key.startsWith('cx-draft-'));(${historyPerformanceFixture.toString()})();for(const [key,value] of saved)localStorage.setItem(key,value);}</script>`,
+          `<head><script>{const saved=Object.entries(localStorage).filter(([key])=>key==='cx-current'||key==='cx-composer-height'||key==='cx-surface-size:message-editor'||key.startsWith('cx-draft-'));(${historyPerformanceFixture.toString()})();for(const [key,value] of saved)localStorage.setItem(key,value);}</script>`,
         );
     response
       .writeHead(200, {
@@ -94,6 +101,10 @@ try {
     "双美元符号公式在同段渲染、源码修改、撤销重做、正文续写及刷新恢复",
   );
   const editing = await checkComposerEditing(page, output, true);
+  await checkComposerBlocks(page, output);
+  checks.push(
+    "正文中间粘贴代码、公式、表格保留顺序与光标，整次撤销、代码续写及拖动展开",
+  );
   const fixedSize = await checkComposerSize(page);
   await page
     .locator(".composer")
@@ -385,11 +396,14 @@ try {
   await page.keyboard.press("Control+A");
   await page.keyboard.type("@READ");
   await page.getByRole("option", { name: /^README.md/ }).click();
-  await page.locator(".attachment").filter({ hasText: "README.md" }).waitFor();
+  await field
+    .locator(".document-reference")
+    .filter({ hasText: "README.md" })
+    .waitFor();
   await page.waitForFunction(() =>
-    localStorage.getItem("cx-draft-short").includes("@README.md"),
+    localStorage.getItem("cx-draft-short").includes("README.md"),
   );
-  assert((await field.textContent()).includes("@README.md"));
+  assert((await field.textContent()).includes("README.md"));
   checks.push("文件引用、附件与 Markdown 光标恢复");
   const historyRenders = await page.evaluate(
     () => window.historyFixture.richTextRenders,
@@ -454,7 +468,7 @@ try {
     false,
   );
   checks.push("深浅主题、80%～200% 缩放与窄屏");
-  checks.push("连续换行保持输入区尺寸及位置，超出内容可用滚轮上下滚动");
+  checks.push("连续换行自动增高至可用空间上限，超出内容可用滚轮上下滚动");
   checks.push(
     "普通文本与列表的完整两行、原生光标、点击与方向键定位、滚动后续写、字体变化和撤销重做",
   );

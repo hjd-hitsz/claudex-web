@@ -39,6 +39,8 @@ function insertMath(view, from, to, text) {
   )
     return false;
   const source = paragraphSource($from);
+  if (text.includes("\n") && openFormula(source, $from.parentOffset) < 0)
+    return false;
   // 整段插入交给 Markdown 解析，保留外围结构。
   if (!source && text.length > 1) return false;
   const candidate =
@@ -115,6 +117,12 @@ export function documentMathInput() {
     handlePaste(view, event) {
       const text = event.clipboardData?.getData("text/plain");
       if (!text) return false;
+      const { $from } = view.state.selection;
+      if (
+        !$from.parent.isTextblock ||
+        openFormula(paragraphSource($from), $from.parentOffset) < 0
+      )
+        return false;
       return insertMath(
         view,
         view.state.selection.from,

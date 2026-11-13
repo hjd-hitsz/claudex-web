@@ -1,9 +1,9 @@
 import { Plugin, TextSelection } from "@milkdown/kit/prose/state";
-import { Slice } from "@milkdown/kit/prose/model";
 import { parserCtx } from "@milkdown/kit/core";
 import { InputRule } from "@milkdown/kit/prose/inputrules";
 import { $inputRule, $prose } from "@milkdown/kit/utils";
 import { enterMarkdownTable } from "./document-table-input.js";
+import { insertDocumentMarkdown } from "./document-clipboard.js";
 
 export const documentInputRules = $prose(
   (ctx) =>
@@ -13,20 +13,19 @@ export const documentInputRules = $prose(
           if (
             view.composing ||
             text.length < 2 ||
-            from !== to ||
             !view.state.selection.$from.parent.isTextblock ||
-            view.state.selection.$from.parent.content.size ||
+            view.state.selection.$from.parent.type.spec.code ||
+            (view.state.storedMarks ?? view.state.selection.$from.marks()).some(
+              (mark) => mark.type.spec.code,
+            ) ||
+            (view.state.selection.$from.parent.content.size &&
+              !text.includes("\n")) ||
             !/[\n#*>`$~\[\]-]/.test(text)
           )
             return false;
           const doc = ctx.get(parserCtx)(text);
           if (!doc) return false;
-          view.dispatch(
-            view.state.tr
-              .replaceSelection(new Slice(doc.content, 0, 0))
-              .scrollIntoView(),
-          );
-          return true;
+          return insertDocumentMarkdown(view, doc, text);
         },
         handleKeyDown(view, event) {
           if (

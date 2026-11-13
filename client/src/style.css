@@ -18,6 +18,7 @@
 @import "./styles/questions.css";
 @import "./styles/composer.css";
 @import "./styles/document-editor.css";
+@import "./styles/composer-focus.css";
 @import "./styles/context.css";
 @import "./styles/files.css";
 @import "./styles/diffs.css";

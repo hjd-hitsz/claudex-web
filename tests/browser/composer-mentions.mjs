@@ -112,6 +112,14 @@ try {
       .last()
       .waitFor();
   }
+  await page.getByRole("button", { name: "展开输入框", exact: true }).click();
+  await clear();
+  await choose("sample.js");
+  assert(await field.locator('[data-reference-kind="file"]').isVisible());
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("dialog", { name: "编辑消息", exact: true })
+    .waitFor({ state: "hidden" });
   for (const query of ["@demo/", "@/", "@demo/nested/", "前文 @demo/"]) {
     await clear();
     await page.keyboard.type(query);

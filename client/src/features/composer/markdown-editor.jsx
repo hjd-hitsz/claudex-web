@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { EditorFrame } from "./editor-frame.jsx";
 
 export function MarkdownEditor({
   value,
@@ -6,6 +7,8 @@ export function MarkdownEditor({
   theme,
   expanded,
   activeId,
+  enlarged,
+  onEnlargedChange,
   ...inputProps
 }) {
   const label = inputProps["aria-label"] || "消息";
@@ -115,7 +118,12 @@ export function MarkdownEditor({
   }, [ready, expanded, activeId, props.placeholder, label]);
   const eventTarget = (event) => ({ ...event, target: inputRef.current });
   return (
-    <div className="markdown-composer">
+    <EditorFrame
+      value={value}
+      ready={ready}
+      expanded={enlarged}
+      onExpandedChange={onEnlargedChange}
+    >
       {!ready && (
         <textarea
           {...props}
@@ -147,12 +155,13 @@ export function MarkdownEditor({
           if (event.defaultPrevented) event.stopPropagation();
         }}
         onClick={(event) => {
-          if (ready) props.onClick?.(eventTarget(event));
+          if (ready && !event.target.closest(".cm-editor"))
+            props.onClick?.(eventTarget(event));
         }}
         onKeyUp={(event) => {
           if (ready) props.onKeyUp?.(eventTarget(event));
         }}
       />
-    </div>
+    </EditorFrame>
   );
 }

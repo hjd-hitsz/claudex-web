@@ -1,3 +1,6 @@
+.composer:has(.markdown-composer) {
+  position: relative;
+}
 .markdown-composer {
   min-width: 0;
   width: 100%;
@@ -6,7 +9,14 @@
   --document-padding-y: 0.25em;
   --document-padding-x: 0.307692rem;
   --document-height: 2lh;
+  --document-limit: 40dvh;
   padding-block: var(--document-padding-y);
+}
+.composer-resizer {
+  top: -0.4rem;
+  left: 2.5rem;
+  right: 2.5rem;
+  color: var(--muted);
 }
 .markdown-composer .milkdown {
   position: relative;
@@ -36,12 +46,12 @@
   --crepe-shadow-1: var(--shadow);
   --crepe-shadow-2: var(--shadow);
 }
-.markdown-composer > textarea,
+.composer .markdown-composer > textarea,
 .document-editor-viewport {
   box-sizing: border-box;
   height: var(--document-height);
-  min-height: var(--document-height);
-  max-height: var(--document-height);
+  min-height: 0;
+  max-height: var(--document-limit);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -56,18 +66,22 @@
   font: inherit;
 }
 .markdown-composer .milkdown .ProseMirror {
-  min-height: var(--document-height);
+  min-height: 2lh;
   overflow: visible;
   overflow-wrap: anywhere;
   color: var(--fg);
   caret-color: var(--fg);
   outline: none;
+  padding-block: 0.15rem 0.6rem;
 }
 .markdown-composer .milkdown .ProseMirror p {
   margin: 0;
   padding: 0;
   line-height: inherit;
   min-height: 1lh;
+}
+.markdown-composer .milkdown .ProseMirror > * + * {
+  margin-top: 0.45em;
 }
 .markdown-composer .milkdown .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
   margin: 0;
@@ -135,19 +149,40 @@
 }
 .document-math-inline {
   display: inline-block;
-  vertical-align: baseline;
+  vertical-align: middle;
   cursor: text;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.2em;
 }
 .document-math-inline:focus-visible {
   outline: 1px solid var(--muted);
 }
 .markdown-composer .milkdown .milkdown-code-block {
   margin: 0.4em 0;
+  padding: 0.3rem 0.6rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 0.5rem;
 }
 .markdown-composer .milkdown .milkdown-code-block .tools {
-  padding: 0.3rem 0.5rem;
+  padding: 0 0 0.3rem;
+}
+.markdown-composer .milkdown .milkdown-code-block .tools .language-button {
+  opacity: 1;
+  margin-bottom: 0;
+  background: transparent;
+  font-weight: 400;
+}
+.markdown-composer
+  .milkdown
+  .milkdown-code-block
+  .tools
+  .tools-button-group
+  button {
+  opacity: 1;
+  background: transparent;
+  font-weight: 400;
 }
 .markdown-composer .milkdown .milkdown-code-block :is(button, input) {
   font-size: 0.923077rem;

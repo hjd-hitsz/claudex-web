@@ -29,6 +29,7 @@ import {
 } from "./editor-selection.js";
 import { documentList } from "./document-list.js";
 import { documentMathInput } from "./document-math-input.js";
+import { documentPaste } from "./document-clipboard.js";
 import {
   documentMathParser,
   documentMathSchema,
@@ -113,9 +114,11 @@ export async function createDocumentEditor(
         ...schema(ctx),
         inclusive: false,
       }));
+      const mathInput = documentMathInput();
       ctx.update(editorViewOptionsCtx, (previous) => ({
         ...previous,
-        ...documentMathInput(),
+        ...mathInput,
+        handlePaste: documentPaste(ctx, mathInput.handlePaste),
         clipboardTextSerializer: referenceClipboardText,
       }));
       ctx.set("CodeMirrorThemeCtx", [syntaxHighlighting(codeHighlightStyle)]);

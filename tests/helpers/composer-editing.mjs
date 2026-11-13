@@ -103,7 +103,10 @@ export async function checkComposerEditing(page, output, capture = false) {
 }
 
 async function geometry(field) {
-  return field.evaluate((element) => {
+  return field.evaluate(async (element) => {
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
     const viewport = element.closest(".document-editor-viewport") || element;
     const bounds = viewport.getBoundingClientRect();
     const scale = bounds.height / parseFloat(getComputedStyle(viewport).height);

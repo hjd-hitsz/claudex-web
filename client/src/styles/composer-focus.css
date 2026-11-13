@@ -1,0 +1,91 @@
+.composer-surface {
+  display: block;
+  position: static;
+  inset: auto;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  overflow: visible;
+}
+.composer-surface[open] {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(66rem, calc(100vw - 2rem));
+  height: min(44rem, calc(100dvh - 3rem));
+  min-width: min(24rem, calc(100vw - 2rem));
+  min-height: min(20rem, calc(100dvh - 3rem));
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 3rem);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 1.25rem;
+  background: var(--composer);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.composer-surface::backdrop {
+  background: #0005;
+}
+.composer-focus-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem 0.45rem 1.4rem;
+  border-bottom: 1px solid var(--border);
+}
+.composer-focus-header strong {
+  font-size: 1rem;
+  font-weight: 500;
+}
+.composer-surface[open] .composer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0.8rem 1.4rem 1.2rem;
+}
+.composer-surface[open] .markdown-composer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.composer-surface[open] .document-editor-viewport,
+.composer-surface[open] .markdown-composer > textarea {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+}
+.composer-surface[open] .composer-toolbar {
+  flex: none;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.composer-surface[open] .composer-meta,
+.composer-surface[open] .composer-resizer {
+  display: none;
+}
+.composer-surface[open] .shortcut-popover {
+  bottom: 5rem;
+  left: 1.4rem;
+  right: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 9rem);
+}
+.composer-surface[open] .shortcut-heading {
+  flex: none;
+}
+.composer-surface[open] .shortcut-options {
+  min-height: 0;
+}

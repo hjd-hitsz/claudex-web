@@ -429,6 +429,7 @@ export function useComposerShortcuts(area) {
             key={item.id}
             onMouseDown={(e) => e.preventDefault()}
             onMouseEnter={() => setIndex(i)}
+            onMouseMove={() => setIndex(i)}
             onClick={() => choose(item)}
           >
             <span className="shortcut-icon">

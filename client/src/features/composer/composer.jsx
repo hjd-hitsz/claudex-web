@@ -1,7 +1,7 @@
 import { ModelSelect } from "./model-select.jsx";
 import { InputQueue } from "./input-queue.jsx";
 import { backendReady, backendCapability } from "../../domain/backends.js";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import {
   ArrowUp,
@@ -15,6 +15,8 @@ import {
   ListChecks,
   AlertCircle,
   RefreshCw,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import {
   useStore,
@@ -38,12 +40,15 @@ import { isCompacting } from "../../domain/compaction.js";
 import { CompactionStatus } from "./compaction-status.jsx";
 import { MarkdownEditor } from "./markdown-editor.jsx";
 import { AttachmentPreview } from "./attachment-preview.jsx";
+import { ComposerSurface } from "./composer-surface.jsx";
 export function Composer() {
   const [preview, setPreview] = useState(null);
+  const [enlarged, setEnlarged] = useState(false);
   const s = useStore(),
     draft = useDraft(),
     area = useRef(),
     files = useRef();
+  useEffect(() => setEnlarged(false), [s.current?.id, s.backendId, s.modal]);
   const annotationDrafts = useAnnotationDrafts(s.current?.id);
   const shortcuts = useComposerShortcuts(area);
   const active = s.active[s.current?.id];
@@ -67,7 +72,13 @@ export function Composer() {
     s.loading ||
     (access && access.status !== "ready" && !(checking && access.background));
   return (
-    <div className="composer-wrap">
+    <ComposerSurface
+      expanded={enlarged}
+      onClose={() => {
+        setEnlarged(false);
+        requestAnimationFrame(() => area.current?.focus());
+      }}
+    >
       <InputQueue />
       {compaction && (
         <CompactionStatus
@@ -113,8 +124,11 @@ export function Composer() {
       ) : (
         <div
           className="composer"
-          onDragOver={(e) => e.preventDefault()}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+          }}
           onDrop={(e) => {
+            if (!e.dataTransfer.files.length) return;
             e.preventDefault();
             add(e.dataTransfer.files);
           }}
@@ -160,6 +174,8 @@ export function Composer() {
             key={s.current?.id || "new-" + s.backendId}
             inputRef={area}
             theme={s.theme}
+            enlarged={enlarged}
+            onEnlargedChange={setEnlarged}
             rows={2}
             expanded={shortcuts.open}
             activeId={shortcuts.open ? shortcuts.activeId : undefined}
@@ -175,7 +191,9 @@ export function Composer() {
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value);
-              shortcuts.detect(e.target.value, e.target.selectionStart);
+              if (document.activeElement?.closest?.(".cm-content"))
+                shortcuts.close();
+              else shortcuts.detect(e.target.value, e.target.selectionStart);
             }}
             onClick={(e) =>
               shortcuts.detect(e.target.value, e.target.selectionStart)
@@ -194,7 +212,8 @@ export function Composer() {
               }
             }}
             onKeyDown={(e) => {
-              if (shortcuts.keydown(e)) return;
+              if (!e.target?.closest?.(".cm-content") && shortcuts.keydown(e))
+                return;
               if (
                 e.key === "Enter" &&
                 e.ctrlKey &&
@@ -237,6 +256,16 @@ export function Composer() {
               />
             </div>
             <div className="send-controls">
+              <IconButton
+                icon={enlarged ? Minimize2 : Maximize2}
+                title={enlarged ? "收起输入框" : "展开输入框"}
+                data-composer-expand={!enlarged || undefined}
+                aria-expanded={enlarged}
+                onClick={() => {
+                  setEnlarged(!enlarged);
+                  area.current?.focus();
+                }}
+              />
               {s.mode === "plan" && <span className="mode-badge">计划</span>}
               {active && (
                 <button
@@ -296,6 +325,6 @@ export function Composer() {
           )}
         </span>
       </div>
-    </div>
+    </ComposerSurface>
   );
 }
