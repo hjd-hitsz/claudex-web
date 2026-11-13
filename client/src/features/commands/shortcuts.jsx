@@ -81,7 +81,7 @@ export function useComposerShortcuts(area) {
     const before = text.slice(0, position),
       match = before.match(/(^|\s)([@/])([^\s@]*)$/);
     setTrigger(
-      match && (match[2] !== "/" || !before.slice(0, match.index).trim())
+      match
         ? {
             kind: match[2],
             query: match[3],
@@ -246,12 +246,38 @@ export function useComposerShortcuts(area) {
     const t = trigger,
       text = store.get().draft;
     if (item.kind === "command") {
-      const commandText = "/" + item.id + text.slice(t.end);
-      store.setDraft(commandText);
+      const prefix = text.slice(0, t.start);
+      const suffix = text.slice(t.end);
+      const inline = !!prefix.trim();
+      const remaining = prefix + suffix;
+      const commandText =
+        "/" +
+        item.id +
+        (inline ? (item.native ? " " + remaining : "") : suffix);
+      if (inline && !item.native) {
+        if (area.current?.replaceText)
+          area.current.replaceText("", t.start, t.end);
+        else store.setDraft(remaining);
+      } else store.setDraft(commandText);
       setTrigger(null);
       setIndex(0);
       area.current?.focus();
-      runComposerCommand(commandText).catch(store.report);
+      const threadId = s.current?.id;
+      function restoreDraft() {
+        if (
+          inline &&
+          !item.native &&
+          store.get().current?.id === threadId &&
+          store.get().draft === remaining
+        )
+          store.setDraft(text);
+      }
+      runComposerCommand(commandText, { onFailure: restoreDraft }).catch(
+        (error) => {
+          restoreDraft();
+          store.report(error);
+        },
+      );
       return;
     }
     if (item.kind === "skill" && t.kind === "/") {

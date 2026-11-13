@@ -132,12 +132,13 @@ const initPrompt = `请为当前工作目录中的项目生成 AGENTS.md，作�
 提供可执行的命令和准确的目录示例，省略不适用的章节，遵循项目现有语言与规范。`;
 
 let dispatching = false;
-export async function runComposerCommand(text) {
+export async function runComposerCommand(text, { onFailure } = {}) {
   if (dispatching) throw new Error("上一条命令仍在执行，请稍候重试。");
   if (!parseComposerCommand(text)) return false;
   dispatching = true;
   try {
-    return await executeCommand(text);
+    if ((await executeCommand(text)) === false) onFailure?.();
+    return true;
   } finally {
     dispatching = false;
   }
@@ -171,9 +172,7 @@ async function executeCommand(text) {
       modal: { type: "command", view, thread: s.current, cwd: s.cwd, ...extra },
     });
   if (command.native) {
-    if (!(await store.sendMessage(text, s.attachments, { clearDraft: true })))
-      return true;
-    return true;
+    return store.sendMessage(text, s.attachments, { clearDraft: true });
   }
   switch (command.id) {
     case "init": {
@@ -192,7 +191,7 @@ async function executeCommand(text) {
       } else if (
         !(await store.sendMessage(initPrompt, [], { clearDraft: false }))
       )
-        return true;
+        return false;
       break;
     }
     case "new":
@@ -213,7 +212,7 @@ async function executeCommand(text) {
       await store.review();
       break;
     case "compact":
-      if ((await store.compact()) === false) return true;
+      if ((await store.compact()) === false) return false;
       break;
     case "goal": {
       if (!args || args === "edit") {

@@ -233,6 +233,7 @@ export function fixture() {
               status: "completed",
               startedAt: 1,
               completedAt: 2,
+              items: initial,
             },
           ],
           nextCursor: null,
