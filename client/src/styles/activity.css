@@ -239,7 +239,6 @@
   border-radius: 50%;
   background: var(--green);
   flex: none;
-  animation: pulse 1.5s infinite;
 }
 .scroll-bottom {
   position: absolute;

@@ -252,6 +252,3 @@
 .fatal {
   padding: 3.076923rem;
 }
-.spin {
-  animation: spin 1s linear infinite;
-}
