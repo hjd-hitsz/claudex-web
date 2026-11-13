@@ -64,6 +64,9 @@ export function Sidebar() {
             onClick={() => {
               set({ sidebar: false });
               document.body.classList.toggle("sidebar-collapsed");
+              document
+                .querySelector('.topbar button[aria-label="显示侧栏"]')
+                ?.focus();
             }}
           />
         </div>
