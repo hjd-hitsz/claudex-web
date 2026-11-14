@@ -154,6 +154,11 @@ async function executeCommand(text) {
   if (!command) throw new Error(`未识别的命令 /${name}。输入 / 查看可用命令。`);
   let s = store.get();
   if (command.id === "goal" && !s.current) {
+    if (!args) {
+      store.set({ goalMode: true, mode: "default" });
+      if (s.draft === text) store.setDraft("");
+      return true;
+    }
     if (s.busy || s.loading)
       throw new Error("请等待当前操作结束后使用此命令。");
     await store.ensureThread();
@@ -203,7 +208,7 @@ async function executeCommand(text) {
       break;
     case "plan": {
       const mode = s.mode === "plan" ? "default" : "plan";
-      store.set({ mode });
+      store.set({ mode, goalMode: false });
       store.notice(mode === "plan" ? "已切换到计划模式" : "已切换到执行模式");
       break;
     }
@@ -215,26 +220,27 @@ async function executeCommand(text) {
       if ((await store.compact()) === false) return false;
       break;
     case "goal": {
-      if (!args || args === "edit") {
-        dialog("goal", { edit: args === "edit" });
+      if (!args) {
+        store.set({ goalMode: true, mode: "default" });
         break;
       }
-      const params = { threadId: s.current.id, origin: "user" };
-      if (args === "clear") await store.rpc("thread/goal/clear", params);
+      if (args === "edit") {
+        store.set({ panel: "goal" });
+        break;
+      }
+      if (args === "clear") await store.updateGoal(s.current.id, {}, true);
       else if (["pause", "resume"].includes(args))
-        await store.rpc("thread/goal/set", {
-          ...params,
+        await store.updateGoal(s.current.id, {
           status: args === "pause" ? "paused" : "active",
         });
       else {
         if (args.length > 4000) throw new Error("任务目标最多 4000 个字符。");
-        await store.rpc("thread/goal/set", {
-          ...params,
+        await store.updateGoal(s.current.id, {
           objective: args,
           status: "active",
         });
       }
-      if (store.get().current?.id === s.current.id) dialog("goal");
+      await store.refreshGoal(s.current.id);
       break;
     }
     case "skills":
@@ -291,7 +297,8 @@ export async function submitComposer() {
     const s = store.get();
     const annotations = readAnnotationDrafts(s.current?.id);
     if (!annotations.length && (await runComposerCommand(s.draft))) return;
-    await store.sendMessage(s.draft, s.attachments, { annotations });
+    if (s.goalMode) await store.submitGoal();
+    else await store.sendMessage(s.draft, s.attachments, { annotations });
   } catch (error) {
     store.report(error);
   }

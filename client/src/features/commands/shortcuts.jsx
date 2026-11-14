@@ -245,6 +245,16 @@ export function useComposerShortcuts(area) {
     if (!item || !trigger) return;
     const t = trigger,
       text = store.get().draft;
+    if (item.kind === "command" && item.id === "goal") {
+      if (area.current?.replaceText)
+        area.current.replaceText("", t.start, t.end);
+      else store.setDraft(text.slice(0, t.start) + text.slice(t.end));
+      store.set({ goalMode: true, mode: "default" });
+      setTrigger(null);
+      setIndex(0);
+      area.current?.focus();
+      return;
+    }
     if (item.kind === "command") {
       const prefix = text.slice(0, t.start);
       const suffix = text.slice(t.end);

@@ -1,3 +1,4 @@
+import { runGoalScenarios, runGoalZoom } from "./goal-scenarios.mjs";
 import assert from "node:assert/strict";
 export async function runCommandScenarios({
   page,
@@ -106,20 +107,34 @@ export async function runCommandScenarios({
   await waitFor(`document.body.textContent.includes('已生成 AGENTS.md')`);
   await submit("/goal 完成命令对照与回归验证");
   await waitFor(
-    `document.querySelector('[role="dialog"]')?.textContent.includes('保存并开始')`,
+    `document.querySelector('.goal-summary')?.textContent.includes('正在追踪目标')`,
   );
   await screenshot("goal-light");
-  await clickText("暂停目标");
+  await click('button[title="暂停目标"]');
   await waitFor(
-    `document.querySelector('[role="dialog"]')?.textContent.includes('已暂停')`,
+    `document.querySelector('.goal-summary')?.textContent.includes('目标已暂停')`,
   );
-  await clickText("恢复目标");
+  await click('button[title="恢复目标"]');
   await waitFor(
-    `document.querySelector('[role="dialog"]')?.textContent.includes('进行中')`,
+    `document.querySelector('.goal-summary')?.textContent.includes('正在追踪目标')`,
   );
+  await click('button[title="编辑目标"]');
+  await waitFor(`!!document.querySelector('.goal-editor')`);
+  await click(".goal-editor-input");
+  assert.equal(
+    await evaluate(`document.activeElement?.getAttribute('aria-label')`),
+    "目标",
+    "目标正文空白区域可直接点击输入",
+  );
+  assert.equal(
+    await evaluate(`document.querySelector('.goal-editor-budget').open`),
+    false,
+  );
+  await screenshot("goal-editor-default");
+  await click(".goal-editor-budget summary");
   for (const [selector, text] of [
-    ['[role="dialog"] textarea', "完成三项保留命令的验证"],
-    ['[role="dialog"] input[type="number"]', "5000"],
+    ['.goal-editor [contenteditable="true"]', "完成三项保留命令的验证"],
+    ['.goal-editor input[type="number"]', "5000"],
   ]) {
     await click(selector);
     await page("Input.dispatchKeyEvent", {
@@ -137,11 +152,32 @@ export async function runCommandScenarios({
     });
     await page("Input.insertText", { text });
   }
-  await clickText("保存并开始");
+  await screenshot("goal-editor-editing");
+  await clickText("保存");
   await waitFor(
     `commandFixture.requests.some(r=>r.method==='thread/goal/set'&&r.params.objective==='完成三项保留命令的验证'&&r.params.tokenBudget===5000&&r.params.origin==='user')`,
   );
-  await close();
+  await click('button[title="收起对话详情"]');
+  await runGoalScenarios({
+    submit,
+    type,
+    click,
+    clickText,
+    waitFor,
+    evaluate,
+    screenshot,
+  });
+  await runGoalZoom({
+    targetId,
+    call,
+    page,
+    evaluate,
+    waitFor,
+    submit,
+    click,
+    screenshot,
+    pause,
+  });
   await submit("/stop");
   await waitFor(
     `document.querySelector('[role="dialog"]')?.textContent.includes('npm run dev')`,
@@ -184,12 +220,10 @@ export async function runCommandScenarios({
         `document.documentElement.dataset.theme=${JSON.stringify(theme)}`,
       );
       await pause(350);
-      await submit("/goal");
-      await waitFor(
-        `document.querySelector('[role="dialog"]')?.textContent.includes('保存并开始')`,
-      );
+      await submit("/goal edit");
+      await waitFor(`!!document.querySelector('.goal-editor')`);
       const bounds = await evaluate(
-        `(()=>{const e=document.querySelector('[role="dialog"]'),r=e.getBoundingClientRect();return{left:r.left,right:r.right,bottom:r.bottom,viewport:innerWidth,scroll:document.documentElement.scrollWidth,inputs:[...e.querySelectorAll('input,textarea,button')].map(e=>({label:e.getAttribute('aria-label')||e.textContent.trim(),color:getComputedStyle(e).color,bg:getComputedStyle(e).backgroundColor}))}})()`,
+        `(()=>{const e=document.querySelector('.goal-editor'),r=e.getBoundingClientRect();return{left:r.left,right:r.right,bottom:r.bottom,viewport:innerWidth,scroll:document.documentElement.scrollWidth,inputs:[...e.querySelectorAll('input,textarea,button')].map(e=>({label:e.getAttribute('aria-label')||e.textContent.trim(),color:getComputedStyle(e).color,bg:getComputedStyle(e).backgroundColor}))}})()`,
       );
       assert(
         bounds.left >= 0 &&
@@ -198,7 +232,7 @@ export async function runCommandScenarios({
       );
       layouts.push({ theme, width, ...bounds });
       await screenshot(`goal-${theme}-${width}`);
-      await close();
+      await click('button[title="收起对话详情"]');
     }
   }
   await page("Emulation.setDeviceMetricsOverride", {

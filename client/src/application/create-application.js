@@ -1,3 +1,4 @@
+import { createGoals } from "./goals.js";
 import { createBackends } from "./backends.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { createAppState } from "./state.js";
@@ -117,6 +118,13 @@ export function createApplication() {
       timeout,
     );
   };
+  const goals = createGoals({
+    get,
+    set,
+    rpc,
+    navigation: { ensureThread: () => navigation.ensureThread() },
+    onEvent,
+  });
   const models = createModelPreferences({ get, set, rpc, transport, report });
   const backends = createBackends({
     transport,
@@ -231,6 +239,7 @@ export function createApplication() {
     startNotifications: notifications.start,
     startTranslationSettings: translation.start,
     setThinkingTranslation: translation.setEnabled,
+    ...goals,
     ...backends,
     ...navigation,
     ...catalog,

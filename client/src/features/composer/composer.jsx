@@ -1,3 +1,4 @@
+import { GoalSummary } from "./goal-summary.jsx";
 import { ModelSelect } from "./model-select.jsx";
 import { InputQueue } from "./input-queue.jsx";
 import { backendReady, backendCapability } from "../../domain/backends.js";
@@ -80,6 +81,7 @@ export function Composer() {
       }}
     >
       <InputQueue />
+      <GoalSummary />
       {compaction && (
         <CompactionStatus
           key={s.current?.id + compaction.id}
@@ -182,11 +184,13 @@ export function Composer() {
             placeholder={
               compacting
                 ? "正在整理上下文…"
-                : active
-                  ? backendCapability(s, "inputMode") === "queue"
-                    ? "输入后排队执行…"
-                    : "补充说明，或等待任务完成…"
-                  : "描述任务，@ 引用文件，/ 使用命令…"
+                : s.goalMode
+                  ? "描述目标，写明可衡量的完成条件…"
+                  : active
+                    ? backendCapability(s, "inputMode") === "queue"
+                      ? "输入后排队执行…"
+                      : "补充说明，或等待任务完成…"
+                    : "描述任务，@ 引用文件，/ 使用命令…"
             }
             value={draft}
             onChange={(e) => {
@@ -251,7 +255,10 @@ export function Composer() {
                 aria-pressed={s.mode === "plan"}
                 active={s.mode === "plan"}
                 onClick={() =>
-                  set({ mode: s.mode === "plan" ? "default" : "plan" })
+                  set({
+                    mode: s.mode === "plan" ? "default" : "plan",
+                    goalMode: false,
+                  })
                 }
               />
             </div>
@@ -266,6 +273,15 @@ export function Composer() {
                   area.current?.focus();
                 }}
               />
+              {s.goalMode && (
+                <button
+                  className="mode-badge"
+                  title="退出目标输入"
+                  onClick={() => set({ goalMode: false })}
+                >
+                  目标 <X size={12} />
+                </button>
+              )}
               {s.mode === "plan" && <span className="mode-badge">计划</span>}
               {active && (
                 <button
@@ -287,6 +303,7 @@ export function Composer() {
                   checking ||
                   compacting ||
                   s.busy ||
+                  s.goalBusy[s.current?.id] ||
                   (!draft.trim() &&
                     !s.attachments.length &&
                     !annotationDrafts.length)

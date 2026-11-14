@@ -9,6 +9,7 @@ export function MarkdownEditor({
   activeId,
   enlarged,
   onEnlargedChange,
+  fill = false,
   ...inputProps
 }) {
   const label = inputProps["aria-label"] || "消息";
@@ -117,13 +118,12 @@ export function MarkdownEditor({
     });
   }, [ready, expanded, activeId, props.placeholder, label]);
   const eventTarget = (event) => ({ ...event, target: inputRef.current });
+  const Frame = fill ? "div" : EditorFrame;
+  const frameProps = fill
+    ? { className: "markdown-composer" }
+    : { value, ready, expanded: enlarged, onExpandedChange: onEnlargedChange };
   return (
-    <EditorFrame
-      value={value}
-      ready={ready}
-      expanded={enlarged}
-      onExpandedChange={onEnlargedChange}
-    >
+    <Frame {...frameProps}>
       {!ready && (
         <textarea
           {...props}
@@ -162,6 +162,6 @@ export function MarkdownEditor({
           if (ready) props.onKeyUp?.(eventTarget(event));
         }}
       />
-    </EditorFrame>
+    </Frame>
   );
 }

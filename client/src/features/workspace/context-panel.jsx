@@ -1,3 +1,4 @@
+import { GoalEditor } from "../commands/goal-editor.jsx";
 import { useSurfaceResize } from "../../ui/surface-resize.jsx";
 import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
@@ -336,11 +337,21 @@ export function ContextWorkspace() {
       >
         {s.panel && resize.handle}
         {s.panel ? (
-          <div className="context-backbar">
-            <button onClick={() => set({ panel: null })}>
+          <div
+            className={
+              "context-backbar" +
+              (s.panel === "goal" ? " goal-panel-heading" : "")
+            }
+          >
+            <button
+              aria-label="返回概览"
+              title="返回概览"
+              onClick={() => set({ panel: null })}
+            >
               <ArrowLeft size={15} />
-              返回概览
+              {s.panel !== "goal" && "返回概览"}
             </button>
+            {s.panel === "goal" && <span>目标</span>}
             <IconButton
               icon={X}
               title="收起对话详情"
@@ -360,6 +371,7 @@ export function ContextWorkspace() {
             </Suspense>
           </div>
         )}
+        {s.panel === "goal" && s.current && <GoalEditor key={s.current.id} />}
         {s.panel === "changes" && (
           <div className="context-panel">
             <ChangesPanel />

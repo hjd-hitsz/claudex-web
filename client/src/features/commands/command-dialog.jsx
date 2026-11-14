@@ -1,10 +1,12 @@
-import { ResizableTextarea } from "../../ui/resizable-textarea.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { RefreshCw, LoaderCircle } from "lucide-react";
 import * as store from "../../store.js";
 import { commandPages } from "./composer-commands.js";
 
-export const commandTitles = { goal: "任务目标", stop: "清理后台终端" };
+export const commandTitles = {
+  "goal-replace": "替换当前目标？",
+  stop: "清理后台终端",
+};
 
 function useResource(load, key) {
   const { connected } = store.useStore();
@@ -84,123 +86,38 @@ function ActionError({ action }) {
   );
 }
 
-const goalStates = {
-  active: "进行中",
-  paused: "已暂停",
-  blocked: "等待解决阻塞",
-  usageLimited: "用量已达上限",
-  budgetLimited: "预算已达上限",
-  complete: "已完成",
-};
-function GoalDialog({ modal }) {
-  const resource = useResource(
-    () => store.rpc("thread/goal/get", { threadId: modal.thread.id }),
-    modal.thread.id,
-  );
+function GoalConfirmation({ modal }) {
   const action = useAction();
-  const [objective, edit] = useState("");
-  const [budget, setBudget] = useState("");
-  useEffect(() => {
-    if (resource.data) {
-      edit(resource.data.goal?.objective || "");
-      setBudget(resource.data.goal?.tokenBudget ?? "");
-    }
-  }, [resource.data]);
-  const goal = resource.data?.goal;
-  const mutate = (method, params) =>
-    action.run(async () => {
-      await store.rpc(method, {
-        threadId: modal.thread.id,
-        origin: "user",
-        ...params,
-      });
-      resource.reload();
-    });
   return (
     <>
-      <ResourceState resource={resource} />
-      {resource.data && (
-        <>
-          <p className="section-description">
-            目标会持续跟进，直到完成、暂停、达到预算或遇到阻塞。
-          </p>
-          <p role="status">
-            {goal
-              ? `${goalStates[goal.status] || "状态待更新"} · 已用 ${goal.tokensUsed.toLocaleString()} tokens · ${Math.round(goal.timeUsedSeconds)} 秒`
-              : "当前对话尚未设置目标"}
-          </p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const tokenBudget = budget === "" ? null : Number(budget);
+      <p>保留当前对话，并用输入框中的内容替换已保存的目标。</p>
+      <p className="goal-confirm-objective">{modal.draft}</p>
+      <ActionError action={action} />
+      <div className="modal-actions">
+        <button
+          className="secondary"
+          disabled={action.busy}
+          onClick={() => store.set({ modal: null })}
+        >
+          取消
+        </button>
+        <button
+          className="primary"
+          disabled={action.busy}
+          onClick={() =>
+            action.run(async () => {
               if (
-                tokenBudget !== null &&
-                (!Number.isSafeInteger(tokenBudget) || tokenBudget <= 0)
+                store.get().current?.id !== modal.thread.id ||
+                store.get().draft !== modal.draft
               )
-                return;
-              mutate("thread/goal/set", {
-                objective: objective.trim(),
-                status: "active",
-                tokenBudget,
-              });
-            }}
-          >
-            <label className="field-label">
-              目标
-              <ResizableTextarea
-                autoFocus
-                maxLength={4000}
-                rows={4}
-                value={objective}
-                onChange={(e) => edit(e.target.value)}
-              />
-            </label>
-            <label className="field-label">
-              Token 预算（留空表示不限）
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-              />
-            </label>
-            <ActionError action={action} />
-            <div className="modal-actions">
-              {goal && (
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={action.busy}
-                  onClick={() => mutate("thread/goal/clear", {})}
-                >
-                  清除目标
-                </button>
-              )}
-              {goal && (
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={action.busy}
-                  onClick={() =>
-                    mutate("thread/goal/set", {
-                      status: goal.status === "active" ? "paused" : "active",
-                    })
-                  }
-                >
-                  {goal.status === "active" ? "暂停目标" : "恢复目标"}
-                </button>
-              )}
-              <button
-                className="primary"
-                disabled={action.busy || !objective.trim()}
-              >
-                {action.busy ? "正在保存…" : "保存并开始"}
-              </button>
-            </div>
-          </form>
-        </>
-      )}
+                throw new Error("对话或目标内容已变化，请关闭窗口后重新提交。");
+              if (await store.submitGoal(true)) store.set({ modal: null });
+            })
+          }
+        >
+          {action.busy ? "正在保存…" : "替换目标"}
+        </button>
+      </div>
     </>
   );
 }
@@ -264,8 +181,8 @@ function TerminalsDialog({ modal }) {
 
 export function CommandDialog({ modal }) {
   switch (modal.view) {
-    case "goal":
-      return <GoalDialog modal={modal} />;
+    case "goal-replace":
+      return <GoalConfirmation modal={modal} />;
     case "stop":
       return <TerminalsDialog modal={modal} />;
   }

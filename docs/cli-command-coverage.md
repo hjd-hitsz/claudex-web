@@ -7,7 +7,7 @@
 ## 新增能力
 
 - `/init`：检查当前实际工作目录。已有 `AGENTS.md` 时保留并打开；缺少时通过正常轮次要求模型阅读项目、生成贡献指南，并在写入前再次检查已有文件。生成任务沿用当前模型、思考强度与速度，消息附件保持在输入框中。Claude Code 每次提交实时读取当前目录及所有祖先的 `AGENTS.override.md` 或 `AGENTS.md`，同目录优先 override，保留完整正文、文件路径和目录作用域；本轮快照替换旧快照，更新和删除从下一轮生效，原生 `CLAUDE.md` 继续适用。
-- `/goal [目标 | edit | pause | resume | clear]`：无参数或 `edit` 打开目标管理窗口；输入目标文字后设置并开始目标；`pause` 暂停、`resume` 恢复、`clear` 清除。窗口支持编辑目标与可选 token 预算，预算留空表示不限。新对话先创建实际对话，所有显式修改携带 `origin: user`，通过 `thread/goal/get`、`thread/goal/set` 和 `thread/goal/clear` 完成。
+- `/goal [目标 | edit | pause | resume | clear]`：无参数进入主输入框的目标输入状态，`edit` 打开侧边编辑器；输入目标文字后设置并开始目标；`pause` 暂停、`resume` 恢复、`clear` 清除。侧边编辑器支持 Markdown、还原、草稿恢复与可选 token 预算，预算留空表示不限。目标摘要常驻输入区上方并随原生通知更新；替换已有目标先确认。新对话在提交目标时创建实际对话，所有显式修改携带 `origin: user`，通过 `thread/goal/get`、`thread/goal/set` 和 `thread/goal/clear` 完成。
 - `/stop`：打开当前对话的后台终端列表，完整读取 `thread/backgroundTerminals/list` 分页，显示命令、目录与进程标识；点击“停止全部后台终端”调用 `thread/backgroundTerminals/clean`。聊天区原有停止按钮继续中断当前任务轮次。
 
 ## 原有命令

@@ -412,3 +412,9 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 异步回复收纳回归在构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/async-replies.mjs`。夹具保留真实 Codex 消息的 `delivery: async` 与 `phase: final_answer` 组合，检查中途回复在折叠时隐藏、展开后完整可读、连续补充保留一个工作过程及原展开状态、流式投递、最终回答操作与草稿；刷新、深浅主题、桌面与窄屏、80% 至 200% 实际页面缩放采用相同断言。截图及结果保存在 `.cache/async-replies/after`。`BROWSER_BEFORE=1 BROWSER_BUILD_DIR=/path/to/previous/dist` 使用旧构建复现外露；`CONVERSATION_NATIVE_FILE=/path/to/turn.json` 可重放只读导出的真实轮次，原生记录保存在 Git 忽略目录且不调用模型。测试结束恢复缩放并清理独立浏览器配置。README 图片展示普通已完成任务，现有图片继续适用。
 
 运行状态渲染回归使用 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/status-rendering.mjs`，通过隔离后端和生产构建验证运行、展开、完成、草稿保留及计时更新，并记录 3.1 秒稳定内容期间的绘制帧数与活动动画。证据写入 `.cache/status-rendering/after`。旧构建放入 `.cache/status-rendering/before/dist`，设置 `BROWSER_BEFORE=1` 复现循环动画引起的逐帧绘制。该回归关闭 GPU，验证浏览器绘制调度；实际 GPU 占用另通过桌面静置采样核对。
+
+### 目标交互回归
+
+本机客户端对照为 Codex 26.1007.21434 的 `/usr/lib/chatgpt/resources/app.asar`：`app-primary-f49030709665.js` 包含目标输入指示、常驻摘要、替换确认及操作；`thread-goal-side-panel-content-3f8ca4dc6e07.js` 包含侧边 Markdown 编辑、还原、保存与更新时间，`toolbar-row-123131d0eebd.js` 确认更新时间与操作同排的紧凑布局；`app-initial-ed5807835d97.js` 包含原生目标设置、状态更新及清除调用。客户端窗口控制超时，行为依据来自上述可取得的打包实现。提取资源保存在忽略目录 `.cache/goal-client`。
+
+构建后运行 `CHROME_PATH=/path/to/chromium BROWSER_OUTPUT_DIR=.cache/goal-browser node tests/browser/commands.mjs`，使用生产构建及隔离模拟对话核对目标创建、暂停、恢复、侧边编辑、预算、深浅主题、窄屏及 80%～200% 实际浏览器缩放；通过 Chromium 设置页调整页面缩放并核对 DPR。目标控制器测试覆盖通知与迟到请求、重复提交、失败重试和替换确认。`node --import ./tests/helpers/test-console.mjs tests/integration/codex-native-goals.mjs` 使用临时原生目录验证真实 Codex 的暂停目标创建、读取、编辑、清除与通知，模型调用为零；Claude 原生执行验证使用同样预加载入口运行 `tests/integration/claude-native-goals.mjs`，接入本机模拟模型服务，核对原生目标评估及预算生命周期。README 现有图片展示普通对话及文件预览，目标专项截图单独保存在上述目录。右侧目标面板采用单行标题、紧凑工具栏与独立滚动正文，预算默认收起，展开后验证输入与保存。面板调整前的桌面及手机对照图保存在 `.cache/goal-panel-before`。

@@ -1,0 +1,176 @@
+.goal-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.goal-summary-text {
+  display: flex;
+  flex: 1;
+  min-width: 80px;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 3px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  border: 0;
+}
+.goal-summary-text strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.goal-summary-text span {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  color: var(--muted);
+}
+.goal-summary > .inline-error {
+  width: 100%;
+}
+.goal-panel-heading {
+  min-height: 42px;
+  padding: 4px 12px;
+  gap: 6px;
+}
+.goal-panel-heading > span {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+.goal-panel-heading > button:first-child {
+  padding: 0;
+  width: 28px;
+  height: 28px;
+}
+.goal-panel-heading > .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.goal-editor {
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+}
+.goal-editor-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  min-height: 40px;
+  gap: 4px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.goal-editor-actions > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.goal-editor-actions .icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+.goal-editor-actions .primary {
+  min-height: 28px;
+  padding: 3px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.goal-editor-footer {
+  flex: none;
+  border-top: 1px solid var(--border);
+  padding: 8px 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.goal-editor-budget summary {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 6px;
+  min-height: 24px;
+  list-style: none;
+}
+.goal-editor-budget summary::-webkit-details-marker {
+  display: none;
+}
+.goal-editor-budget[open] summary > svg {
+  transform: rotate(90deg);
+}
+.goal-budget-value {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.goal-editor-budget .field-label {
+  margin: 8px 0;
+  font-size: 12px;
+}
+.goal-editor-budget input {
+  padding: 6px 8px;
+  height: 32px;
+  border-radius: 6px;
+}
+.goal-editor-footer small {
+  display: block;
+  font-size: 11px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.goal-editor > .inline-error {
+  margin: 8px 16px;
+}
+
+.goal-confirm-objective {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.goal-editor-input {
+  margin: 0;
+  padding: 16px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+}
+
+.goal-editor-input .markdown-composer {
+  display: flex;
+  flex-direction: column;
+}
+.goal-editor-input .document-editor-viewport {
+  flex: 1;
+  height: auto;
+  max-height: none;
+}
+
+.goal-editor-input .document-editor-viewport {
+  display: flex;
+  flex-direction: column;
+}
+.goal-editor-input .milkdown {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.goal-editor-input .ProseMirror {
+  flex: 1;
+}

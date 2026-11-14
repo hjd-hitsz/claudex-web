@@ -9,6 +9,7 @@ import {
   visibleBackendThreads,
 } from "../domain/backend-visibility.js";
 export function createAppState() {
+  const goalModes = saved("cx-goal-modes", {});
   const modes = saved("cx-thread-modes", {});
   const terminalVisibility = new Map();
   let state = {
@@ -28,6 +29,10 @@ export function createAppState() {
     archived: false,
     search: "",
     current: null,
+    goals: {},
+    goalErrors: {},
+    goalBusy: {},
+    goalMode: false,
     items: [],
     turns: {},
     turnTimings: {},
@@ -135,6 +140,10 @@ export function createAppState() {
       patch = {
         ...patch,
         mode: patch.mode ?? modes[id] ?? "default",
+        goalMode:
+          patch.goalMode ??
+          goalModes[id || "new-" + state.backendId] ??
+          (!previousThreadId && id ? state.goalMode : false),
       };
     }
     if (Object.hasOwn(patch, "mode")) {
@@ -154,6 +163,14 @@ export function createAppState() {
       const compactions = { ...(patch.compactions ?? state.compactions) };
       delete compactions[previousThreadId];
       patch = { ...patch, compactions };
+    }
+    if (Object.hasOwn(patch, "goalMode")) {
+      const id =
+        (Object.hasOwn(patch, "current")
+          ? patch.current?.id
+          : state.current?.id) || "new-" + state.backendId;
+      goalModes[id] = patch.goalMode;
+      persist("cx-goal-modes", goalModes);
     }
     if (patch.active) {
       const unreadCompletions = {

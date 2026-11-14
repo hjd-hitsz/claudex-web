@@ -118,6 +118,12 @@ try {
     flatten: true,
   });
   const page = (method, params) => call(method, params, sessionId);
+  await page("Runtime.enable");
+  ws.addEventListener("message", (event) => {
+    const data = JSON.parse(event.data);
+    if (data.method === "Runtime.exceptionThrown")
+      console.error(JSON.stringify(data.params));
+  });
   const evaluate = async (expression) => {
     const r = await page("Runtime.evaluate", {
       expression,
@@ -175,6 +181,9 @@ try {
     );
   };
   const type = async (text) => {
+    await waitFor(
+      `!!document.querySelector('.composer .ProseMirror[aria-label="消息"]')`,
+    );
     await click('.composer [aria-label="消息"]');
     assert.equal(
       await evaluate(`document.activeElement?.getAttribute('aria-label')`),

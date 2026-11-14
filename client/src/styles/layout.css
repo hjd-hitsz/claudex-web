@@ -146,6 +146,7 @@
   overflow: hidden;
 }
 .conversation-footer {
+  isolation: isolate;
   flex: none;
   min-width: 0;
 }

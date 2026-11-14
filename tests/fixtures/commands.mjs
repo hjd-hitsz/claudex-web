@@ -61,7 +61,15 @@ export function fixture() {
     if (!legacy)
       socket.emit("lan/compaction", { threadId: thread.id, compaction: entry });
   };
+  let goalFailure = false;
   window.commandFixture = {
+    failGoal(value) {
+      goalFailure = value;
+    },
+    updateGoal(patch) {
+      goal = { ...goal, ...patch };
+      socket.emit("thread/goal/updated", { threadId: thread.id, goal });
+    },
     requests,
     files,
     setFail(value) {
@@ -264,13 +272,16 @@ export function fixture() {
           ),
         };
       if (method === "thread/goal/get") result = { goal };
-      if (method === "thread/goal/set") {
+      if (method === "thread/goal/set" && goalFailure) {
+        error = { message: "目标保存失败" };
+      } else if (method === "thread/goal/set") {
         goal = {
           tokensUsed: 1200,
           timeUsedSeconds: 30,
           tokenBudget: null,
           ...goal,
           ...params,
+          updatedAt: Math.floor(Date.now() / 1000),
         };
         result = { goal };
       }

@@ -74,7 +74,9 @@ export async function testCommands(app, requests, setResponse) {
   const open = async () => {
     await act(async () => {
       view = create(
-        React.createElement(app.CommandDialog, { modal: app.get().modal }),
+        app.get().panel === "goal" && app.get().modal?.view !== "stop"
+          ? React.createElement(app.GoalEditor)
+          : React.createElement(app.CommandDialog, { modal: app.get().modal }),
       );
     });
   };
@@ -85,7 +87,10 @@ export async function testCommands(app, requests, setResponse) {
   const button = (text) =>
     view.root
       .findAllByType("button")
-      .find((node) => node.props.children === text);
+      .find(
+        (node) =>
+          node.props.children === text || node.props["aria-label"] === text,
+      );
   try {
     setResponse(response);
     app.set({
@@ -279,19 +284,15 @@ export async function testCommands(app, requests, setResponse) {
         .props.onChange({ target: { value: "5000" } }),
     );
     fail = "thread/goal/set";
-    await act(async () =>
-      view.root.findByType("form").props.onSubmit({ preventDefault() {} }),
-    );
+    await act(async () => button("保存").props.onClick());
     assert(JSON.stringify(view.toJSON()).includes("模拟请求失败"));
     assert.equal(view.root.findByType("textarea").props.value, "编辑后的目标");
     fail = "";
-    await act(async () =>
-      view.root.findByType("form").props.onSubmit({ preventDefault() {} }),
-    );
+    await act(async () => button("保存").props.onClick());
     assert.equal(goal.objective, "编辑后的目标");
     assert.equal(goal.tokenBudget, 5000);
     assert.equal(goal.origin, "user");
-    await act(async () => button("暂停目标").props.onClick());
+    await act(async () => app.updateGoal(thread.id, { status: "paused" }));
     assert.equal(goal.status, "paused");
     assert.equal(app.get().draft, "保留主草稿");
     assert.deepEqual(app.get().attachments, [attachment]);

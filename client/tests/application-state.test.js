@@ -120,3 +120,26 @@ test("主题跟随系统，已有手动主题偏好不再覆盖系统主题", (t
   });
   assert.equal(createAppState().get().theme, "system");
 });
+
+test("首次创建目标对话继承输入模式，切换及刷新恢复各自选择", (t) => {
+  const previous = globalThis.localStorage;
+  const storage = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+  };
+  t.after(() => {
+    globalThis.localStorage = previous;
+  });
+  const state = createAppState();
+  state.set({ goalMode: true });
+  state.set({ current: { id: "goal-a" } });
+  assert.equal(state.get().goalMode, true);
+  state.set({ current: { id: "goal-b" } });
+  assert.equal(state.get().goalMode, false);
+  state.set({ current: { id: "goal-a" } });
+  assert.equal(state.get().goalMode, true);
+  const restored = createAppState();
+  restored.set({ current: { id: "goal-a" } });
+  assert.equal(restored.get().goalMode, true);
+});
