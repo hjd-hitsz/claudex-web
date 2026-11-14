@@ -3,10 +3,17 @@ import { X509Certificate } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import https from "node:https";
 const execute = promisify(execFile);
 const job = JSON.parse(await readFile(process.argv[2], "utf8"));
+const environment = {
+  ...process.env,
+  ...job.environment,
+  PATH:
+    job.environment?.PATH ||
+    `${dirname(process.execPath)}${delimiter}${process.env.PATH || ""}`,
+};
 const save = async (state, error = "") => {
   await writeFile(
     job.statusFile + ".tmp",
@@ -67,7 +74,7 @@ try {
         "--registry=https://registry.npmjs.org",
         "--engine-strict",
       ],
-      { timeout: 600000, maxBuffer: 4 * 1024 * 1024 },
+      { timeout: 600000, maxBuffer: 4 * 1024 * 1024, env: environment },
     );
     const installed = join(stage, "lib/node_modules", job.packageName);
     const manifest = JSON.parse(

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, delimiter, join } from "node:path";
 import { createServiceMaintenance } from "../src/service-maintenance.mjs";
 import { createMaintenanceHandler } from "../src/http/maintenance.mjs";
 
@@ -48,11 +48,40 @@ test("restart is independent of updates and persists a worker job", async () => 
     );
     assert.equal(job.action, "restart");
     assert.equal(job.port, 1234);
+    assert.equal(
+      job.environment.PATH.split(delimiter)[0],
+      dirname(process.execPath),
+    );
+    assert.equal(job.environment.HOME, process.env.HOME);
+    assert.equal(job.environment.CLAUDEX_WEB_CONFIG_DIR, undefined);
     assert.match(
       await readFile(join(configDir, "maintenance/worker.mjs"), "utf8"),
       /node:https/,
     );
   } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test("failed systemd launch releases the submission gate and permits retry", async () => {
+  const configDir = await mkdtemp(join(tmpdir(), "maintenance-launch-"));
+  let fail = true;
+  const service = createServiceMaintenance({
+    config: { configDir, port: 1234 },
+    version: { version: "4.0.1" },
+    run: async (command) => {
+      if (command === "systemd-run" && fail) throw new Error("launch failed");
+      return { stdout: String(process.pid) };
+    },
+  });
+  try {
+    await assert.rejects(service.start("restart"), /launch failed/);
+    assert.equal(service.switching, false);
+    assert.equal((await service.status()).task.state, "failed");
+    fail = false;
+    assert.equal((await service.start("restart")).task.state, "restarting");
+  } finally {
+    service.close();
     await rm(configDir, { recursive: true, force: true });
   }
 });

@@ -9,7 +9,7 @@ import {
   rename,
 } from "node:fs/promises";
 import { constants } from "node:fs";
-import { join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const execute = promisify(execFile);
@@ -162,6 +162,26 @@ export function createServiceMaintenance({
         statusFile,
         port: config.port,
         cert: config.tlsCert || join(config.configDir, "tls/certificate.pem"),
+        // 独立用户单元使用管理器的环境，npm 须沿用网页服务的安装与网络环境。
+        environment: Object.fromEntries(
+          Object.entries({
+            ...process.env,
+            PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH || ""}`,
+          }).filter(
+            ([key]) =>
+              [
+                "PATH",
+                "HOME",
+                "XDG_CONFIG_HOME",
+                "NODE_EXTRA_CA_CERTS",
+                "NODE_USE_ENV_PROXY",
+                "SSL_CERT_FILE",
+                "SSL_CERT_DIR",
+              ].includes(key) ||
+              /^(https?|all|no)_proxy$/i.test(key) ||
+              /^npm_config_/i.test(key),
+          ),
+        ),
       };
       await writeFile(join(directory, "job.json"), JSON.stringify(job), {
         mode: 0o600,
@@ -191,6 +211,7 @@ export function createServiceMaintenance({
           join(directory, "job.json"),
         ]);
       } catch (failure) {
+        switching = false;
         await writeFile(
           statusFile,
           JSON.stringify({ ...task, state: "failed", error: failure.message }),
