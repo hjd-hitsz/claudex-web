@@ -7,6 +7,8 @@ export async function testForkTitles(app, requests, setResponse) {
     name: "训练进展",
     cwd: "/fixture/forks",
     createdAt: 1,
+    model: "gpt-6.1-sol",
+    reasoningEffort: "medium",
   };
   const archived = {
     ...root,
@@ -29,6 +31,8 @@ export async function testForkTitles(app, requests, setResponse) {
         id: `fork-title-created-${++number}`,
         name: null,
         forkedFromId: params.threadId,
+        model: params.model || "gpt-6.1-terra",
+        reasoningEffort: params.config?.model_reasoning_effort || "high",
       };
       records.push(thread);
       return { thread };
@@ -40,6 +44,9 @@ export async function testForkTitles(app, requests, setResponse) {
       return {
         thread: { ...records.find((thread) => thread.id === params.threadId) },
         cwd: root.cwd,
+        model: records.find((thread) => thread.id === params.threadId)?.model,
+        reasoningEffort: records.find((thread) => thread.id === params.threadId)
+          ?.reasoningEffort,
       };
     if (method === "lan/projectless/read") return { directories: {} };
     return { data: [], nextCursor: null };
@@ -47,6 +54,8 @@ export async function testForkTitles(app, requests, setResponse) {
   try {
     app.set({
       connected: true,
+      model: root.model,
+      effort: root.reasoningEffort,
       threads: [root],
       current: root,
       archived: false,
@@ -62,6 +71,10 @@ export async function testForkTitles(app, requests, setResponse) {
     const sent = requests.slice(start);
     const forks = sent.filter((request) => request.method === "thread/fork");
     assert.equal(forks[0].params.lastTurnId, "selected-turn");
+    assert.equal(forks[0].params.model, "gpt-6.1-sol");
+    assert.equal(forks[0].params.config.model_reasoning_effort, "medium");
+    assert.equal(app.get().model, "gpt-6.1-sol");
+    assert.equal(app.get().effort, "medium");
     assert.equal(forks[1].params.threadId, records[1].id);
     assert(
       sent.some(
@@ -76,6 +89,13 @@ export async function testForkTitles(app, requests, setResponse) {
     await app.rename(app.get().current, "手动标题 (2026)");
     await app.fork();
     assert.equal(app.get().current.name, "手动标题 (2026) (2)");
+    app.set({ model: "gpt-6.1-terra", effort: "high" });
+    await app.fork(root);
+    assert.equal(app.get().model, "gpt-6.1-sol");
+    assert.equal(
+      requests.filter((r) => r.method === "thread/fork").at(-1).params.model,
+      root.model,
+    );
   } finally {
     app.newChat();
     app.set(original);

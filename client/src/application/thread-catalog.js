@@ -207,6 +207,15 @@ export function createThreadCatalog({
     await loadThreads().catch(report);
   }
   async function fork(thread = get().current, lastTurnId) {
+    const selection =
+      get().current?.id === thread.id
+        ? { model: get().model, reasoningEffort: get().effort }
+        : (
+            await rpc("thread/read", {
+              threadId: thread.id,
+              includeTurns: false,
+            })
+          ).thread;
     const revision = records.nameRevision;
     const family = [];
     for (const archived of [false, true]) {
@@ -228,6 +237,10 @@ export function createThreadCatalog({
     const name = nextForkTitle(source, threads);
     const r = await rpc("thread/fork", {
       threadId: thread.id,
+      ...(selection.model && { model: selection.model }),
+      ...(selection.reasoningEffort && {
+        config: { model_reasoning_effort: selection.reasoningEffort },
+      }),
       excludeTurns: true,
       ...(lastTurnId ? { lastTurnId } : {}),
       ...(thread.threadSource === PROJECTLESS_SOURCE
