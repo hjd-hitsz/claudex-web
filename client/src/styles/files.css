@@ -129,6 +129,84 @@
 .file-status {
   flex-shrink: 0;
 }
+.file-markdown-preview > .markdown-composer {
+  height: 100%;
+  --document-height: 100%;
+  --document-limit: none;
+  --document-padding-x: 0;
+}
+.file-markdown-preview .document-editor-viewport {
+  overflow: visible;
+  height: auto;
+}
+.file-markdown-preview .markdown-composer > textarea {
+  width: 100%;
+  height: 100%;
+  resize: none;
+}
+.file-document-code > div:first-child {
+  display: flex;
+  justify-content: flex-end;
+}
+.file-document-code > div:first-child button {
+  font-size: 0.846154rem;
+  color: var(--muted);
+  padding: 0.25em 0.5em;
+}
+.file-document-code > div > .markdown > .code-block {
+  margin-top: 0;
+}
+.file-document-code > pre {
+  padding: 0.75em;
+  background: var(--subtle);
+  border-radius: 0.5rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.file-document-image {
+  display: inline-block;
+  width: 100%;
+}
+.file-document-html-inline > .markdown,
+.file-document-html-inline > .markdown > p {
+  display: contents;
+}
+.file-document-html-block {
+  display: block;
+}
+.file-markdown-preview
+  a:has(img:not(.ProseMirror-separator))
+  > .file-link-icon {
+  display: none;
+}
+.file-markdown-preview .milkdown-latex-inline-edit[data-show="false"] {
+  display: none;
+}
+.file-markdown-preview .milkdown-latex-inline-edit {
+  position: absolute;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+}
+.file-markdown-preview .milkdown-latex-inline-edit .container {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+.file-markdown-preview .milkdown-latex-inline-edit button {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+.file-markdown-preview .milkdown-latex-inline-edit button:hover {
+  background: var(--hover);
+}
+.file-markdown-preview .milkdown-latex-inline-edit .ProseMirror {
+  min-width: 10rem;
+  max-width: min(18rem, 60vw);
+  font-family: var(--mono);
+}
 .cm-editor.cm-focused {
   outline: none;
 }

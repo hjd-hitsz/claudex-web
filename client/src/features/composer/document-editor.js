@@ -70,7 +70,7 @@ function restoreTrailingSpace(view, text) {
 
 export async function createDocumentEditor(
   parent,
-  { value, onChange, placeholder },
+  { value, onChange, placeholder, file = false, configure },
 ) {
   let suppressed = false;
   let destroyed = false;
@@ -83,7 +83,7 @@ export async function createDocumentEditor(
       [Crepe.Feature.Table]: false,
       [Crepe.Feature.ListItem]: false,
       [Crepe.Feature.ImageBlock]: false,
-      [Crepe.Feature.Latex]: false,
+      [Crepe.Feature.Latex]: file,
     },
     featureConfigs: {
       [Crepe.Feature.Cursor]: { virtual: false },
@@ -114,12 +114,12 @@ export async function createDocumentEditor(
         ...schema(ctx),
         inclusive: false,
       }));
-      const mathInput = documentMathInput();
+      const mathInput = file ? {} : documentMathInput();
       ctx.update(editorViewOptionsCtx, (previous) => ({
         ...previous,
         ...mathInput,
         handlePaste: documentPaste(ctx, mathInput.handlePaste),
-        clipboardTextSerializer: referenceClipboardText,
+        ...(!file && { clipboardTextSerializer: referenceClipboardText }),
       }));
       ctx.set("CodeMirrorThemeCtx", [syntaxHighlighting(codeHighlightStyle)]);
       ctx.update(remarkStringifyOptionsCtx, (previous) => ({
@@ -132,32 +132,31 @@ export async function createDocumentEditor(
     })
     .use(documentInputRules)
     .use(documentLinkRule)
-    .use(documentList)
-    .use(documentMathParser)
-    .use(documentReferenceSchema)
-    .use(documentReferenceView)
-    .use(documentReferenceKeys)
-    .use(documentMathSchema)
-    .use(documentMathView)
-    .use(
-      $prose(
-        (ctx) =>
-          new Plugin({
-            view: () => ({
-              update(view, previous) {
-                if (
-                  !suppressed &&
-                  !destroyed &&
-                  !view.state.doc.eq(previous.doc)
-                )
-                  onChange(
-                    serializeDraft(view.state.doc, ctx.get(serializerCtx)),
-                  );
-              },
-            }),
+    .use(documentList);
+  if (!file)
+    crepe.editor
+      .use(documentMathParser)
+      .use(documentReferenceSchema)
+      .use(documentReferenceView)
+      .use(documentReferenceKeys)
+      .use(documentMathSchema)
+      .use(documentMathView);
+  configure?.(crepe.editor);
+  crepe.editor.use(
+    $prose(
+      (ctx) =>
+        new Plugin({
+          view: () => ({
+            update(view, previous) {
+              if (!suppressed && !destroyed && !view.state.doc.eq(previous.doc))
+                onChange(
+                  serializeDraft(view.state.doc, ctx.get(serializerCtx)),
+                );
+            },
           }),
-      ),
-    );
+        }),
+    ),
+  );
   try {
     await crepe.create();
   } catch (error) {

@@ -97,6 +97,23 @@ export async function testFilePanel(app, requests, setResponse) {
     assert(view.root.findAllByType("math").length > 0);
     assert.equal(view.root.findAllByType("script").length, 0);
     assert.equal(button("保存文件").props.disabled, true);
+    const previewDraft = markdown + "\n\n直接编辑预览。";
+    await act(async () =>
+      button("Markdown 文件预览").props.onChange({
+        target: { value: previewDraft },
+      }),
+    );
+    assert.equal(button("保存文件").props.disabled, false);
+    assert(listeners.has("beforeunload"));
+    await act(async () => button("编辑 Markdown 源码").props.onClick());
+    assert.equal(button("文件源码").props.value, previewDraft);
+    await act(async () => button("预览 Markdown").props.onClick());
+    assert.equal(button("Markdown 文件预览").props.value, previewDraft);
+    await act(async () =>
+      button("Markdown 文件预览").props.onChange({
+        target: { value: markdown },
+      }),
+    );
     assert(
       requests.some(
         ({ method, params }) =>

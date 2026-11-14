@@ -33,6 +33,20 @@ try {
         name: "editor-fixture",
         setup(builder) {
           builder.onResolve(
+            { filter: /(?:^|\/)file-markdown-editor(?:\.jsx)?$/ },
+            () => ({
+              path: "file-markdown-editor",
+              namespace: "editor-fixture",
+            }),
+          );
+          builder.onLoad(
+            { filter: /^file-markdown-editor$/, namespace: "editor-fixture" },
+            () => ({
+              resolveDir: root,
+              contents: `import React from 'react'; import {RichText} from ${JSON.stringify(root + "client/src/features/markdown/rich-text.jsx")}; export function FileMarkdownEditor({path,text,onChange}) {return React.createElement('div', null, React.createElement(RichText, {text,cwd:path.slice(0,path.lastIndexOf('/'))}), React.createElement('textarea', {'aria-label':'Markdown 文件预览', value:text, onChange:e=>onChange(e.target.value)}))}`,
+            }),
+          );
+          builder.onResolve(
             { filter: /(?:^|\/)markdown-editor(?:\.jsx)?$/ },
             () => ({ path: "markdown-editor", namespace: "editor-fixture" }),
           );

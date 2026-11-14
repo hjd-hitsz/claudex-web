@@ -10,13 +10,15 @@ export function MarkdownEditor({
   enlarged,
   onEnlargedChange,
   fill = false,
+  file = false,
+  configure,
   ...inputProps
 }) {
   const label = inputProps["aria-label"] || "消息";
   const props = {
     ...inputProps,
     "aria-label": label,
-    "aria-autocomplete": "list",
+    "aria-autocomplete": file ? undefined : "list",
     "aria-expanded": expanded,
     "aria-activedescendant": activeId,
   };
@@ -41,6 +43,8 @@ export function MarkdownEditor({
         instance = await createDocumentEditor(mount.current, {
           value: initialValue,
           placeholder: latest.current.props.placeholder,
+          file,
+          configure,
           onChange(text) {
             if (disposed || !editor.current) return;
             rendered.current = text;
@@ -111,8 +115,10 @@ export function MarkdownEditor({
       role: "textbox",
       "aria-label": label,
       "aria-multiline": "true",
-      "aria-autocomplete": "list",
-      "aria-expanded": String(expanded),
+      ...(!file && {
+        "aria-autocomplete": "list",
+        "aria-expanded": String(expanded),
+      }),
       ...(activeId ? { "aria-activedescendant": activeId } : {}),
       "data-placeholder": props.placeholder,
     });

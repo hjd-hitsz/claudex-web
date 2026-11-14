@@ -20,7 +20,7 @@ import { readWorkspaceFile } from "../../infrastructure/workspace-files.js";
 import { CodeEditor } from "./code-editor.jsx";
 import { isMarkdownFile } from "./editor-language.js";
 import { fileChangeHighlights } from "../../domain/file-changes.js";
-import { RichText } from "../markdown/rich-text.jsx";
+import { FileMarkdownEditor } from "./file-markdown-editor.jsx";
 import { FilePreview } from "./file-preview.jsx";
 import {
   filePresentation,
@@ -364,15 +364,12 @@ export function FilePanel() {
               <FilePreview key={file} path={file} kind={fileKind} />
             )
           ) : markdownFile && preview ? (
-            <div
-              className="file-markdown-preview"
-              aria-label="Markdown 文件预览"
-            >
-              <RichText
-                text={text}
-                cwd={file.slice(0, file.lastIndexOf("/")) || "/"}
-              />
-            </div>
+            <FileMarkdownEditor
+              key={file}
+              path={file}
+              text={text}
+              onChange={setText}
+            />
           ) : (
             <CodeEditor
               path={file}

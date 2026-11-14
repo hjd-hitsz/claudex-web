@@ -76,7 +76,9 @@ export function MessageLink({
       onClick={(event) => {
         if (href?.startsWith("#")) {
           event.preventDefault();
-          const root = event.currentTarget.closest(".markdown");
+          const root =
+            event.currentTarget.closest(".file-markdown-preview") ||
+            event.currentTarget.closest(".markdown");
           let id;
           try {
             id = decodeURIComponent(href.slice(1));

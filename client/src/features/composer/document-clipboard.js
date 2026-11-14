@@ -59,7 +59,7 @@ export function documentPaste(ctx, mathPaste) {
       view.dispatch(closeHistory(view.state.tr));
       return true;
     }
-    if (mathPaste(view, event)) return true;
+    if (mathPaste?.(view, event)) return true;
     const metadata = clipboard.getData("vscode-editor-data");
     let language;
     try {

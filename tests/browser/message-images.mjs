@@ -139,7 +139,10 @@ try {
             await page
               .getByRole("link", { name: "notes.md", exact: true })
               .click();
-            await page.locator(".file-markdown-preview img").first().waitFor();
+            await page
+              .locator(".file-markdown-preview img:not(.ProseMirror-separator)")
+              .first()
+              .waitFor();
           }
           const images = page.locator(`${selector} .message-image-button`);
           assert.equal(await images.count(), 5);
@@ -155,7 +158,13 @@ try {
             );
             const metrics = await button.evaluate((element) => {
               const box = element.getBoundingClientRect();
-              const parent = element.parentElement.getBoundingClientRect();
+              let container = element.parentElement;
+              while (
+                getComputedStyle(container).display === "contents" ||
+                !container.getBoundingClientRect().width
+              )
+                container = container.parentElement;
+              const parent = container.getBoundingClientRect();
               const image = element.querySelector("img");
               const rect = image.getBoundingClientRect();
               return {

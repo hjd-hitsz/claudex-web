@@ -183,6 +183,8 @@ CLAUDE_EXECUTABLE=/absolute/path/to/claude MODEL_BASE_URL=https://model.example 
 
 ## 格式与验证
 
+文件预览编辑回归在构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/file-editing.mjs`。脚本使用生产构建、真实 Chromium 编辑器及隔离文件协议夹具，核对直接输入、撤销、表格、任务列表、代码、数学语法、相对图片、Mermaid、源码切换、保存与失败重试，并覆盖深浅主题、桌面与窄屏的 80%、100%、125%、150% 和 200% 实际页面缩放。截图与结果位于 `.cache/file-editing/after`，浏览器关闭 GPU，测试结束清理独立配置。旧构建通过 `BROWSER_BUILD_DIR` 指定，设置 `FILE_EDITING_BEFORE=1` 后复现只读预览并将对照截图保存到 `.cache/file-editing/before`。
+
 模型名称布局回归在构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/model-select.mjs`。脚本使用隔离模型目录及模拟后端，在桌面、平板竖屏和手机窄屏核对完整名称、键盘选择、两行输入、发送与停止按钮、深浅主题及 80%～200% 实际页面缩放；结束后恢复缩放并清理浏览器配置。截图与测量记录保存在 `.cache/model-select/after`。修复前将构建复制到 `.cache/model-select/before/dist`，设置 `BROWSER_BEFORE=1` 可复现固定宽度截断。
 
 长对话切换回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/history-performance.mjs`。脚本使用生产构建、独立浏览器和 15 轮、3,210 条记录的隔离历史（消息分页基线 33 页，优化后首屏加 15 个轮次分页），每页模拟 50 毫秒往返；记录首屏和完整恢复耗时，验证最近消息及输入先可用、自动完整分页、普通状态更新复用 Markdown、读取期间草稿与实时更新保留、历史前插时的阅读位置、目录跳转和快速切换隔离，覆盖深浅主题、80% 至 200% 缩放及窄屏。证据与构建来源保存在 `.cache/history-performance/after`。修改前的构建及来源分别保存为 `.cache/history-performance-before/dist` 和 `build-info.json`，以 `BROWSER_BEFORE=1` 记录同机对照，耗时用于比较同机行为。单元及组件回归同时验证旧接口完整轮次回退、分页失败后的可读记录与重试、实时结果优先及切换隔离。现有 README 图片展示完整加载后的界面，布局和内容继续适用。

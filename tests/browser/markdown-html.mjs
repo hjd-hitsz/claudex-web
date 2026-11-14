@@ -340,7 +340,7 @@ try {
     );
     console.error(
       await evaluate(
-        `JSON.stringify({text:document.body.innerText.slice(-1000),draft:document.querySelector('textarea[aria-label="消息"]')?.value,active:document.activeElement?.tagName,width:innerWidth,scale:visualViewport.scale})`,
+        `JSON.stringify({text:document.body.innerText.slice(-1000),draft:document.querySelector('textarea[aria-label="消息"]')?.value,active:document.activeElement?.tagName,dialogs:[...document.querySelectorAll('dialog')].map(d=>({className:d.className,open:d.open})),width:innerWidth,scale:visualViewport.scale})`,
       ),
     );
     throw new Error("等待超时：" + expression);
@@ -441,7 +441,7 @@ try {
       false,
     );
     const icon = await evaluate(
-      '(()=>{const i=document.querySelector(".file-markdown-preview img");return {width:i.getBoundingClientRect().width,loaded:i.naturalWidth>0}})()',
+      '(()=>{const i=document.querySelector(".file-markdown-preview img:not(.ProseMirror-separator)");return {width:i.getBoundingClientRect().width,loaded:i.naturalWidth>0}})()',
     );
     assert(
       icon.loaded && Math.abs(icon.width - 88) < 1,
@@ -499,7 +499,7 @@ try {
         key: "Escape",
         code: "Escape",
       });
-    await waitFor('!document.querySelector("dialog")');
+    await waitFor('!document.querySelector(".image-viewer")');
     assert(
       await evaluate(
         'document.activeElement.classList.contains("message-image-button")',
