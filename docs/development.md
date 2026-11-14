@@ -94,6 +94,8 @@ CLI 安装回归使用 `server/tests/cli-package.test.mjs` 验证原生平台包
 
 构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/slash-commands.mjs`，使用隔离浏览器与模拟后端验证输入开头及正文中途的斜杠建议、Tab 补全、确认、光标中间替换、正文保留、撤销重做、失败恢复、技能及原生命令，并检查深浅主题、桌面及窄屏、80% 至 200% 实际页面缩放与侧栏开关。脚本核对 DPR 和视口，结束时恢复缩放并清理独立浏览器目录。截图与构建来源保存在 `.cache/slash-commands/after`。修复前将 `client/dist` 与 `build-info.json` 复制到 `.cache/slash-commands/before`，以 `BROWSER_BEFORE=1` 运行可复现中途缺少菜单。README 图片展示普通消息与文件预览，现有图片继续适用。
 
+正文图片布局回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/message-images.mjs`。脚本使用仓库截图与隔离消息、模拟后端和独立浏览器配置，验证消息及文件预览中的图片居中、640 × 480 像素上限、等比缩小、HTML 指定宽度、链接图片、`picture`、大图预览及关闭后的焦点恢复，覆盖深浅主题、窄屏和 80% 至 200% 实际页面缩放。结束时恢复缩放并清理浏览器配置，截图、尺寸测量与构建来源保存在 `.cache/message-images/after`。修改前将生产构建和构建来源保存到 `.cache/message-images/before/dist` 与 `build-info.json`，以 `BROWSER_BEFORE=1` 复现 320 像素预览。README 的现有界面截图展示文字、代码和文件列表，检查后继续使用。
+
 ## 双后端开发与验收
 
 双后端的统一范围由[产品契约](architecture/backends.md)定义；`shared/product-contract.mjs` 只注册工作区和对话方法的路由分组。原生能力分别接入统一用例，文件与网页终端由共用工作区服务提供。文件模糊查询按所属后端路由，Codex 保留原生 app-server 调用，Claude Code 使用原生 `file_suggestions` 控制请求及 CLI 文件索引；两端共用输入建议，回归同时核对原有 Codex 路径和 Claude 新增实现。CLI/SDK 生命周期、原生历史及参数发生变化时，同时检查首次请求、流式展示、轮次完成、刷新恢复和错误重试。Claude 执行服务通过受限本机 IPC 独立于网页桥接运行，网页关闭仅释放连接；源码与安装来源的代码身份按实际发行文件计算。

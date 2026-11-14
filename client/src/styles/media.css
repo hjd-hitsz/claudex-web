@@ -46,6 +46,14 @@
   display: block;
   max-width: 100%;
 }
+.markdown .message-image-button {
+  display: flex;
+  max-width: min(100%, 640px);
+  margin-inline: auto;
+}
+.markdown .message-image-button img {
+  max-height: 480px;
+}
 .image-viewer {
   position: fixed;
   inset: 0;
