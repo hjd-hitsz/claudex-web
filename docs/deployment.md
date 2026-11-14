@@ -28,8 +28,8 @@ curl --cacert "${CLAUDEX_WEB_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/claud
 从[目标版本 Release](https://github.com/hjd-hitsz/claudex-web/releases) 下载 `.tgz` 和同名 `.sha256` 文件，将两者放在同一目录，然后执行以下命令。
 
 ```bash
-sha256sum -c claudex-web-4.1.1.tgz.sha256
-npm install -g ./claudex-web-4.1.1.tgz
+sha256sum -c claudex-web-4.1.2.tgz.sha256
+npm install -g ./claudex-web-4.1.2.tgz
 claudex-web service install
 ```
 
@@ -200,6 +200,8 @@ claudex-web service restart-when-idle
 ```
 
 最后一个命令等待网页服务观察到的任务和上下文整理结束后自动重启，等待期间保持命令运行。Claude Code 独立执行服务继续保留后台任务，代码及配置更新在该服务完全空闲后完成。打开或隐藏的网页终端不会阻塞更新，等待程序只重启网页服务。切换 Node.js 版本或 npm prefix 后，也需重新安装服务并重启，以更新服务中的安装路径。
+
+4.1.0、4.1.1 的网页更新若报 `spawn npm ENOENT`，在安装程序的服务账户下执行上述终端升级命令，安装 4.1.2 或后续版本并完成服务重启。新版本的网页更新任务会沿用服务的 Node.js/npm 路径及网络环境。
 
 日志显示实际等待的任务与上下文整理数量；执行重启后继续检查 `/healthz`，连接就绪时报告实际运行版本，重启或健康检查失败时保留失败状态。
 
