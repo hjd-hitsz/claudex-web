@@ -109,8 +109,9 @@ export function createRequestHandler({
       const timer = processId
         ? null
         : setTimeout(() => {
-            if (threadMethods.has(message.method))
-              transport.pending.get(id).timedOut = true;
+            const request = transport.pending.get(id);
+            if (threadMethods.has(message.method) && !request?.waitingForClose)
+              request.timedOut = true;
             else {
               transport.pending.delete(id);
               releaseUnusedThreads();
@@ -130,6 +131,9 @@ export function createRequestHandler({
         processId,
         method: message.method,
         threadId,
+        ...(message.method === "thread/resume" && {
+          resumeParams: message.params,
+        }),
         ...(message.method === "turn/start" && {
           nameText: (message.params?.input || [])
             .filter((item) => item.type === "text")

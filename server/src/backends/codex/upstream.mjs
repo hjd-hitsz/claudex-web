@@ -1,5 +1,6 @@
 import WebSocket from "ws";
 import { sendRpcText } from "../../rpc-transport.mjs";
+import { createResumeLifecycle } from "./resume-lifecycle.mjs";
 
 export function createUpstream({
   config,
@@ -18,6 +19,10 @@ export function createUpstream({
   let reconnectTimer;
   let closed = false;
   const nextId = () => sequence++;
+  const resumption = createResumeLifecycle({
+    pending,
+    send: (message) => sendRpcText(socket, JSON.stringify(message)),
+  });
 
   function rejectPending(message) {
     for (const request of pending.values()) {
@@ -48,6 +53,7 @@ export function createUpstream({
         reject,
         timer,
         method,
+        ...(method === "thread/resume" && { resumeParams: params }),
         ...(trackThread && { threadId: params.threadId }),
       });
       sendRpcText(socket, JSON.stringify({ id, method, params }));
@@ -91,10 +97,13 @@ export function createUpstream({
       }
       if (message.method) {
         onEvent(message);
+        if (message.method === "thread/closed")
+          resumption.closed(message.params.threadId);
         return;
       }
       const request = pending.get(message.id);
       if (!request) return;
+      if (resumption.defer(message.id, request, message.error)) return;
       clearTimeout(request.timer);
       pending.delete(message.id);
       if (request.resolve) {

@@ -73,6 +73,7 @@ const child = spawn(executable, ["app-server", "--listen", upstream], {
 child.stderr.resume();
 const events = [];
 let adapter;
+let holder;
 let sequence = 0;
 async function until(predicate) {
   const deadline = Date.now() + 10000;
@@ -139,6 +140,61 @@ try {
           ).length >= 2,
     );
   }
+  holder = new WebSocket(upstream);
+  const responses = new Map();
+  let holderSequence = 0;
+  holder.on("message", (bytes) => {
+    const message = JSON.parse(bytes);
+    if (message.method) return;
+    const response = responses.get(message.id);
+    if (!response) return;
+    responses.delete(message.id);
+    if (message.error) response.reject(new Error(message.error.message));
+    else response.resolve(message.result);
+  });
+  await once(holder, "open");
+  const holderCall = (method, params) => {
+    const id = ++holderSequence;
+    const response = Promise.withResolvers();
+    responses.set(id, response);
+    holder.send(JSON.stringify({ id, method, params }));
+    return response.promise;
+  };
+  await holderCall("initialize", {
+    clientInfo: { name: "lifecycle_holder", version: "1" },
+    capabilities: { experimentalApi: true },
+  });
+  holder.send(JSON.stringify({ method: "initialized" }));
+  await holderCall("thread/resume", {
+    threadId,
+    excludeTurns: true,
+    config: { thread_unload_delay_secs: 0 },
+  });
+  const heldFrom = events.length;
+  for (let cycle = 0; cycle < 3; cycle++)
+    assert.equal(
+      (await call("thread/resume", { threadId, excludeTurns: true })).thread.id,
+      threadId,
+    );
+  assert.ok(
+    (await holderCall("thread/loaded/list", {})).data.includes(threadId),
+  );
+  assert.equal(
+    events
+      .slice(heldFrom)
+      .some(
+        (e) => e.method === "thread/closed" && e.params.threadId === threadId,
+      ),
+    false,
+  );
+  await holderCall("thread/unsubscribe", { threadId });
+  await until(() =>
+    events
+      .slice(heldFrom)
+      .some(
+        (e) => e.method === "thread/closed" && e.params.threadId === threadId,
+      ),
+  );
   assert.equal(
     events.some((event) => event.method === "turn/started"),
     false,
@@ -148,10 +204,12 @@ try {
       version,
       nativeAdapter: true,
       immediateReopenCycles: 8,
+      externallyHeldReopenCycles: 3,
       modelTurns: 0,
     }),
   );
 } finally {
+  holder?.terminate();
   adapter?.close();
   if (child.exitCode === null) {
     const ended = once(child, "exit");
