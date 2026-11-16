@@ -1,12 +1,19 @@
 import { X509Certificate } from "node:crypto";
-// 此入口复制到配置目录后由独立 systemd 单元执行，更新期间保持可运行。
+// 此入口及进程辅助模块复制到配置目录，安装替换和网页退出后继续运行。
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join } from "node:path";
 import https from "node:https";
+import {
+  processAlive,
+  processIdentity,
+  spawnDetached,
+  stopProcess,
+} from "./service-maintenance-process.mjs";
 const execute = promisify(execFile);
 const job = JSON.parse(await readFile(process.argv[2], "utf8"));
+if (job.process) job.task.worker = await processIdentity(process.pid);
 const environment = {
   ...process.env,
   ...job.environment,
@@ -57,11 +64,43 @@ const health = async () => {
 };
 let stage,
   backup,
+  replacement,
+  stopped = false,
   replaced = false;
+const restart = async () => {
+  if (job.process) {
+    await stopProcess(replacement || job.process.identity);
+    stopped = true;
+    replacement = await spawnDetached(
+      job.process.command,
+      job.process.args,
+      job.process,
+    );
+    if (!replacement) throw new Error("网页进程启动失败，请查看维护日志。");
+  } else
+    await execute("systemctl", ["--user", "restart", "claudex-web.service"], {
+      timeout: 90000,
+    });
+};
+const waitHealthy = async (target) => {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (job.process && !(await processAlive(replacement)))
+      throw new Error("网页进程启动后退出，请查看维护日志。");
+    const status = await health();
+    if (status?.version?.version === target) return;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error("服务启动检查超时，请查看维护日志。");
+};
+let previousVersion;
 try {
+  await save(job.task.state);
   // 留出 HTTP 确认响应和浏览器开始轮询的时间。
   await new Promise((resolve) => setTimeout(resolve, 1500));
   if (job.action === "update") {
+    previousVersion = JSON.parse(
+      await readFile(join(job.root, "package.json"), "utf8"),
+    ).version;
     stage = await mkdtemp(join(job.prefix, ".claudex-update-"));
     await execute(
       "npm",
@@ -83,6 +122,11 @@ try {
     if (manifest.version !== job.task.target)
       throw new Error("安装包版本校验失败");
     await readFile(join(installed, "client/dist/index.html"));
+    // 普通进程先退出再替换，关闭期间仍可读取原安装的按需模块。
+    if (job.process) {
+      await stopProcess(job.process.identity);
+      stopped = true;
+    }
     backup = job.root + ".maintenance-backup";
     await rename(job.root, backup);
     try {
@@ -95,34 +139,25 @@ try {
     }
   }
   await save("restarting");
-  await execute("systemctl", ["--user", "restart", "claudex-web.service"], {
-    timeout: 90000,
-  });
-  let healthy = false;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const status = await health();
-    if (status?.version?.version === job.task.target) {
-      healthy = true;
-      break;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  if (!healthy)
-    throw new Error(
-      "服务启动检查超时，请查看 journalctl --user -u claudex-web.service",
-    );
+  await restart();
+  await waitHealthy(job.task.target);
   await save("completed");
   replaced = false;
   if (backup) await rm(backup, { recursive: true, force: true });
 } catch (error) {
-  if (replaced) {
-    await rm(job.root, { recursive: true, force: true });
-    await rename(backup, job.root);
-    await execute("systemctl", [
-      "--user",
-      "restart",
-      "claudex-web.service",
-    ]).catch(() => {});
+  try {
+    if (replaced) {
+      if (job.process) await stopProcess(replacement);
+      await rm(job.root, { recursive: true, force: true });
+      await rename(backup, job.root);
+      await restart();
+      await waitHealthy(previousVersion);
+    } else if (stopped && job.process && !(await processAlive(replacement))) {
+      await restart();
+      await waitHealthy(previousVersion || job.task.target);
+    }
+  } catch (failure) {
+    error.message += `；恢复原服务失败：${failure.message}`;
   }
   await save("failed", error.message);
   process.exitCode = 1;

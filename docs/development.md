@@ -98,6 +98,8 @@ CLI 安装回归使用 `server/tests/cli-package.test.mjs` 验证原生平台包
 
 ## 双后端开发与验收
 
+网页维护回归使用 `node --import ./tests/helpers/test-console.mjs --test server/tests/service-maintenance*.test.mjs`，覆盖 systemd 命令夹具、真实 HTTPS 普通进程的 HTTP 重启、npm 安装失败、启动失败回滚、进程身份与退出期限。构建后运行 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/service-maintenance.mjs`，验证更新与重启按钮的点击、错误反馈、重试、进行状态、深浅主题、窄屏和 80% 至 200% 实际页面缩放。截图及构建来源保存在 `.cache/service-maintenance/after`；修改前的构建放在 `.cache/service-maintenance/before/dist`，设置 `BROWSER_BEFORE=1` 复现原禁用状态。README 图片展示对话及文件面板，本次维护操作变化通过专项截图核对。
+
 双后端的统一范围由[产品契约](architecture/backends.md)定义；`shared/product-contract.mjs` 只注册工作区和对话方法的路由分组。原生能力分别接入统一用例，文件与网页终端由共用工作区服务提供。文件模糊查询按所属后端路由，Codex 保留原生 app-server 调用，Claude Code 使用原生 `file_suggestions` 控制请求及 CLI 文件索引；两端共用输入建议，回归同时核对原有 Codex 路径和 Claude 新增实现。CLI/SDK 生命周期、原生历史及参数发生变化时，同时检查首次请求、流式展示、轮次完成、刷新恢复和错误重试。Claude 执行服务通过受限本机 IPC 独立于网页桥接运行，网页关闭仅释放连接；源码与安装来源的代码身份按实际发行文件计算。
 
 公共网页操作在 `server/src/bridge` 维护，原生适配分别位于 `server/src/backends/codex` 和 `server/src/backends/claude`。调整适配器接口时执行 `node --test server/tests/backend-product-contract.test.mjs server/tests/backend-routing.test.mjs`，核对两端的离线偏好、保存通知、失败重试、目录创建、整理写入限制、工作区所有者声明和浏览器代理释放。产品契约夹具使用真实适配器与模拟 app-server，Claude 只执行进程版本检查；真实 CLI/SDK 的执行与恢复由下述验收覆盖。架构检查同时禁止公共桥接依赖具体后端和原生适配器之间的交叉依赖。

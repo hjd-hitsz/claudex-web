@@ -11,6 +11,11 @@ import {
 import { constants } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  processAlive,
+  processIdentity,
+  spawnDetached,
+} from "./service-maintenance-process.mjs";
 
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -20,6 +25,7 @@ export function createServiceMaintenance({
   version,
   isBusy = () => false,
   run = execute,
+  launch = spawnDetached,
   fetchVersion = async () => {
     const response = await fetch(
       `https://registry.npmjs.org/${packageName}/latest`,
@@ -73,12 +79,16 @@ export function createServiceMaintenance({
       Date.now() - Date.parse(task.startedAt) > 30000
     ) {
       try {
-        await run("systemctl", [
-          "--user",
-          "is-active",
-          "--quiet",
-          "claudex-web-maintenance.service",
-        ]);
+        if (task.mode === "process") {
+          if (!(await processAlive(task.worker)))
+            throw new Error("维护进程已退出");
+        } else
+          await run("systemctl", [
+            "--user",
+            "is-active",
+            "--quiet",
+            "claudex-web-maintenance.service",
+          ]);
       } catch {
         task = {
           ...task,
@@ -94,13 +104,17 @@ export function createServiceMaintenance({
     if (task?.state === "failed") switching = false;
     let managed = false;
     try {
-      const { stdout } = await run("systemctl", [
-        "--user",
-        "show",
-        "claudex-web.service",
-        "--property=MainPID",
-        "--value",
-      ]);
+      const { stdout } = await run(
+        "systemctl",
+        [
+          "--user",
+          "show",
+          "claudex-web.service",
+          "--property=MainPID",
+          "--value",
+        ],
+        { timeout: 5000 },
+      );
       managed = Number(stdout.trim()) === process.pid;
     } catch {
       /* 服务管理能力由当前进程归属决定。 */
@@ -127,10 +141,6 @@ export function createServiceMaintenance({
       if (["updating", "restarting"].includes(current.task?.state))
         return current;
       if (isBusy()) throw new Error("任务仍在运行，请结束后重试。");
-      if (!current.managed)
-        throw new Error(
-          "请通过 claudex-web service install 安装并启动 systemd 用户服务后重试",
-        );
       if (action === "update") {
         await check();
         if (error) throw new Error(error);
@@ -147,8 +157,13 @@ export function createServiceMaintenance({
         new URL("./service-maintenance-worker.mjs", import.meta.url),
         join(directory, "worker.mjs"),
       );
+      await copyFile(
+        new URL("./service-maintenance-process.mjs", import.meta.url),
+        join(directory, "service-maintenance-process.mjs"),
+      );
       const task = {
         action,
+        mode: current.managed ? "systemd" : "process",
         state: action === "update" ? "updating" : "restarting",
         target: action === "update" ? latest : version.version,
         startedAt: new Date().toISOString(),
@@ -162,6 +177,16 @@ export function createServiceMaintenance({
         statusFile,
         port: config.port,
         cert: config.tlsCert || join(config.configDir, "tls/certificate.pem"),
+        process: current.managed
+          ? null
+          : {
+              identity: await processIdentity(process.pid),
+              command: process.execPath,
+              args: [...process.execArgv, ...process.argv.slice(1)],
+              cwd: process.cwd(),
+              env: process.env,
+              logFile: join(directory, "web.log"),
+            },
         // 独立用户单元使用管理器的环境，npm 须沿用网页服务的安装与网络环境。
         environment: Object.fromEntries(
           Object.entries({
@@ -200,16 +225,30 @@ export function createServiceMaintenance({
       }
       switching = true;
       try {
-        await run("systemd-run", [
-          "--user",
-          "--collect",
-          "--unit=claudex-web-maintenance",
-          "--property=Type=exec",
-          "--",
-          process.execPath,
-          join(directory, "worker.mjs"),
-          join(directory, "job.json"),
-        ]);
+        if (current.managed)
+          await run("systemd-run", [
+            "--user",
+            "--collect",
+            "--unit=claudex-web-maintenance",
+            "--property=Type=exec",
+            "--",
+            process.execPath,
+            join(directory, "worker.mjs"),
+            join(directory, "job.json"),
+          ]);
+        else {
+          const worker = await launch(
+            process.execPath,
+            [join(directory, "worker.mjs"), join(directory, "job.json")],
+            {
+              cwd: directory,
+              env: process.env,
+              logFile: join(directory, "worker.log"),
+            },
+          );
+          if (!worker)
+            throw new Error("维护进程启动失败，请查看维护日志后重试。");
+        }
       } catch (failure) {
         switching = false;
         await writeFile(

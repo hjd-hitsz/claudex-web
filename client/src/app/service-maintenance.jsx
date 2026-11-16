@@ -100,7 +100,7 @@ export function ServiceMaintenanceSettings({ focus = false }) {
             </button>
             <button
               className="secondary"
-              disabled={busy || !status?.managed}
+              disabled={busy}
               onClick={() => serviceMaintenance.request("restart")}
             >
               重启服务
@@ -108,12 +108,7 @@ export function ServiceMaintenanceSettings({ focus = false }) {
             <button
               className={`service-update-button ${status?.updateAvailable ? "primary" : "secondary"}`}
               data-current={!status?.updateAvailable}
-              disabled={
-                busy ||
-                !status?.updateAvailable ||
-                !status?.npmInstalled ||
-                !status?.managed
-              }
+              disabled={busy || !status?.updateAvailable}
               onClick={() => serviceMaintenance.request("update")}
             >
               {status?.updateAvailable
@@ -124,23 +119,23 @@ export function ServiceMaintenanceSettings({ focus = false }) {
             </button>
           </div>
         </div>
+        {status?.task && taskLabels[status.task.state] && (
+          <p role="status">{taskLabels[status.task.state]}</p>
+        )}
+        {notice && (
+          <p
+            role={notice.state === "failed" ? "alert" : "status"}
+            className={notice.state === "failed" ? "inline-error" : undefined}
+          >
+            {notice.message}
+          </p>
+        )}
+        {(error || loadError || status?.error) && (
+          <p className="inline-error" role="alert">
+            {error || loadError || status.error}
+          </p>
+        )}
       </div>
-      {status?.task && taskLabels[status.task.state] && (
-        <p role="status">{taskLabels[status.task.state]}</p>
-      )}
-      {notice && (
-        <p
-          role={notice.state === "failed" ? "alert" : "status"}
-          className={notice.state === "failed" ? "inline-error" : undefined}
-        >
-          {notice.message}
-        </p>
-      )}
-      {(error || loadError || status?.error) && (
-        <p className="inline-error" role="alert">
-          {error || loadError || status.error}
-        </p>
-      )}
     </section>
   );
 }

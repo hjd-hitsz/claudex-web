@@ -111,6 +111,8 @@ test("后端停止与升级统一核对每种活动，已结束记录允许空�
     { queuedInputs: { thread: 1 } },
     { internalCommands: ["thread"] },
     { questions: [{ id: "question" }] },
+    { installingBackends: ["codex"] },
+    { backends: [{ installation: { installing: true } }] },
     ...["starting", "running", "reconnecting"].map((status) => ({
       compactions: { thread: { status } },
     })),

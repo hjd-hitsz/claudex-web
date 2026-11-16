@@ -86,13 +86,35 @@ test("failed systemd launch releases the submission gate and permits retry", asy
   }
 });
 
-test("unmanaged process returns an actionable failure", async () => {
+test("direct process schedules an independent worker without systemd", async () => {
+  const configDir = await mkdtemp(join(tmpdir(), "maintenance-direct-"));
+  const launches = [];
   const service = createServiceMaintenance({
-    config: { configDir: tmpdir() },
+    config: { configDir },
     version: { version: "4.0.1" },
-    run: async () => ({ stdout: "0" }),
+    run: async () => {
+      throw new Error("systemd unavailable");
+    },
+    launch: async (...args) => launches.push(args),
   });
-  await assert.rejects(service.start("restart"), /service install/);
+  try {
+    const status = await service.start("restart");
+    assert.equal(status.managed, false);
+    assert.equal(status.task.mode, "process");
+    assert.equal(launches.length, 1);
+    const job = JSON.parse(
+      await readFile(join(configDir, "maintenance/job.json")),
+    );
+    assert.equal(job.process.identity.pid, process.pid);
+    assert.equal(job.process.command, process.execPath);
+    assert.equal(job.process.cwd, process.cwd());
+    assert.deepEqual(job.process.args, [
+      ...process.execArgv,
+      ...process.argv.slice(1),
+    ]);
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
 });
 
 test("maintenance routes reject unsupported requests", async () => {

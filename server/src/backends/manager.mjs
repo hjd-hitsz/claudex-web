@@ -324,11 +324,12 @@ export function createBackendManager({
     try {
       await old?.adapter?.shutdown?.();
       if (prepare) await prepare();
+      if (closed) return { backends: publicBackends() };
       const backend = await configuration.save(params);
       old?.adapter?.close();
       await install(backend);
     } catch (error) {
-      if (old) {
+      if (old && !closed) {
         old.changing = false;
         if (!old.adapter?.ready) {
           old.adapter?.close();
@@ -477,6 +478,7 @@ export function createBackendManager({
           ready: initialized,
           activeTurns: params.activeTurns,
           compactions: params.compactions,
+          installingBackends: [...installationJobs.keys()],
           tokenUsageReconciliation: usageReconciliation.snapshot(),
         },
       };

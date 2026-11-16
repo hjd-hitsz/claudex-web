@@ -368,6 +368,9 @@ test(
       true,
     );
     await entered;
+    assert.deepEqual(f.manager.maintenanceState().params.installingBackends, [
+      "claude",
+    ]);
     await f.call("lan/backends/install", { id: "claude" });
     assert.equal(installations, 1);
     await assert.rejects(
@@ -378,10 +381,52 @@ test(
     finish();
     const final = await completed;
     assert.equal(final.installation.installing, false);
+    assert.deepEqual(
+      f.manager.maintenanceState().params.installingBackends,
+      [],
+    );
     assert.equal(final.ready, true);
     assert.equal(f.adapters.length, 2);
   },
 );
+
+for (const fail of [false, true])
+  test(`桥接关闭后安装${fail ? "失败" : "完成"}保持旧适配器关闭`, async (t) => {
+    let finish, started;
+    const entered = new Promise((resolve) => {
+      started = resolve;
+    });
+    const gate = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const f = await fixture(t, async () => {}, {
+      state: () => ({ installed: true }),
+      refresh: async () => {},
+      install: async () => {
+        started();
+        await gate;
+        if (fail) throw new Error("下载失败");
+      },
+    });
+    await f.call("lan/backends/install", { id: "claude" });
+    await entered;
+    const count = f.adapters.length;
+    await f.manager.close();
+    finish();
+    for (
+      let attempt = 0;
+      attempt < 100 &&
+      f.manager.maintenanceState().params.installingBackends.length;
+      attempt++
+    )
+      await new Promise(setImmediate);
+    assert.deepEqual(
+      f.manager.maintenanceState().params.installingBackends,
+      [],
+    );
+    assert.equal(f.adapters.length, count);
+    assert.equal(await readFile(f.path, "utf8"), f.originalBytes);
+  });
 
 test(
   "原生任务占用阻止 npm 更新并显示可重试错误",

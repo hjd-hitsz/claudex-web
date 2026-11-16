@@ -68,9 +68,15 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.service-maintenance-settings > [role="status"] {
-  margin: 12px 0 0;
+.modal-settings .service-update-card > [role] {
+  flex: 1 0 100%;
+  min-width: 0;
+  margin: 0;
   font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.service-update-card > [role="status"] {
   color: var(--muted);
 }
 .service-update-entry {

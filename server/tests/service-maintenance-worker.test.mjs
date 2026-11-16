@@ -33,6 +33,10 @@ for (const scenario of ["complete", "install-failure", "restart-failure"])
       await mkdir(root, { recursive: true });
       await writeFile(join(root, "old"), "old package");
       await writeFile(
+        join(root, "package.json"),
+        JSON.stringify({ version: "4.0.2" }),
+      );
+      await writeFile(
         join(bin, "npm"),
         `#!${process.execPath}
 const fs = require('node:fs');
