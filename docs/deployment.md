@@ -137,6 +137,8 @@ Claude Code 的对话、配置和原生账户状态继续保存在本机 CLI 原
 
 ## 配置
 
+在“设置 → 模型与服务配置”中，分别在两个后端的同一行选择子代理模型及思考强度，强度档位随所选模型提供。Codex 子代理候选遵循“显示的模型”偏好。Claude Code 的选项按“供应商 / 模型”排列，可以为子代理选择其他供应商；保存前等待所属后端空闲。选择“原生默认”恢复原生子代理模型规则。
+
 全局命令从 `~/.config/claudex-web/.env` 读取配置；设置 `XDG_CONFIG_HOME` 时使用其下的 `claudex-web` 目录，设置 `CLAUDEX_WEB_CONFIG_DIR` 时优先使用该目录。外部环境变量优先于 `.env`。执行 `claudex-web config init` 可创建配置并显示路径，已有配置和 npm 升级后的配置均会保留。
 
 systemd 服务会记录安装时的配置目录，后续启动继续使用该目录。更换配置目录时，用新的 `CLAUDEX_WEB_CONFIG_DIR` 执行 `claudex-web service install`，再按下文方法重启网页服务。

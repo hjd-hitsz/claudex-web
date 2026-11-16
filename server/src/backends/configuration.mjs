@@ -5,11 +5,48 @@ import { validateNetworkProxy } from "./network-proxy.mjs";
 export function validateBackend(input, config) {
   if (!["codex", "claude"].includes(input.id) || input.id !== input.type)
     throw new Error("仅支持 Codex 与 Claude Code 两个固定后端");
+  if (
+    input.subagentModel !== undefined &&
+    (typeof input.subagentModel !== "string" ||
+      /[\s\x00-\x1f\x7f]/u.test(input.subagentModel.trim()) ||
+      input.subagentModel.length > 256)
+  )
+    throw new Error("子代理模型须为不含空白的模型 ID，留空使用原生默认");
+  if (
+    input.subagentProviderId !== undefined &&
+    (typeof input.subagentProviderId !== "string" ||
+      (input.subagentProviderId !== "" &&
+        input.subagentProviderId !== "@native" &&
+        !/^[a-zA-Z0-9_-]{1,80}$/.test(input.subagentProviderId)))
+  )
+    throw new Error("子代理供应商标识无效");
+  if (input.subagentProviderId && input.type !== "claude")
+    throw new Error("子代理跨供应商配置仅用于 Claude Code");
+  if (input.subagentProviderId && !input.subagentModel?.trim())
+    throw new Error("选择子代理供应商后须指定模型");
+  if (
+    input.subagentEffort !== undefined &&
+    ![
+      "",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      ...(input.type === "codex" ? ["none", "minimal", "ultra"] : []),
+    ].includes(input.subagentEffort)
+  )
+    throw new Error("子代理思考强度无效");
   const backend = {
     id: input.id,
     name: input.type === "codex" ? "Codex" : "Claude Code",
     type: input.type,
     enabled: input.enabled !== false,
+    subagentModel: input.subagentModel?.trim() || "",
+    subagentEffort: input.subagentEffort || "",
+    ...(input.type === "claude" && {
+      subagentProviderId: input.subagentProviderId || "",
+    }),
     dataDir: resolve(
       input.type === "codex" ? config.codexHome : config.claudeHome,
     ),

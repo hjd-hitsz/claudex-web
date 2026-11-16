@@ -48,6 +48,7 @@ export function backendFixture(data) {
     enabled: true,
     ready: true,
     installation: data.backendInstallations?.[id],
+    ...data.backendSettings?.[id],
   }));
   let providers =
     data.providers ||
@@ -203,7 +204,9 @@ export function backendFixture(data) {
             id: model,
             model,
             displayName: provider.modelAliases?.[model] || model,
-            supportedReasoningEfforts: [],
+            supportedReasoningEfforts: (
+              provider.modelCapabilities?.[model]?.supportedEffortLevels || []
+            ).map((reasoningEffort) => ({ reasoningEffort })),
           })),
         };
       }

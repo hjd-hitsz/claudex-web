@@ -290,7 +290,25 @@ export function createBackendManager({
   async function saveBackend(params, prepare) {
     validateBackend(params, config);
     const old = instances.get(params.id);
-    if (params.hiddenModels !== undefined && params.enabled === undefined) {
+    const next = validateBackend({ ...old?.backend, ...params }, config);
+    if (next.subagentProviderId && next.subagentProviderId !== "@native") {
+      const provider = await providers.get("claude", next.subagentProviderId);
+      if (!provider.models.includes(next.subagentModel))
+        throw new Error("子代理模型不在所选供应商的模型列表中");
+      if (
+        next.subagentEffort &&
+        !provider.modelCapabilities?.[
+          next.subagentModel
+        ]?.supportedEffortLevels?.includes(next.subagentEffort)
+      )
+        throw new Error("子代理模型不支持所选思考强度");
+    }
+    if (
+      params.hiddenModels !== undefined &&
+      Object.keys(params).every((key) =>
+        ["id", "type", "hiddenModels"].includes(key),
+      )
+    ) {
       if (params.id !== "codex") throw new Error("模型显示配置仅用于 Codex");
       old.backend = await configuration.save({
         ...old.backend,

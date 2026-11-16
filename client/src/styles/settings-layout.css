@@ -162,6 +162,58 @@
   margin-top: 12px;
   font-size: 13px;
 }
+.modal-settings .subagent-model-settings {
+  margin: 12px 0 0;
+  padding: 0;
+  gap: 8px;
+  font-size: 13px;
+}
+.subagent-model-row {
+  display: grid;
+  grid-template-columns: 5em minmax(0, 1fr) 6.5em auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.subagent-model-row select {
+  width: 100%;
+}
+.subagent-model-row button {
+  flex: none;
+  margin: 0;
+}
+.subagent-model-settings p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.subagent-save-icon {
+  display: none;
+}
+@media (max-width: 360px) {
+  .subagent-model-row {
+    grid-template-columns: minmax(0, 1fr) 3em 28px;
+    gap: 4px;
+  }
+  .subagent-model-row label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .modal-settings .subagent-model-row select {
+    padding-inline: 2px;
+  }
+  .modal-settings .subagent-model-row button {
+    padding-inline: 6px;
+  }
+  .subagent-save-label {
+    display: none;
+  }
+  .subagent-save-icon {
+    display: block;
+  }
+}
 .modal-settings .codex-model-settings summary {
   padding-block: 4px;
   color: var(--muted);

@@ -2,18 +2,33 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { networkProxyEnvironment } from "../network-proxy.mjs";
 
+export function subagentModelEnvironment(backend, proxy) {
+  return {
+    ...(backend.subagentModel && {
+      CLAUDE_CODE_SUBAGENT_MODEL: proxy?.subagentModel || backend.subagentModel,
+      CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "1",
+    }),
+    ...(backend.subagentEffort && {
+      CLAUDE_CODE_SUBAGENT_EFFORT: backend.subagentEffort,
+    }),
+  };
+}
+
 export function claudeRuntimeEnvironment(backend) {
-  const env = { ...process.env, ...networkProxyEnvironment(backend.proxy) };
+  const env = {
+    ...process.env,
+    ...networkProxyEnvironment(backend.proxy),
+    ...subagentModelEnvironment(backend),
+  };
   const original = resolve(env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"));
   if (resolve(backend.dataDir) !== original)
     env.CLAUDE_CONFIG_DIR = backend.dataDir;
   return env;
 }
 
-export function providerModelEnvironment(provider, model, effort) {
-  const selectedModel = model || provider.models[0];
-  const rules = Object.entries(provider.modelCapabilities || {}).flatMap(
-    ([name, metadata]) => {
+function modelCapabilityRules(metadataByModel) {
+  return Object.entries(metadataByModel)
+    .flatMap(([name, metadata]) => {
       const capabilities = [];
       if (typeof metadata.supportsAdaptiveThinking === "boolean")
         capabilities.push(
@@ -31,14 +46,20 @@ export function providerModelEnvironment(provider, model, effort) {
           );
       }
       return capabilities.length ? [`${name}=${capabilities.join(",")}`] : [];
-    },
-  );
+    })
+    .join(";");
+}
+
+export function providerModelEnvironment(provider, model, effort) {
+  const selectedModel = model || provider.models[0];
   return {
     ANTHROPIC_MODEL: selectedModel,
     ANTHROPIC_DEFAULT_OPUS_MODEL: selectedModel,
     ANTHROPIC_DEFAULT_SONNET_MODEL: selectedModel,
     ANTHROPIC_DEFAULT_HAIKU_MODEL: selectedModel,
-    CLAUDE_CODE_MODEL_CAPABILITIES: rules.join(";"),
+    CLAUDE_CODE_MODEL_CAPABILITIES: modelCapabilityRules(
+      provider.modelCapabilities || {},
+    ),
     CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(
       provider.modelCapabilities?.[selectedModel]?.contextWindow || "",
     ),
@@ -55,7 +76,26 @@ export function providerRuntimeEnvironment(
 ) {
   const env = claudeRuntimeEnvironment(backend);
   delete env.CLAUDECODE;
-  if (!provider) return env;
+  if (proxy) {
+    env.ANTHROPIC_BASE_URL = proxy.url;
+    env.ANTHROPIC_CUSTOM_HEADERS = [
+      env.ANTHROPIC_CUSTOM_HEADERS,
+      `x-claudex-proxy-token: ${proxy.token}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    Object.assign(env, subagentModelEnvironment(backend, proxy));
+  }
+  if (!provider) {
+    if (proxy?.subagentModel)
+      env.CLAUDE_CODE_MODEL_CAPABILITIES = [
+        env.CLAUDE_CODE_MODEL_CAPABILITIES,
+        modelCapabilityRules(proxy.modelCapabilities),
+      ]
+        .filter(Boolean)
+        .join(";");
+    return env;
+  }
   for (const key of [
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_API_KEY",
@@ -67,7 +107,17 @@ export function providerRuntimeEnvironment(
     delete env[key];
   Object.assign(
     env,
-    providerModelEnvironment(provider, model || provider.models[0], effort),
+    providerModelEnvironment(
+      {
+        ...provider,
+        modelCapabilities: {
+          ...provider.modelCapabilities,
+          ...proxy?.modelCapabilities,
+        },
+      },
+      model || provider.models[0],
+      effort,
+    ),
   );
   env.ANTHROPIC_BASE_URL = proxy?.url || provider.baseUrl;
   env.ANTHROPIC_API_KEY = proxy?.token || provider.apiKey;
@@ -78,12 +128,14 @@ export function providerRuntimeEnvironment(
 export function providerSettingsEnvironment(provider, backend, options) {
   const env = providerRuntimeEnvironment(provider, backend, options);
   return {
-    ANTHROPIC_AUTH_TOKEN: "",
+    ...(provider && { ANTHROPIC_AUTH_TOKEN: "" }),
     ...networkProxyEnvironment(backend.proxy),
     ...Object.fromEntries(
       Object.entries(env).filter(
         ([key]) =>
           key.startsWith("ANTHROPIC_") ||
+          key.startsWith("CLAUDE_CODE_SUBAGENT_MODEL") ||
+          key === "CLAUDE_CODE_SUBAGENT_EFFORT" ||
           [
             "CLAUDE_CODE_MODEL_CAPABILITIES",
             "CLAUDE_CODE_MAX_CONTEXT_TOKENS",

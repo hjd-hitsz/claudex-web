@@ -5,10 +5,10 @@ import { mkdir } from "node:fs/promises";
 import { executionError } from "./execution-errors.mjs";
 import { inputMessage, convertMessage } from "./messages.mjs";
 import { createExecutionSession } from "./execution-session.mjs";
+import { nativeSubagentProvider } from "./native-provider.mjs";
 import { createBackgroundTasks } from "./background-tasks.mjs";
 import { createGoals } from "./goals.mjs";
 import { modelOptions } from "./model-options.mjs";
-import { providerModelEnvironment } from "./provider-environment.mjs";
 import { recoverClaudeSessions } from "./recovery.mjs";
 import { assertConversationOperation } from "../../bridge/conversation-policy.mjs";
 
@@ -208,6 +208,20 @@ export function createClaudeRuntime({
         backend.id,
         queued.providerId ?? session.providerId,
       );
+      const subagentProvider =
+        backend.subagentProviderId === "@native"
+          ? provider || backend.subagentEffort
+            ? nativeSubagentProvider(backend)
+            : null
+          : backend.subagentProviderId
+            ? await providers.get(backend.id, backend.subagentProviderId)
+            : null;
+      if (
+        subagentProvider &&
+        !subagentProvider.native &&
+        !subagentProvider.models.includes(backend.subagentModel)
+      )
+        throw new Error("子代理模型已从供应商移除，请重新配置");
       const options = modelOptions(
         provider,
         queued.model || session.model || provider?.models[0],
@@ -218,6 +232,7 @@ export function createClaudeRuntime({
         (process && process.cwd !== session.cwd) ||
         process?.nativeSessionId !== (session.nativeSessionId || threadId) ||
         process?.providerKey !== JSON.stringify(provider) ||
+        process?.subagentProviderKey !== JSON.stringify(subagentProvider) ||
         process?.review !== queued.review
       ) {
         if (
@@ -237,6 +252,7 @@ export function createClaudeRuntime({
           session,
           queued,
           providers,
+          subagentProvider,
           save,
           emit,
           broadcast,
@@ -270,9 +286,8 @@ export function createClaudeRuntime({
         await process.query.applyFlagSettings({
           effortLevel: queued.effort || null,
           fastMode: options.settings.fastMode,
-          ...(provider && {
-            env: providerModelEnvironment(
-              provider,
+          ...((provider || subagentProvider) && {
+            env: process.settingsEnvironment(
               model || process.model,
               queued.effort,
             ),

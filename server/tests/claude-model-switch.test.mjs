@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createClaudeRuntime } from "../src/backends/claude/runtime.mjs";
 import { createStorage } from "../src/backends/storage.mjs";
 import { createCompactions } from "../src/compaction.mjs";
+import { providerSettingsEnvironment } from "../src/backends/claude/provider-environment.mjs";
 
 test("模型切换设置失败时保留会话，重试在提交输入前同步所有别名", async () => {
   const directory = await mkdtemp(join(tmpdir(), "claude-switch-retry-"));
@@ -56,6 +57,13 @@ test("模型切换设置失败时保留会话，重试在提交输入前同步�
     cwd: directory,
     nativeSessionId: "thread",
     providerKey: JSON.stringify(provider),
+    subagentProviderKey: JSON.stringify(null),
+    settingsEnvironment: (model, effort) =>
+      providerSettingsEnvironment(
+        provider,
+        { dataDir: directory },
+        { model, effort },
+      ),
     model: "first",
     review: false,
     input: { push: (input) => inputs.push(input) },

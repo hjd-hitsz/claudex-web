@@ -4,11 +4,16 @@ import http from "node:http";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { nativeProviderHeaders } from "./native-provider.mjs";
 
-export async function createProviderTransport(provider) {
+export async function createProviderTransport(provider, subagent) {
   const token = randomUUID();
+  const subagentModel = subagent ? `claudex-subagent-${randomUUID()}` : null;
+  const nativeBaseUrl =
+    process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
   const server = http.createServer(async (request, response) => {
     if (
+      request.headers["x-claudex-proxy-token"] !== token &&
       request.headers["x-api-key"] !== token &&
       request.headers.authorization !== `Bearer ${token}`
     ) {
@@ -21,13 +26,35 @@ export async function createProviderTransport(provider) {
         body += chunk;
         if (body.length > 64 * 1024 * 1024) throw new Error("请求过大");
       }
-      if (body && (provider.protocol || "messages") === "messages")
-        body = JSON.stringify(messagesRequest(JSON.parse(body)));
-      const headers = {
-        ...request.headers,
-        "x-api-key": provider.apiKey,
-        authorization: `Bearer ${provider.apiKey}`,
-      };
+      let selected = provider;
+      if (body) {
+        let input = JSON.parse(body);
+        if (subagent && input.model === subagentModel) {
+          selected = subagent.provider;
+          input = { ...input, model: subagent.model };
+          if (subagent.effort && !request.url.includes("/count_tokens"))
+            input.output_config = {
+              ...input.output_config,
+              effort: subagent.effort,
+            };
+        }
+        if (selected && (selected.protocol || "messages") === "messages")
+          input = messagesRequest(input);
+        body = JSON.stringify(input);
+      }
+      const headers = { ...request.headers };
+      if (selected) {
+        delete headers["x-api-key"];
+        delete headers.authorization;
+        delete headers["anthropic-organization-id"];
+        if (selected.native)
+          Object.assign(headers, await nativeProviderHeaders(selected));
+        else {
+          headers["x-api-key"] = selected.apiKey;
+          headers.authorization = `Bearer ${selected.apiKey}`;
+        }
+      }
+      delete headers["x-claudex-proxy-token"];
       delete headers.host;
       delete headers["content-length"];
       delete headers.connection;
@@ -35,7 +62,9 @@ export async function createProviderTransport(provider) {
       response.on("close", () => {
         if (!response.writableEnded) abort.abort();
       });
-      const target = new URL(provider.baseUrl + request.url);
+      const target = new URL(
+        (selected?.baseUrl || nativeBaseUrl) + request.url,
+      );
       const options = {
         method: request.method,
         headers,
@@ -62,6 +91,13 @@ export async function createProviderTransport(provider) {
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     token,
+    subagentModel,
+    modelCapabilities: subagent
+      ? {
+          [subagentModel]:
+            subagent.provider.modelCapabilities?.[subagent.model] || {},
+        }
+      : {},
     close() {
       server.close();
       server.closeAllConnections();

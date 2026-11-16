@@ -140,6 +140,38 @@ async function fixture(t, shutdown = async () => {}, installation) {
   };
 }
 
+test("子代理模型保存保护运行任务，失败保留配置与实例，成功后空闲替换并可清空", async (t) => {
+  let refuse = true;
+  const f = await fixture(t, async () => {
+    if (refuse) throw new Error("独立执行服务仍有后台任务");
+  });
+  const input = { id: "claude", type: "claude", subagentModel: "child-model" };
+  f.adapters[0].snapshot.activeTurns.thread = "turn";
+  await assert.rejects(f.call("lan/backends/save", input), /任务结束/);
+  assert.equal(await readFile(f.path, "utf8"), f.originalBytes);
+  f.adapters[0].snapshot.activeTurns = {};
+  await assert.rejects(f.call("lan/backends/save", input), /后台任务/);
+  assert.equal(await readFile(f.path, "utf8"), f.originalBytes);
+  assert.equal(f.adapters.length, 1);
+  refuse = false;
+  const result = await f.call("lan/backends/save", input);
+  assert.equal(
+    result.backends.find((backend) => backend.id === "claude").subagentModel,
+    "child-model",
+  );
+  assert.equal(f.adapters.length, 2);
+  assert.equal(f.adapters[0].ready, false);
+  const cleared = await f.call("lan/backends/save", {
+    ...input,
+    subagentModel: "",
+  });
+  assert.equal(
+    cleared.backends.find((backend) => backend.id === "claude").subagentModel,
+    "",
+  );
+  assert.equal(f.adapters.length, 3);
+});
+
 test("代理保存先保护运行任务，无效端口保持实例，空闲后替换并广播", async (t) => {
   const f = await fixture(t);
   const input = {

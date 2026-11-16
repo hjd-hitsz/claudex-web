@@ -183,6 +183,10 @@ CLAUDE_EXECUTABLE=/absolute/path/to/claude MODEL_BASE_URL=https://model.example 
 
 ## 格式与验证
 
+子代理模型回归以 `node --import ./tests/helpers/test-console.mjs tests/integration/subagent-models.mjs` 运行真实 Claude CLI 与本机模拟 Messages 服务，覆盖连续轮次、general-purpose 与 Explore、同供应商不同模型、跨供应商同名模型、原生 API Key 与外部供应商的双向路由，以及停用后的失败与恢复。`tests/integration/codex-subagent-models.mjs` 使用真实 Codex app-server 与模拟 Responses 服务，核对未显式指定模型及强度的原生子代理实际使用网页配置。Claude 回归同时检查主代理低强度、子代理高强度在连续轮次中的实际请求。两项均使用临时原生目录，模型流量只发往本机夹具。原生 OAuth 文件更新和凭据隔离另由 `server/tests/subagent-models.test.mjs` 使用临时文件与模拟端点验证。
+
+构建后使用 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/subagent-models.mjs` 验证两后端同行展示的“供应商 / 模型”及思考强度选择、Codex 隐藏模型过滤与恢复、独立保存、忙碌失败保留、重试、刷新恢复与清空，覆盖深浅主题、桌面与窄屏、80% 至 200% 实际浏览器缩放和侧栏收放。证据保存在 `.cache/subagent-models/browser`。README 引用的现有图片展示对话及文件面板，本项设置变化未影响其画面。
+
 文件预览编辑回归在构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/file-editing.mjs`。脚本使用生产构建、真实 Chromium 编辑器及隔离文件协议夹具，核对直接输入、撤销、表格、任务列表、代码、数学语法、相对图片、Mermaid、源码切换、保存与失败重试，并覆盖深浅主题、桌面与窄屏的 80%、100%、125%、150% 和 200% 实际页面缩放。截图与结果位于 `.cache/file-editing/after`，浏览器关闭 GPU，测试结束清理独立配置。旧构建通过 `BROWSER_BUILD_DIR` 指定，设置 `FILE_EDITING_BEFORE=1` 后复现只读预览并将对照截图保存到 `.cache/file-editing/before`。
 
 模型名称布局回归在构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/model-select.mjs`。脚本使用隔离模型目录及模拟后端，在桌面、平板竖屏和手机窄屏核对完整名称、键盘选择、两行输入、发送与停止按钮、深浅主题及 80%～200% 实际页面缩放；结束后恢复缩放并清理浏览器配置。截图与测量记录保存在 `.cache/model-select/after`。修复前将构建复制到 `.cache/model-select/before/dist`，设置 `BROWSER_BEFORE=1` 可复现固定宽度截断。

@@ -7,7 +7,10 @@ import { createTokenUsage } from "./token-usage.mjs";
 import { modelOptions } from "./model-options.mjs";
 import { captureNativeProcesses } from "./process-ownership.mjs";
 import { createNativeCommands } from "./native-commands.mjs";
-import { providerSettingsEnvironment } from "./provider-environment.mjs";
+import {
+  providerSettingsEnvironment,
+  subagentModelEnvironment,
+} from "./provider-environment.mjs";
 import { networkProxyEnvironment } from "../network-proxy.mjs";
 import {
   createProviderTransport,
@@ -19,6 +22,7 @@ export async function createExecutionSession({
   session,
   queued,
   providers,
+  subagentProvider,
   save,
   emit,
   broadcast,
@@ -45,7 +49,20 @@ export async function createExecutionSession({
   );
   const model = queued.model || session.model || provider?.models[0];
   const options = modelOptions(provider, model, queued);
-  const proxy = provider ? await createProviderTransport(provider) : null;
+  const subagentTarget =
+    subagentProvider ||
+    (backend.subagentEffort && backend.subagentModel ? provider : null);
+  const proxy =
+    provider || subagentTarget
+      ? await createProviderTransport(
+          provider,
+          subagentTarget && {
+            provider: subagentTarget,
+            model: backend.subagentModel,
+            effort: backend.subagentEffort,
+          },
+        )
+      : null;
   const input = createInputStream();
   const commands = createNativeCommands(
     input,
@@ -62,11 +79,14 @@ export async function createExecutionSession({
     query: null,
     providerId: provider?.id ?? queued.providerId ?? session.providerId,
     providerKey: JSON.stringify(provider),
+    subagentProviderKey: JSON.stringify(subagentProvider),
     model,
     cwd: session.cwd,
     modelTokens: session.modelTokens || 0,
     lastTurnId: queued.id,
     lastActivityAt: Date.now(),
+    settingsEnvironment: (model, effort) =>
+      providerSettingsEnvironment(provider, backend, { proxy, model, effort }),
   };
   const current = () => (process.retired ? null : getCurrent());
   const context = () => ({
@@ -98,7 +118,10 @@ export async function createExecutionSession({
       ...options,
       settings: {
         ...options.settings,
-        env: networkProxyEnvironment(backend.proxy),
+        env: {
+          ...networkProxyEnvironment(backend.proxy),
+          ...subagentModelEnvironment(backend, proxy),
+        },
       },
       extraArgs: { "thinking-display": "summarized" },
       allowDangerouslySkipPermissions: true,
@@ -166,7 +189,7 @@ export async function createExecutionSession({
     process.query.close();
     proxy?.close();
   };
-  if (provider) {
+  if (provider || proxy) {
     try {
       await process.query.applyFlagSettings({
         env: providerSettingsEnvironment(provider, backend, {

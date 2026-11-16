@@ -4,6 +4,7 @@ import { useStore, saveBackend, rpc } from "../store.js";
 import { CodexModelSettings } from "./codex-model-settings.jsx";
 import { ProviderSettings } from "./provider-settings.jsx";
 import { ProxySettings } from "./proxy-settings.jsx";
+import { SubagentModelSettings } from "./subagent-model-settings.jsx";
 
 export function BackendSettings() {
   const s = useStore();
@@ -160,6 +161,7 @@ export function BackendSettings() {
                 <pre>{diagnostic}</pre>
               </details>
             )}
+            <SubagentModelSettings backend={backend} disabled={working} />
             {backend.type === "codex" && (
               <CodexModelSettings backend={backend} />
             )}

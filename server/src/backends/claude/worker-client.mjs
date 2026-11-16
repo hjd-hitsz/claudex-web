@@ -35,6 +35,8 @@ export function createClaudeWorkerAdapter({
           "ANTHROPIC_API_KEY",
           "ANTHROPIC_BASE_URL",
           "ANTHROPIC_MODEL",
+          "ANTHROPIC_CUSTOM_HEADERS",
+          "CLAUDE_CODE_OAUTH_TOKEN",
           "CLAUDE_CODE_EFFORT_LEVEL",
           "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
           "HTTP_PROXY",

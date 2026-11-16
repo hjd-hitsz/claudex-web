@@ -1,0 +1,323 @@
+import assert from "node:assert/strict";
+import http from "node:http";
+import { readFile, writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { extname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { serveDemoSession } from "../helpers/browser-session.mjs";
+import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
+
+const root = fileURLToPath(new URL("../../", import.meta.url));
+const build = join(root, "client/dist");
+const output = join(root, ".cache/subagent-models/browser");
+await mkdir(output, { recursive: true });
+function persistedFixture() {
+  const original = window.WebSocket.prototype.send;
+  window.WebSocket.prototype.send = function (raw) {
+    const message = JSON.parse(raw);
+    if (message.method === "lan/backends/save") {
+      if (
+        window.failSubagentSave &&
+        Object.hasOwn(message.params, "subagentModel")
+      ) {
+        window.failSubagentSave = false;
+        this.onmessage({
+          data: JSON.stringify({
+            id: message.id,
+            error: {
+              code: -32000,
+              message: "请等待此后端的任务结束后修改配置。",
+            },
+          }),
+        });
+        return;
+      }
+      const saved = JSON.parse(
+        sessionStorage.getItem("subagent-backends") || "{}",
+      );
+      saved[message.params.id] = {
+        ...saved[message.params.id],
+        ...message.params,
+      };
+      sessionStorage.setItem("subagent-backends", JSON.stringify(saved));
+    }
+    return original.call(this, raw);
+  };
+}
+const data = {
+  markdown: "子代理模型配置验证",
+  claudeItems: [],
+  providers: [
+    {
+      id: "secondary",
+      backendId: "claude",
+      name: "另一家供应商",
+      models: ["shared-model", "child-model"],
+      modelAliases: { "shared-model": "同名模型" },
+      modelCapabilities: {
+        "shared-model": { supportedEffortLevels: ["low", "high"] },
+      },
+    },
+  ],
+};
+const server = http.createServer(async (req, res) => {
+  if (serveDemoSession(req, res)) return;
+  try {
+    const path = new URL(req.url, "http://fixture").pathname;
+    let bytes = await readFile(join(build, path === "/" ? "index.html" : path));
+    if (path === "/")
+      bytes = bytes
+        .toString()
+        .replace(
+          "<head>",
+          `<head><script>(${backendFixture.toString()})({...${JSON.stringify(data)},backendSettings:JSON.parse(sessionStorage.getItem("subagent-backends")||"{}")});(${persistedFixture.toString()})()</script>`,
+        );
+    res
+      .writeHead(200, {
+        "content-type":
+          {
+            ".js": "text/javascript",
+            ".css": "text/css",
+            ".woff2": "font/woff2",
+          }[extname(path)] || "text/html",
+      })
+      .end(bytes);
+  } catch {
+    res.writeHead(404).end();
+  }
+});
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+const { chromium } = await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE));
+const profile = await mkdtemp(join(tmpdir(), "subagent-browser-"));
+const context = await chromium.launchPersistentContext(profile, {
+  viewport: { width: 1440, height: 1000 },
+  executablePath: process.env.CHROME_PATH,
+  headless: true,
+  args: ["--no-sandbox", "--no-proxy-server", "--disable-gpu"],
+});
+try {
+  const page = await context.newPage();
+  page.setDefaultTimeout(10000);
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  async function open() {
+    await page.locator(".composer .ProseMirror").waitFor();
+    const sidebar = page.getByRole("button", { name: "显示侧栏", exact: true });
+    if (await sidebar.isVisible()) await sidebar.click();
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page
+      .getByRole("form", { name: "Claude Code 子代理模型", exact: true })
+      .waitFor();
+  }
+  await page.goto(`http://127.0.0.1:${server.address().port}`);
+  await open();
+  const codex = page.getByRole("form", {
+    name: "Codex 子代理模型",
+    exact: true,
+  });
+  const claude = page.getByRole("form", {
+    name: "Claude Code 子代理模型",
+    exact: true,
+  });
+  const codexCard = page.locator(".backend-card").filter({ has: codex });
+  await codexCard.getByText("显示的模型", { exact: true }).click();
+  await codexCard.getByRole("checkbox", { name: "gpt", exact: true }).uncheck();
+  assert.equal(
+    await codex
+      .getByLabel("子代理模型", { exact: true })
+      .locator("option")
+      .filter({ hasText: "ChatGPT / gpt" })
+      .count(),
+    0,
+  );
+  await codex
+    .getByLabel("子代理模型", { exact: true })
+    .selectOption(JSON.stringify(["", "second"]));
+  await codex
+    .getByLabel("子代理思考强度", { exact: true })
+    .selectOption("high");
+  await codex.getByRole("button", { name: "保存", exact: true }).click();
+  await codex.getByRole("button", { name: "保存", exact: true }).waitFor();
+  await codexCard
+    .getByRole("checkbox", { name: "Second Model", exact: true })
+    .uncheck();
+  assert.equal(
+    await codex.getByLabel("子代理模型", { exact: true }).inputValue(),
+    "unavailable",
+  );
+  assert.equal(
+    await codex
+      .getByLabel("子代理模型", { exact: true })
+      .locator("option")
+      .filter({ hasText: "Second Model" })
+      .count(),
+    0,
+  );
+  await page.screenshot({ path: join(output, "hidden-selected-model.png") });
+  await codexCard
+    .getByRole("checkbox", { name: "Second Model", exact: true })
+    .check();
+  assert.equal(
+    await codex.getByLabel("子代理模型", { exact: true }).inputValue(),
+    JSON.stringify(["", "second"]),
+  );
+  assert.equal(
+    await claude.getByLabel("子代理模型", { exact: true }).inputValue(),
+    "",
+  );
+  await claude
+    .getByLabel("子代理模型", { exact: true })
+    .selectOption(JSON.stringify(["secondary", "shared-model"]));
+  await claude
+    .getByLabel("子代理思考强度", { exact: true })
+    .selectOption("low");
+  await page.evaluate(() => {
+    window.failSubagentSave = true;
+  });
+  await claude.getByRole("button", { name: "保存", exact: true }).click();
+  await claude.getByRole("alert").filter({ hasText: "任务结束" }).waitFor();
+  assert.equal(
+    await claude.getByLabel("子代理思考强度", { exact: true }).inputValue(),
+    "low",
+  );
+  assert.equal(
+    await claude.getByLabel("子代理模型", { exact: true }).inputValue(),
+    JSON.stringify(["secondary", "shared-model"]),
+  );
+  await claude.getByRole("button", { name: "保存", exact: true }).click();
+  await claude.getByRole("button", { name: "保存", exact: true }).waitFor();
+  await page.reload();
+  await open();
+  assert.equal(
+    await codex
+      .getByLabel("子代理模型", { exact: true })
+      .locator("option")
+      .filter({ hasText: "ChatGPT / gpt" })
+      .count(),
+    0,
+  );
+  assert.equal(
+    await codex.getByLabel("子代理思考强度", { exact: true }).inputValue(),
+    "high",
+  );
+  assert.equal(
+    await claude.getByLabel("子代理思考强度", { exact: true }).inputValue(),
+    "low",
+  );
+  assert.equal(
+    await codex.getByLabel("子代理模型", { exact: true }).inputValue(),
+    JSON.stringify(["", "second"]),
+  );
+  assert.equal(
+    await claude.getByLabel("子代理模型", { exact: true }).inputValue(),
+    JSON.stringify(["secondary", "shared-model"]),
+  );
+  const settings = await context.newPage();
+  await settings.goto("chrome://settings/appearance");
+  const zoom = settings.locator("#zoomLevel");
+  const metrics = [];
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const theme of ["light", "dark"]) {
+      await page.emulateMedia({ colorScheme: theme });
+      for (const scale of [0.8, 1, 1.25, 1.5, 2]) {
+        await zoom.selectOption(String(scale));
+        await page.reload();
+        await open();
+        await claude.scrollIntoViewIfNeeded();
+        const size = await page.locator(".settings-body").evaluate((el) => ({
+          width: el.clientWidth,
+          scroll: el.scrollWidth,
+          dpr: devicePixelRatio,
+        }));
+        assert.ok(Math.abs(size.dpr - scale) < 0.02);
+        assert.ok(
+          size.scroll <= size.width + 1,
+          JSON.stringify({ width, theme, scale, size }),
+        );
+        const controls = await claude
+          .locator("select, button[type=submit]")
+          .evaluateAll((elements) =>
+            elements.map((el) => {
+              const r = el.getBoundingClientRect();
+              return { center: r.top + r.height / 2, width: r.width };
+            }),
+          );
+        assert.ok(
+          controls.every(
+            (control) =>
+              Math.abs(control.center - controls[0].center) < 1 &&
+              control.width > 0,
+          ),
+          JSON.stringify({ width, scale, controls }),
+        );
+        assert.ok(
+          await claude
+            .getByRole("button", { name: "保存", exact: true })
+            .isVisible(),
+        );
+        await page.screenshot({
+          path: join(output, `${width}-${theme}-${scale}.png`),
+        });
+        metrics.push({ width, theme, scale, ...size });
+      }
+    }
+  }
+  await zoom.selectOption("1");
+  await page.reload();
+  await open();
+  await claude.getByLabel("子代理模型", { exact: true }).selectOption("");
+  await claude.getByRole("button", { name: "保存", exact: true }).click();
+  await claude.getByRole("button", { name: "保存", exact: true }).waitFor();
+  await page.reload();
+  await open();
+  assert.equal(
+    await claude.getByLabel("子代理模型", { exact: true }).inputValue(),
+    "",
+  );
+  assert.equal(
+    await codex.getByLabel("子代理模型", { exact: true }).inputValue(),
+    JSON.stringify(["", "second"]),
+  );
+  await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
+  await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
+  assert.equal(
+    await page.getByRole("button", { name: "设置", exact: true }).isVisible(),
+    false,
+  );
+  assert.deepEqual(errors, []);
+  await writeFile(
+    join(output, "results.json"),
+    JSON.stringify(
+      {
+        checks: [
+          "independent backend settings",
+          "Codex hidden models excluded and restored",
+          "per-model effort choices and persistence",
+          "cross-provider selection",
+          "busy failure retains form",
+          "retry",
+          "refresh",
+          "clear",
+          "themes",
+          "browser zoom",
+          "narrow sidebar",
+        ],
+        metrics,
+        build: JSON.parse(
+          await readFile(join(root, "build-info.json"), "utf8"),
+        ),
+      },
+      null,
+      2,
+    ),
+  );
+  console.log(
+    "PASS 子代理模型独立保存、跨供应商、失败重试、刷新恢复、深浅主题、实际缩放与窄屏",
+  );
+} finally {
+  await context.close();
+  server.closeAllConnections();
+  await new Promise((resolve) => server.close(resolve));
+  await rm(profile, { recursive: true, force: true });
+}
