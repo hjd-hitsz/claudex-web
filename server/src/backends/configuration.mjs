@@ -1,6 +1,7 @@
 import { resolve, join } from "node:path";
 import { createStorage } from "./storage.mjs";
 import { validateNetworkProxy } from "./network-proxy.mjs";
+import { subagentSettings } from "../../../shared/subagent-settings.mjs";
 
 export function validateBackend(input, config) {
   if (!["codex", "claude"].includes(input.id) || input.id !== input.type)
@@ -152,6 +153,11 @@ export function createBackendConfiguration(config) {
     ...storage,
     read,
     save,
+    async readSubagentSettings(id) {
+      return subagentSettings(
+        (await storage.read()).backends.find((b) => b.id === id) || {},
+      );
+    },
     async readProviders() {
       return (await storage.read()).providers;
     },

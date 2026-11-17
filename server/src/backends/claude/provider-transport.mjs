@@ -8,7 +8,17 @@ import { nativeProviderHeaders } from "./native-provider.mjs";
 
 export async function createProviderTransport(provider, subagent) {
   const token = randomUUID();
-  const subagentModel = subagent ? `claudex-subagent-${randomUUID()}` : null;
+  const targets = new Map();
+  let subagentModel;
+  let targetKey;
+  function setSubagent(target) {
+    const key = JSON.stringify(target);
+    if (key === targetKey) return;
+    targetKey = key;
+    subagentModel = target ? `claudex-subagent-${randomUUID()}` : null;
+    if (target) targets.set(subagentModel, target);
+  }
+  setSubagent(subagent);
   const nativeBaseUrl =
     process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
   const server = http.createServer(async (request, response) => {
@@ -29,13 +39,14 @@ export async function createProviderTransport(provider, subagent) {
       let selected = provider;
       if (body) {
         let input = JSON.parse(body);
-        if (subagent && input.model === subagentModel) {
-          selected = subagent.provider;
-          input = { ...input, model: subagent.model };
-          if (subagent.effort && !request.url.includes("/count_tokens"))
+        const target = targets.get(input.model);
+        if (target) {
+          selected = target.provider;
+          input = { ...input, model: target.model };
+          if (target.effort && !request.url.includes("/count_tokens"))
             input.output_config = {
               ...input.output_config,
-              effort: subagent.effort,
+              effort: target.effort,
             };
         }
         if (selected && (selected.protocol || "messages") === "messages")
@@ -91,13 +102,18 @@ export async function createProviderTransport(provider, subagent) {
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     token,
-    subagentModel,
-    modelCapabilities: subagent
-      ? {
-          [subagentModel]:
-            subagent.provider.modelCapabilities?.[subagent.model] || {},
-        }
-      : {},
+    setSubagent,
+    get subagentModel() {
+      return subagentModel;
+    },
+    get modelCapabilities() {
+      return Object.fromEntries(
+        [...targets].map(([model, target]) => [
+          model,
+          target.provider.modelCapabilities?.[target.model] || {},
+        ]),
+      );
+    },
     close() {
       server.close();
       server.closeAllConnections();

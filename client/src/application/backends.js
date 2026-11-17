@@ -2,6 +2,7 @@ import { newDraftKey } from "../infrastructure/backend-storage.js";
 import { persist, saved } from "../infrastructure/storage.js";
 import { compatibleEffort } from "../domain/model-preferences.js";
 import { backendEnabled } from "../domain/backend-visibility.js";
+import { isSubagentSettings } from "../../../shared/subagent-settings.mjs";
 import {
   modelServiceTiers,
   resolveServiceTier,
@@ -382,7 +383,9 @@ export function createBackends({
     );
   }
   async function saveBackend(value) {
-    await rpc("lan/backends/save", value);
+    const result = await rpc("lan/backends/save", value);
+    set({ backends: result.backends });
+    if (isSubagentSettings(value)) return;
     await refreshBackends();
   }
   async function saveProvider(value) {

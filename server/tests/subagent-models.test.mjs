@@ -329,4 +329,20 @@ test("跨供应商按会话专属标识分流，同名模型各用正确凭据�
     (await fetch(transport.url, { method: "POST", body: "{}" })).status,
     401,
   );
+  const previousModel = transport.subagentModel;
+  transport.setSubagent({ provider: main, model: "next-model", effort: "low" });
+  const nextModel = transport.subagentModel;
+  assert.notEqual(nextModel, previousModel);
+  await send(nextModel);
+  assert.equal(received.at(-1).name, "main");
+  assert.equal(received.at(-1).body.model, "next-model");
+  assert.equal(received.at(-1).headers.authorization, "Bearer main-key");
+  transport.setSubagent(null);
+  assert.equal(transport.subagentModel, null);
+  await send(previousModel);
+  assert.equal(received.at(-1).name, "child");
+  assert.equal(received.at(-1).body.model, "same-model");
+  assert.equal(received.at(-1).body.output_config.effort, "high");
+  await send(nextModel);
+  assert.equal(received.at(-1).body.model, "next-model");
 });

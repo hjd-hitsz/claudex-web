@@ -19,6 +19,7 @@ export function createClaudeAdapter({
   broadcast,
   providers,
   workspace: sharedWorkspace,
+  readSubagentSettings,
 }) {
   const storage = createStorage(
     join(backend.stateDir, "claudex-web-index.json"),
@@ -37,6 +38,7 @@ export function createClaudeAdapter({
     broadcast,
     compactions,
     questions,
+    readSubagentSettings,
   });
   const catalogue = createClaudeCatalogue({
     backend,

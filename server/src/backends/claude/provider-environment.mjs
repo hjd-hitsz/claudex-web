@@ -128,6 +128,9 @@ export function providerRuntimeEnvironment(
 export function providerSettingsEnvironment(provider, backend, options) {
   const env = providerRuntimeEnvironment(provider, backend, options);
   return {
+    CLAUDE_CODE_SUBAGENT_MODEL: "",
+    CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "",
+    CLAUDE_CODE_SUBAGENT_EFFORT: "",
     ...(provider && { ANTHROPIC_AUTH_TOKEN: "" }),
     ...networkProxyEnvironment(backend.proxy),
     ...Object.fromEntries(

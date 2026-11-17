@@ -181,13 +181,15 @@ CLAUDE_EXECUTABLE=/absolute/path/to/claude MODEL_BASE_URL=https://model.example 
 
 同日查验 Codex VS Code 扩展 `openai.chatgpt 26.908.40401`，版本来自 `~/.local/share/vscode-lan/code-server-extensions/openai.chatgpt-26.908.40401-linux-x64/package.json`。`webview/assets/app-initial-1e5ee25fb4ec.js` 中的文件查询服务调用原生 fuzzy search 会话启动、更新、停止接口，并保留单次查询接口；`Nhr` 注册 `init` 命令，在提交生成前检查已有 `AGENTS.md`。`app-initial-bca4f920746a.js` 的 `P1t` 处理轮次开始并更新对话状态，整理流程调用 `thread/compact/start`；补充输入提交使用 `turn/steer`。这里记录原生客户端的交互及协议事实，Claude Code 的原生附加命令以其自身当前目录返回结果为准。
 
+2026-11-17 对照本机保留的 Codex VS Code `26.1021.22027` 打包资源：`src-622b307a9baf.js` 的 `Pv` 返回默认模型配置服务，`writeModel` 直接提交 `config/batchWrite`，服务档位写入同样使用该请求并设置 `reloadUserConfig: true`。本机桌面包版本为 `26.1007.21434`，可用资源中未定位到子代理专用设置控件，当前工具环境未提供可操作的客户端窗口。网页子代理设置的生效行为分别通过真实 Codex `0.169.0`、Claude CLI 与隔离模型服务验证；客户端资源仅用于核对偏好保存的请求边界。
+
 以上查验使用本机可取得的源码及已安装打包资源。保存的网页客户端、当前网页产品、Codex 客户端和 Claude Code 运行时各自注明版本与来源；提取资源保留在本机忽略目录，仓库只维护行为结论和隔离验证。
 
 ## 格式与验证
 
-子代理模型回归以 `node --import ./tests/helpers/test-console.mjs tests/integration/subagent-models.mjs` 运行真实 Claude CLI 与本机模拟 Messages 服务，覆盖连续轮次、general-purpose 与 Explore、同供应商不同模型、跨供应商同名模型、原生 API Key 与外部供应商的双向路由，以及停用后的失败与恢复。`tests/integration/codex-subagent-models.mjs` 使用真实 Codex app-server 与模拟 Responses 服务，核对未显式指定模型及强度的原生子代理实际使用网页配置。Claude 回归同时检查主代理低强度、子代理高强度在连续轮次中的实际请求。两项均使用临时原生目录，模型流量只发往本机夹具。原生 OAuth 文件更新和凭据隔离另由 `server/tests/subagent-models.test.mjs` 使用临时文件与模拟端点验证。
+子代理模型回归以 `node --import ./tests/helpers/test-console.mjs tests/integration/subagent-models.mjs` 运行真实 Claude CLI 与本机模拟 Messages 服务，覆盖连续轮次、general-purpose 与 Explore、同供应商不同模型、跨供应商同名模型、原生 API Key 与外部供应商的双向路由，以及停用后的失败与恢复。`tests/integration/codex-subagent-models.mjs` 使用真实 Codex app-server 与模拟 Responses 服务，核对未显式指定模型及强度的原生子代理实际使用网页配置。Claude 回归同时检查主代理低强度、子代理高强度到低强度及模型变化在连续轮次中的实际请求，并验证清空后恢复默认。`node tests/integration/claude-subagent-settings-save.mjs` 经过真实管理器、独立执行服务和原生 CLI 完成保存、IPC 重连及连续轮次，核对执行服务与原生主会话 PID 保持、实际请求的新模型和强度以及清空行为；所有原生验证使用临时配置，模型流量只发往本机夹具。原生 OAuth 文件更新和凭据隔离另由 `server/tests/subagent-models.test.mjs` 使用临时文件与模拟端点验证。
 
-构建后使用 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/subagent-models.mjs` 验证两后端同行展示的“供应商 / 模型”及思考强度选择、Codex 隐藏模型过滤与恢复、独立保存、忙碌失败保留、重试、刷新恢复与清空，覆盖深浅主题、桌面与窄屏、80% 至 200% 实际浏览器缩放和侧栏收放。证据保存在 `.cache/subagent-models/browser`。README 引用的现有图片展示对话及文件面板，本项设置变化未影响其画面。
+构建后使用 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/subagent-models.mjs` 验证两后端同行展示的“供应商 / 模型”及思考强度选择、Codex 隐藏模型过滤与恢复、独立保存、写入失败保留、重试、刷新恢复与清空，覆盖深浅主题、桌面与窄屏、80% 至 200% 实际浏览器缩放和侧栏收放。保存性能回归阻塞模型、账户及后端目录读取，验证一次保存请求即可结束并保留当前主模型和草稿；结果记录完整按钮等待耗时。`client/tests/backend-settings-save.test.js` 与 `server/tests/codex-subagent-settings.test.mjs` 分别检查前端请求边界及真实 Codex 适配器的最新配置读取，配置事务和 IPC 回归覆盖运行任务、写入失败与重连时进程保持。`tests/integration/subagent-models.mjs` 使用真实 Claude CLI 与隔离模型服务验证连续轮次更新模型、强度及清空默认值，并核对主会话实例保持。证据保存在 `.cache/subagent-models/browser`。README 引用的现有图片展示对话及文件面板，本项设置变化未影响其画面。
 
 文件预览编辑回归在构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/file-editing.mjs`。脚本使用生产构建、真实 Chromium 编辑器及隔离文件协议夹具，核对直接输入、撤销、表格、任务列表、代码、数学语法、相对图片、Mermaid、源码切换、保存与失败重试，并覆盖深浅主题、桌面与窄屏的 80%、100%、125%、150% 和 200% 实际页面缩放。截图与结果位于 `.cache/file-editing/after`，浏览器关闭 GPU，测试结束清理独立配置。旧构建通过 `BROWSER_BUILD_DIR` 指定，设置 `FILE_EDITING_BEFORE=1` 后复现只读预览并将对照截图保存到 `.cache/file-editing/before`。
 

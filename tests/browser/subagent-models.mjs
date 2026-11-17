@@ -8,13 +8,31 @@ import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const build = join(root, "client/dist");
-const output = join(root, ".cache/subagent-models/browser");
+const build = process.env.BROWSER_BUILD_DIR || join(root, "client/dist");
+const output = join(
+  root,
+  process.env.BROWSER_BEFORE === "1"
+    ? ".cache/subagent-save/browser-before"
+    : ".cache/subagent-models/browser",
+);
 await mkdir(output, { recursive: true });
 function persistedFixture() {
   const original = window.WebSocket.prototype.send;
   window.WebSocket.prototype.send = function (raw) {
     const message = JSON.parse(raw);
+    if (
+      window.blockSubagentRefresh &&
+      [
+        "lan/backends/list",
+        "model/list",
+        "account/read",
+        "config/read",
+      ].includes(message.method)
+    ) {
+      window.unexpectedSubagentRefresh ||= [];
+      window.unexpectedSubagentRefresh.push(message.method);
+      return;
+    }
     if (message.method === "lan/backends/save") {
       if (
         window.failSubagentSave &&
@@ -26,7 +44,7 @@ function persistedFixture() {
             id: message.id,
             error: {
               code: -32000,
-              message: "请等待此后端的任务结束后修改配置。",
+              message: "配置写入失败，请重试。",
             },
           }),
         });
@@ -136,8 +154,27 @@ try {
   await codex
     .getByLabel("子代理思考强度", { exact: true })
     .selectOption("high");
+  await page.evaluate(() => {
+    window.blockSubagentRefresh = true;
+  });
+  const codexSaveStarted = Date.now();
   await codex.getByRole("button", { name: "保存", exact: true }).click();
-  await codex.getByRole("button", { name: "保存", exact: true }).waitFor();
+  await codex
+    .getByRole("button", { name: "保存", exact: true })
+    .waitFor({ timeout: 1500 })
+    .catch(async (error) => {
+      await page.screenshot({ path: join(output, "save-pending.png") });
+      throw error;
+    });
+  const codexSaveMs = Date.now() - codexSaveStarted;
+  await page.screenshot({ path: join(output, "save-complete.png") });
+  assert.deepEqual(
+    await page.evaluate(() => window.unexpectedSubagentRefresh || []),
+    [],
+  );
+  await page.evaluate(() => {
+    window.blockSubagentRefresh = false;
+  });
   await codexCard
     .getByRole("checkbox", { name: "Second Model", exact: true })
     .uncheck();
@@ -175,7 +212,7 @@ try {
     window.failSubagentSave = true;
   });
   await claude.getByRole("button", { name: "保存", exact: true }).click();
-  await claude.getByRole("alert").filter({ hasText: "任务结束" }).waitFor();
+  await claude.getByRole("alert").filter({ hasText: "写入失败" }).waitFor();
   assert.equal(
     await claude.getByLabel("子代理思考强度", { exact: true }).inputValue(),
     "low",
@@ -184,8 +221,22 @@ try {
     await claude.getByLabel("子代理模型", { exact: true }).inputValue(),
     JSON.stringify(["secondary", "shared-model"]),
   );
+  await page.evaluate(() => {
+    window.blockSubagentRefresh = true;
+  });
+  const claudeSaveStarted = Date.now();
   await claude.getByRole("button", { name: "保存", exact: true }).click();
-  await claude.getByRole("button", { name: "保存", exact: true }).waitFor();
+  await claude
+    .getByRole("button", { name: "保存", exact: true })
+    .waitFor({ timeout: 1500 });
+  const claudeSaveMs = Date.now() - claudeSaveStarted;
+  assert.deepEqual(
+    await page.evaluate(() => window.unexpectedSubagentRefresh || []),
+    [],
+  );
+  await page.evaluate(() => {
+    window.blockSubagentRefresh = false;
+  });
   await page.reload();
   await open();
   assert.equal(
@@ -295,7 +346,8 @@ try {
           "Codex hidden models excluded and restored",
           "per-model effort choices and persistence",
           "cross-provider selection",
-          "busy failure retains form",
+          "write failure retains form",
+          "save completes while unrelated catalogue reads are blocked",
           "retry",
           "refresh",
           "clear",
@@ -304,6 +356,8 @@ try {
           "narrow sidebar",
         ],
         metrics,
+        codexSaveMs,
+        claudeSaveMs,
         build: JSON.parse(
           await readFile(join(root, "build-info.json"), "utf8"),
         ),

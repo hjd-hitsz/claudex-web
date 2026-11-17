@@ -15,6 +15,8 @@ import {
   validateBackend,
 } from "./configuration.mjs";
 import { createProviders } from "./providers.mjs";
+import { isSubagentSettings } from "../../../shared/subagent-settings.mjs";
+import { validateSubagentSettings } from "./subagent-settings.mjs";
 import { createCodexAdapter } from "./codex/adapter.mjs";
 import { createClaudeWorkerAdapter } from "./claude/worker-client.mjs";
 import { mapResult, mapState, nativeParams } from "./identity-mapping.mjs";
@@ -122,6 +124,8 @@ export function createBackendManager({
         config,
         version,
         providers,
+        readSubagentSettings: () =>
+          configuration.readSubagentSettings(backend.id),
         send(client, message) {
           client.deliver(message);
         },
@@ -291,18 +295,7 @@ export function createBackendManager({
     validateBackend(params, config);
     const old = instances.get(params.id);
     const next = validateBackend({ ...old?.backend, ...params }, config);
-    if (next.subagentProviderId && next.subagentProviderId !== "@native") {
-      const provider = await providers.get("claude", next.subagentProviderId);
-      if (!provider.models.includes(next.subagentModel))
-        throw new Error("子代理模型不在所选供应商的模型列表中");
-      if (
-        next.subagentEffort &&
-        !provider.modelCapabilities?.[
-          next.subagentModel
-        ]?.supportedEffortLevels?.includes(next.subagentEffort)
-      )
-        throw new Error("子代理模型不支持所选思考强度");
-    }
+    await validateSubagentSettings(next, providers);
     if (
       params.hiddenModels !== undefined &&
       Object.keys(params).every((key) =>
@@ -314,6 +307,11 @@ export function createBackendManager({
         ...old.backend,
         hiddenModels: params.hiddenModels,
       });
+      emitState();
+      return { backends: publicBackends() };
+    }
+    if (!prepare && isSubagentSettings(params)) {
+      old.backend = await configuration.save(params);
       emitState();
       return { backends: publicBackends() };
     }

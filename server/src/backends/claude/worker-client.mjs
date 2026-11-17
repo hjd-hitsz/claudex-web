@@ -8,6 +8,7 @@ import { hasBackendWork } from "../../../../shared/backend-activity.mjs";
 import { launchWorker, workerLocation } from "./worker-launcher.mjs";
 import { workerRevision } from "./worker-revision.mjs";
 import { networkProxyEnvironment } from "../network-proxy.mjs";
+import { executionBackend } from "../../../../shared/subagent-settings.mjs";
 import {
   captureNativeProcesses,
   nativeProcessesAlive,
@@ -216,11 +217,17 @@ export function createClaudeWorkerAdapter({
       initialized.revision?.entry !== options.revision.entry ||
       initialized.revision?.hash !== options.revision.hash ||
       (initialized.configuration &&
-        !isDeepStrictEqual(initialized.configuration, {
-          backend: options.backend,
-          config: options.config,
-          runtimeEnv: options.runtimeEnv,
-        }));
+        !isDeepStrictEqual(
+          {
+            ...initialized.configuration,
+            backend: executionBackend(initialized.configuration.backend),
+          },
+          {
+            backend: executionBackend(options.backend),
+            config: options.config,
+            runtimeEnv: options.runtimeEnv,
+          },
+        ));
     mayUpgrade =
       !initialized.generation || options.generation > initialized.generation;
     publish();

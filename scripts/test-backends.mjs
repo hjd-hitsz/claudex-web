@@ -15,6 +15,8 @@ const scripts = [
   "claude-native-fork-boundary.mjs",
   "claude-native-checkpoints.mjs",
   "claude-native-subagents.mjs",
+  "subagent-models.mjs",
+  "claude-subagent-settings-save.mjs",
   "claude-native-goal-status.mjs",
   "claude-native-goals.mjs",
   "claude-catalogue.mjs",

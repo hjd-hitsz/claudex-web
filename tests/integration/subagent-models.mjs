@@ -16,15 +16,14 @@ async function verify(mode) {
   const id = randomUUID();
   let round = 0,
     issued = false;
-  const childModel =
-    mode === "same-provider" ? "fixture-child" : "fixture-main";
+  let childModel = mode === "same-provider" ? "fixture-child" : "fixture-main";
   const childRequests = [];
   const child = await messagesServer((body) => {
     childRequests.push(body);
     return [{ type: "text", text: `CHILD_ANSWER_${round}` }];
   });
   const main = await messagesServer((body) => {
-    if (body.model === "fixture-child") {
+    if (body.model.startsWith("fixture-child")) {
       childRequests.push(body);
       return [{ type: "text", text: `CHILD_ANSWER_${round}` }];
     }
@@ -50,9 +49,9 @@ async function verify(mode) {
     protocol: "messages",
     baseUrl: main.url,
     apiKey: "primary-key",
-    models: ["fixture-main", "fixture-child"],
+    models: ["fixture-main", "fixture-child", "fixture-child-next"],
     modelCapabilities: Object.fromEntries(
-      ["fixture-main", "fixture-child"].map((model) => [
+      ["fixture-main", "fixture-child", "fixture-child-next"].map((model) => [
         model,
         {
           supportedEffortLevels: ["low", "high"],
@@ -66,9 +65,13 @@ async function verify(mode) {
     protocol: "messages",
     baseUrl: child.url,
     apiKey: "child-key",
-    models: [childModel],
+    models: [childModel, "fixture-next"],
     modelCapabilities: {
       [childModel]: {
+        supportedEffortLevels: ["low", "high"],
+        supportsAdaptiveThinking: false,
+      },
+      "fixture-next": {
         supportedEffortLevels: ["low", "high"],
         supportsAdaptiveThinking: false,
       },
@@ -111,8 +114,14 @@ async function verify(mode) {
     process.env.ANTHROPIC_API_KEY = "native-child-key";
   }
   let available = true;
+  let settings = {
+    subagentModel: backend.subagentModel,
+    subagentProviderId: backend.subagentProviderId || "",
+    subagentEffort: "high",
+  };
   const runtime = createClaudeRuntime({
     backend,
+    readSubagentSettings: async () => settings,
     storage,
     broadcast,
     compactions: createCompactions(broadcast),
@@ -153,10 +162,23 @@ async function verify(mode) {
   }
   try {
     await runtime.check();
+    let nativeProcess;
     for (let i = 0; i < 2; i++) {
+      if (i === 1)
+        childModel =
+          mode === "same-provider" ? "fixture-child-next" : "fixture-next";
+      settings = { ...settings, subagentEffort: i === 0 ? "high" : "low" };
+      settings.subagentModel = childModel;
       const before = childRequests.length;
       const turn = await send();
       assert.equal(turn.status, "completed", JSON.stringify(turn));
+      if (i === 0) nativeProcess = runtime.queries.get(id);
+      else
+        assert.equal(
+          runtime.queries.get(id),
+          nativeProcess,
+          "子代理配置更新保持同一原生主会话",
+        );
       assert.ok(issued, "the actual CLI invokes Agent");
       assert.ok(
         childRequests.length > before,
@@ -168,7 +190,9 @@ async function verify(mode) {
       assert.ok(
         childRequests
           .slice(before)
-          .every((body) => body.output_config?.effort === "high"),
+          .every(
+            (body) => body.output_config?.effort === settings.subagentEffort,
+          ),
         JSON.stringify(
           childRequests.slice(before).map((body) => ({
             model: body.model,
@@ -193,7 +217,29 @@ async function verify(mode) {
         JSON.stringify(parentRequests.map((body) => body.output_config)),
       );
     }
+    settings = {
+      subagentModel: "",
+      subagentProviderId: "",
+      subagentEffort: "",
+    };
+    const beforeClear = childRequests.length;
+    assert.equal((await send()).status, "completed");
+    assert.equal(
+      runtime.queries.get(id),
+      nativeProcess,
+      "清空默认配置保持原生会话",
+    );
+    assert.equal(
+      childRequests.length,
+      beforeClear,
+      "清空后新子代理回到主供应商默认模型",
+    );
     if (mode === "cross-provider" || mode === "native-main") {
+      settings = {
+        subagentModel: childModel,
+        subagentProviderId: "secondary",
+        subagentEffort: "low",
+      };
       assert.ok(main.requests.every((body) => body.model === "fixture-main"));
       assert.equal(child.requests.length, childRequests.length);
       available = false;
@@ -211,7 +257,7 @@ async function verify(mode) {
         childRequests: childRequests.length,
         childModel,
         parentEffort: "low",
-        childEffort: "high",
+        childEfforts: ["high", "low"],
         nativeCLI: true,
       }),
     );

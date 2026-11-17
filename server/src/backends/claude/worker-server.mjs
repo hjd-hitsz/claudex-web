@@ -112,10 +112,12 @@ async function initialize(value) {
     const temporary = `${optionsPath}.${process.pid}.tmp`;
     await writeFile(temporary, JSON.stringify(options), { mode: 0o600 });
     await rename(temporary, optionsPath);
-    const providers = createProviders(createBackendConfiguration(value.config));
+    const configuration = createBackendConfiguration(value.config);
+    const providers = createProviders(configuration);
     adapter = createClaudeAdapter({
       ...value,
       providers,
+      readSubagentSettings: () => configuration.readSubagentSettings("claude"),
       send: (client, message) => client.deliver(message),
       broadcast,
       workspace: { handles: () => false, snapshot: () => ({}) },

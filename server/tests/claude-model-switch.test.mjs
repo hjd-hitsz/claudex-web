@@ -58,6 +58,7 @@ test("模型切换设置失败时保留会话，重试在提交输入前同步�
     nativeSessionId: "thread",
     providerKey: JSON.stringify(provider),
     subagentProviderKey: JSON.stringify(null),
+    async configureSubagent() {},
     settingsEnvironment: (model, effort) =>
       providerSettingsEnvironment(
         provider,

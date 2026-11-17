@@ -114,6 +114,15 @@ test("independent bridge connections preserve active snapshots and close without
                 state,
                 revision: reportedRevision,
                 busy: workerBusy,
+                configuration: {
+                  backend: {
+                    ...packet.options.backend,
+                    subagentModel: "previous-child",
+                    subagentEffort: "low",
+                  },
+                  config: packet.options.config,
+                  runtimeEnv: packet.options.runtimeEnv,
+                },
               },
             }) + "\n",
           );
@@ -149,6 +158,7 @@ test("independent bridge connections preserve active snapshots and close without
       configDir: root,
       claudeHome: join(root, ".claude"),
       codexHome: root,
+      backendsFile: join(root, "backends.json"),
       defaultCwd: root,
       projectlessRoot: root,
     },
@@ -166,6 +176,27 @@ test("independent bridge connections preserve active snapshots and close without
     assert.equal(second.state().params.questions[0].id, "question");
     assert.equal(second.state().params.executionStatuses.thread.turnId, "turn");
     assert.equal(second.state().params.nativePid, 4321);
+    const changed = createClaudeWorkerAdapter({
+      ...options,
+      backend: {
+        ...backend,
+        subagentModel: "new-child",
+        subagentEffort: "high",
+        subagentProviderId: "vendor",
+      },
+    });
+    try {
+      await changed.connect();
+      assert.equal(changed.workerPid, first.workerPid);
+      assert.equal(changed.state().params.pendingUpdate, undefined);
+      assert.equal(
+        packets.some((packet) => packet.kind === "shutdown"),
+        false,
+      );
+    } finally {
+      changed.close();
+    }
+    await until(() => clients.size === 2);
     reportedRevision = {
       ...revision,
       loadedAt: revision.loadedAt - 1,

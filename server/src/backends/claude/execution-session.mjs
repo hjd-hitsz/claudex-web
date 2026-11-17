@@ -12,6 +12,7 @@ import {
   subagentModelEnvironment,
 } from "./provider-environment.mjs";
 import { networkProxyEnvironment } from "../network-proxy.mjs";
+import { subagentSettings } from "../../../../shared/subagent-settings.mjs";
 import {
   createProviderTransport,
   providerRuntimeEnvironment,
@@ -52,7 +53,7 @@ export async function createExecutionSession({
   const subagentTarget =
     subagentProvider ||
     (backend.subagentEffort && backend.subagentModel ? provider : null);
-  const proxy =
+  let proxy =
     provider || subagentTarget
       ? await createProviderTransport(
           provider,
@@ -80,6 +81,7 @@ export async function createExecutionSession({
     providerId: provider?.id ?? queued.providerId ?? session.providerId,
     providerKey: JSON.stringify(provider),
     subagentProviderKey: JSON.stringify(subagentProvider),
+    subagentSettingsKey: JSON.stringify(subagentSettings(backend)),
     model,
     cwd: session.cwd,
     modelTokens: session.modelTokens || 0,
@@ -87,6 +89,32 @@ export async function createExecutionSession({
     lastActivityAt: Date.now(),
     settingsEnvironment: (model, effort) =>
       providerSettingsEnvironment(provider, backend, { proxy, model, effort }),
+    async configureSubagent(nextBackend, targetProvider) {
+      const settingsKey = JSON.stringify(subagentSettings(nextBackend));
+      const providerKey = JSON.stringify(targetProvider);
+      if (
+        settingsKey === process.subagentSettingsKey &&
+        providerKey === process.subagentProviderKey
+      )
+        return false;
+      const target =
+        targetProvider ||
+        (nextBackend.subagentEffort && nextBackend.subagentModel
+          ? provider
+          : null);
+      const route = target && {
+        provider: target,
+        model: nextBackend.subagentModel,
+        effort: nextBackend.subagentEffort,
+      };
+      if (proxy) proxy.setSubagent(route);
+      else if (route) proxy = await createProviderTransport(provider, route);
+      backend = nextBackend;
+      process.subagentProviderKey = providerKey;
+      process.subagentSettingsKey = settingsKey;
+      process.subagentSettingsDirty = true;
+      return true;
+    },
   };
   const current = () => (process.retired ? null : getCurrent());
   const context = () => ({

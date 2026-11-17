@@ -11,6 +11,7 @@ import { createGoals } from "./goals.mjs";
 import { modelOptions } from "./model-options.mjs";
 import { recoverClaudeSessions } from "./recovery.mjs";
 import { assertConversationOperation } from "../../bridge/conversation-policy.mjs";
+import { subagentSettings } from "../../../../shared/subagent-settings.mjs";
 
 export function createClaudeRuntime({
   backend,
@@ -20,6 +21,7 @@ export function createClaudeRuntime({
   compactions,
   questions,
   observeMessage,
+  readSubagentSettings = async () => subagentSettings(backend),
 }) {
   const running = new Map();
   const queries = new Map();
@@ -208,18 +210,20 @@ export function createClaudeRuntime({
         backend.id,
         queued.providerId ?? session.providerId,
       );
+      const settings = await readSubagentSettings();
+      const executionBackend = { ...backend, ...settings };
       const subagentProvider =
-        backend.subagentProviderId === "@native"
-          ? provider || backend.subagentEffort
+        settings.subagentProviderId === "@native"
+          ? provider || settings.subagentEffort
             ? nativeSubagentProvider(backend)
             : null
-          : backend.subagentProviderId
-            ? await providers.get(backend.id, backend.subagentProviderId)
+          : settings.subagentProviderId
+            ? await providers.get(backend.id, settings.subagentProviderId)
             : null;
       if (
         subagentProvider &&
         !subagentProvider.native &&
-        !subagentProvider.models.includes(backend.subagentModel)
+        !subagentProvider.models.includes(settings.subagentModel)
       )
         throw new Error("子代理模型已从供应商移除，请重新配置");
       const options = modelOptions(
@@ -232,7 +236,6 @@ export function createClaudeRuntime({
         (process && process.cwd !== session.cwd) ||
         process?.nativeSessionId !== (session.nativeSessionId || threadId) ||
         process?.providerKey !== JSON.stringify(provider) ||
-        process?.subagentProviderKey !== JSON.stringify(subagentProvider) ||
         process?.review !== queued.review
       ) {
         if (
@@ -248,7 +251,7 @@ export function createClaudeRuntime({
       }
       if (!process) {
         process = await createExecutionSession({
-          backend,
+          backend: executionBackend,
           session,
           queued,
           providers,
@@ -273,6 +276,7 @@ export function createClaudeRuntime({
         });
         queries.set(threadId, process);
       } else {
+        await process.configureSubagent(executionBackend, subagentProvider);
         await process.query.setPermissionMode(
           queued.mode === "plan" || queued.review
             ? "plan"
@@ -286,13 +290,16 @@ export function createClaudeRuntime({
         await process.query.applyFlagSettings({
           effortLevel: queued.effort || null,
           fastMode: options.settings.fastMode,
-          ...((provider || subagentProvider) && {
+          ...((provider ||
+            subagentProvider ||
+            process.subagentSettingsDirty) && {
             env: process.settingsEnvironment(
               model || process.model,
               queued.effort,
             ),
           }),
         });
+        process.subagentSettingsDirty = false;
         process.effort = queued.effort;
       }
       active.query = process.query;

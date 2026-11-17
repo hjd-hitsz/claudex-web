@@ -19,6 +19,7 @@ export function createCodexAdapter({
   version,
   send,
   broadcast,
+  readSubagentSettings = async () => backend,
 }) {
   config = { ...config, upstreamUrl: backend.url, codexHome: backend.dataDir };
   const questions = new Map();
@@ -51,14 +52,16 @@ export function createCodexAdapter({
     },
   });
   const nativeCall = transport.call;
-  const sessionParams = (method, params) =>
+  const sessionParams = async (method, params) =>
     subagentModelParams(
       method,
       referenceToolParams(method, params, config),
-      backend,
+      ["thread/start", "thread/resume", "thread/fork"].includes(method)
+        ? await readSubagentSettings()
+        : backend,
     );
-  transport.call = (method, params, options) =>
-    nativeCall(method, sessionParams(method, params), options);
+  transport.call = async (method, params, options) =>
+    nativeCall(method, await sessionParams(method, params), options);
   const threadNaming = createThreadNaming({
     call: transport.call,
     generate: (params) =>
@@ -138,13 +141,13 @@ export function createCodexAdapter({
     readTokenUsage: (thread) => readCodexTokenUsage(thread, transport.call),
     workspaceOwner: "backend",
     state,
-    receive(client, message) {
+    async receive(client, message) {
       if (!message.method) return receive(client, message);
       const { providerId, ...params } = message.params || {};
       if (providerId) throw new Error("Codex 使用现有账户与模型配置");
       return receive(client, {
         ...message,
-        params: sessionParams(message.method, params),
+        params: await sessionParams(message.method, params),
       });
     },
     connect: transport.connect,
