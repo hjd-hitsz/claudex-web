@@ -92,6 +92,8 @@ CLI 安装回归使用 `server/tests/cli-package.test.mjs` 验证原生平台包
 
 单元和发行包测试通过 `--import ./tests/helpers/test-console.mjs` 预加载测试专用 `Console`，将控制台日志统一送入 stderr。Node.js 将该文本流独立转换为测试日志事件，stdout 专供二进制测试事件，避免旧版测试运行器混读 Unicode 日志导致反序列化错误。模块加载、测试执行和清理阶段均使用同一入口，直接运行单个测试时同样携带此参数。`tests/test-console.test.mjs` 连续十次启动两个并行测试进程，核对中文、emoji、多参数、对象和调用栈日志完整保留，并核对真实断言失败仍返回非零退出状态。上游问题见 [nodejs/node#65934](https://github.com/nodejs/node/issues/65934)。
 
+桥接测试中，首个就绪快照及单次请求响应通过匹配后即移除的监听器读取，后续状态广播使用独立等待与断言。`node --import ./tests/helpers/test-console.mjs --test server/tests/bridge.test.mjs` 覆盖提问回答后的重连、新提问存在时旧提问重复结束触发的状态广播，以及数字请求 ID 的结束通知；固定事件顺序验证初始快照断言仅执行一次。推送后按提交 SHA 核对 GitHub Actions 的完整工作流结果，分别保留本地与远端检查记录。
+
 构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/slash-commands.mjs`，使用隔离浏览器与模拟后端验证输入开头及正文中途的斜杠建议、Tab 补全、确认、光标中间替换、正文保留、撤销重做、失败恢复、技能及原生命令，并检查深浅主题、桌面及窄屏、80% 至 200% 实际页面缩放与侧栏开关。脚本核对 DPR 和视口，结束时恢复缩放并清理独立浏览器目录。截图与构建来源保存在 `.cache/slash-commands/after`。修复前将 `client/dist` 与 `build-info.json` 复制到 `.cache/slash-commands/before`，以 `BROWSER_BEFORE=1` 运行可复现中途缺少菜单。README 图片展示普通消息与文件预览，现有图片继续适用。
 
 正文图片布局回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/message-images.mjs`。脚本使用仓库截图与隔离消息、模拟后端和独立浏览器配置，验证消息及文件预览中的图片居中、640 × 480 像素上限、等比缩小、HTML 指定宽度、链接图片、`picture`、大图预览及关闭后的焦点恢复，覆盖深浅主题、窄屏和 80% 至 200% 实际页面缩放。结束时恢复缩放并清理浏览器配置，截图、尺寸测量与构建来源保存在 `.cache/message-images/after`。修改前将生产构建和构建来源保存到 `.cache/message-images/before/dist` 与 `build-info.json`，以 `BROWSER_BEFORE=1` 复现 320 像素预览。README 的现有界面截图展示文字、代码和文件列表，检查后继续使用。

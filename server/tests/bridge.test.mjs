@@ -250,21 +250,14 @@ test(
         headers: { Cookie: auth.cookie, Origin: url },
       });
       sockets.push(socket);
-      await new Promise((resolve) =>
-        socket.on("message", (bytes) => {
-          const message = JSON.parse(bytes);
-          if (message.method === "lan/state" && message.params.ready) {
-            assert.equal(message.params.defaultCwd, files);
-            assert.equal(
-              message.params.projectlessRoot,
-              join(files, "workspaces"),
-            );
-            assert.deepEqual(message.params.version, version);
-            onState(message.params);
-            resolve();
-          }
-        }),
+      const { params } = await messageFrom(
+        socket,
+        (message) => message.method === "lan/state" && message.params.ready,
       );
+      assert.equal(params.defaultCwd, files);
+      assert.equal(params.projectlessRoot, join(files, "workspaces"));
+      assert.deepEqual(params.version, version);
+      onState(params);
       return socket;
     }
     const [first, second] = await Promise.all([connect(), connect()]);
@@ -397,16 +390,12 @@ test(
       ]),
     );
     assert.ok(!backendMethods.includes("lan/files/undo"));
-    function echo(socket, label) {
-      return new Promise((resolve) => {
-        socket.on("message", (bytes) => {
-          const message = JSON.parse(bytes);
-          if (message.id === 1) resolve(message.result.label);
-        });
-        socket.send(
-          JSON.stringify({ id: 1, method: "test/echo", params: { label } }),
-        );
-      });
+    async function echo(socket, label) {
+      const response = messageFrom(socket, (message) => message.id === 1);
+      socket.send(
+        JSON.stringify({ id: 1, method: "test/echo", params: { label } }),
+      );
+      return (await response).result.label;
     }
     assert.deepEqual(
       await Promise.all([echo(first, "first"), echo(second, "second")]),
@@ -584,9 +573,24 @@ test(
     const pending = messageFrom(first, (m) => m.id === expired.id);
     backend.send(JSON.stringify(expired));
     await pending;
+    const pendingSnapshot = messageFrom(
+      first,
+      (m) =>
+        m.method === "lan/state" &&
+        m.params.questions.some((entry) => entry.id === expired.id),
+    );
+    backend.send(
+      JSON.stringify({
+        method: "serverRequest/resolved",
+        params: { threadId: "fixture-thread", requestId: question.id },
+      }),
+    );
+    assert.deepEqual((await pendingSnapshot).params.questions, [expired]);
     const cleared = messageFrom(
       first,
-      (m) => m.method === "serverRequest/resolved",
+      (m) =>
+        m.method === "serverRequest/resolved" &&
+        m.params.requestId === String(expired.id),
     );
     backend.send(
       JSON.stringify({
