@@ -3,6 +3,7 @@ import {
   projectGroups,
   PROJECTLESS_SOURCE,
   preserveFailedBackendThreads,
+  sortThreads,
 } from "../domain/thread-order.js";
 import { nextForkTitle } from "../domain/fork-title.js";
 import { saved, persist } from "../infrastructure/storage.js";
@@ -19,8 +20,10 @@ export function createThreadCatalog({
   let listing = 0;
   let listedScope;
   let pendingForks = saved("cx-pending-forks", []);
-  const listThreads = (params, options) =>
-    records.threadOrdering.list(params, options);
+  async function listThreads(params, options) {
+    const threads = await records.threadOrdering.list(params, options);
+    return sortThreads(threads, get().active);
+  }
   async function loadThreads() {
     const epoch = ++listing;
     const revision = records.nameRevision;

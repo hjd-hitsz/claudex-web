@@ -4,6 +4,7 @@ import {
 } from "../../../shared/terminal-workspace.mjs";
 import { saved, persist } from "../infrastructure/storage.js";
 import { isCompacting } from "../domain/compaction.js";
+import { sortThreads } from "../domain/thread-order.js";
 import {
   backendEnabled,
   visibleBackendThreads,
@@ -122,6 +123,14 @@ export function createAppState() {
         threads: visibleBackendThreads(
           patch.threads ?? state.threads,
           backends,
+        ),
+      };
+    if (patch.active || patch.threads)
+      patch = {
+        ...patch,
+        threads: sortThreads(
+          patch.threads ?? state.threads,
+          patch.active ?? state.active,
         ),
       };
     if (patch.backends || patch.modelChoices)

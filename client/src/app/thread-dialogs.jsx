@@ -1,5 +1,9 @@
 import { ThreadListErrors } from "./thread-list-errors.jsx";
-import { preserveFailedBackendThreads } from "../domain/thread-order.js";
+import {
+  mergeThreadTimes,
+  preserveFailedBackendThreads,
+  sortThreads,
+} from "../domain/thread-order.js";
 import { visibleBackendThreads } from "../domain/backend-visibility.js";
 import React, { useState, useEffect, useRef } from "react";
 
@@ -33,7 +37,13 @@ export function SearchDialog() {
     .filter((b) => b.enabled)
     .map((b) => b.id)
     .join(",");
-  const visibleResults = visibleBackendThreads(results, s.backends);
+  const known = new Map(s.threads.map((thread) => [thread.id, thread]));
+  const visibleResults = sortThreads(
+    visibleBackendThreads(results, s.backends).map((thread) =>
+      mergeThreadTimes(thread, known.get(thread.id)),
+    ),
+    s.active,
+  ).slice(0, 60);
   useEffect(() => {
     const n = ++epoch.current;
     const params = { archived: s.archived, searchTerm: q || undefined };
@@ -57,7 +67,7 @@ export function SearchDialog() {
               failures,
               params,
               previousParams,
-            ).slice(0, 60),
+            ),
           );
         })
         .catch((error) => {

@@ -5,6 +5,7 @@ import { sidebarProjectGroups } from "../domain/thread-order.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { BackendBadge } from "./backend-badge.jsx";
 import { HeaderSwitcher } from "./header-switcher.jsx";
+import { ThreadRunningIcon } from "./thread-running-icon.jsx";
 
 export function ConversationSwitcher({ state, path }) {
   const label = titleOf(state.current);
@@ -27,13 +28,25 @@ export function ConversationSwitcher({ state, path }) {
       getOptions={() => {
         const groups = sidebarProjectGroups(state, { includePinned: true });
         const threads = groups.find(([folder]) => folder === path)?.[1] || [];
-        return threads.map((thread) => ({
-          value: thread.id,
-          label: titleOf(thread),
-          icon: (
-            <BackendBadge backendId={resourceTarget(thread.id).backendId} />
-          ),
-        }));
+        const hasRunning = threads.some((thread) => state.active[thread.id]);
+        return threads.map((thread) => {
+          const running = Boolean(state.active[thread.id]);
+          return {
+            value: thread.id,
+            label: titleOf(thread),
+            description: running ? "进行中" : "已结束",
+            icon: (
+              <span className="conversation-switcher-icons">
+                {hasRunning && (
+                  <span className="conversation-switcher-status">
+                    {running && <ThreadRunningIcon />}
+                  </span>
+                )}
+                <BackendBadge backendId={resourceTarget(thread.id).backendId} />
+              </span>
+            ),
+          };
+        });
       }}
       onSelect={openThread}
     />

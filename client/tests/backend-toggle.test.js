@@ -132,7 +132,10 @@ test("启停快照同步过滤已有列表，迟到结果和实时插入继续�
   });
   const { createAppState } = await import("../src/application/state.js");
   const store = createAppState();
-  const threads = [{ id: "codex-thread" }, { id: "backend:claude:thread" }];
+  const threads = [
+    { id: "codex-thread", createdAt: 2 },
+    { id: "backend:claude:thread", createdAt: 1 },
+  ];
   const choices = [
     { backendId: "codex", model: "gpt" },
     { backendId: "claude", model: "sonnet" },

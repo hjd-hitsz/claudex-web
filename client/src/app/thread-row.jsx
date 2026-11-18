@@ -11,7 +11,6 @@ import {
   GitBranch,
   ArchiveRestore,
   Minimize2,
-  LoaderCircle,
   Trash2,
 } from "lucide-react";
 import {
@@ -27,6 +26,7 @@ import {
 } from "../store.js";
 import { threadTime } from "../domain/thread-order.js";
 import { isCompacting } from "../domain/compaction.js";
+import { ThreadRunningIcon } from "./thread-running-icon.jsx";
 export function ThreadMenu({ thread, onClose }) {
   const s = useStore();
   const action = (fn) => {
@@ -119,14 +119,14 @@ export function ThreadRow({ thread }) {
     };
   }, [titleVisible]);
   const archiveLabel = s.archived ? "恢复对话" : "归档对话";
-  const now = Date.now() / 1000,
-    diff = now - threadTime(thread);
+  const time = threadTime(thread, running);
+  const diff = Date.now() / 1000 - time;
   const date =
     diff < 3600
       ? Math.max(1, Math.floor(diff / 60)) + "分"
       : diff < 86400
         ? Math.floor(diff / 3600) + "时"
-        : new Date(threadTime(thread) * 1000).toLocaleDateString("zh-CN", {
+        : new Date(time * 1000).toLocaleDateString("zh-CN", {
             month: "numeric",
             day: "numeric",
           });
@@ -158,7 +158,7 @@ export function ThreadRow({ thread }) {
         {status && (
           <span className="thread-status" role="img" aria-label={status}>
             {running ? (
-              <LoaderCircle className="spin" size={12} aria-hidden="true" />
+              <ThreadRunningIcon />
             ) : unread ? (
               <span className="thread-completed-dot" />
             ) : (
@@ -170,9 +170,11 @@ export function ThreadRow({ thread }) {
         <span className="thread-title">{title}</span>
         <small
           title={
-            threadTime(thread) === thread.createdAt
-              ? "创建时间"
-              : "最近活动时间"
+            running && thread.startedAt != null
+              ? "消息发送时间"
+              : !running && thread.completedAt != null
+                ? "最近完成时间"
+                : "创建时间"
           }
         >
           {date}

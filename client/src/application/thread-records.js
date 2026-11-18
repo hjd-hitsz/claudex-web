@@ -1,4 +1,4 @@
-import { createThreadOrdering, sortThreads } from "../domain/thread-order.js";
+import { createThreadOrdering } from "../domain/thread-order.js";
 export function createThreadRecords({ get, set, rpc }) {
   const deletedThreads = new Set();
   const turnRevisions = new Map();
@@ -66,7 +66,7 @@ export function createThreadRecords({ get, set, rpc }) {
     const update = (thread) =>
       thread?.id === threadId ? threadOrdering.apply(thread) : thread;
     set({
-      threads: sortThreads(get().threads.map(update)),
+      threads: get().threads.map(update),
       current: update(get().current),
     });
   }

@@ -317,25 +317,104 @@ try {
     await trigger.click();
     await groups.getByRole("button", { name: "Pinned", exact: true }).click();
     await page.getByRole("button", { name: /当前为 Pinned$/ }).waitFor();
-    assert.equal(
-      await page.locator(".breadcrumb > span").textContent(),
-      "新对话",
-    );
+    await page
+      .getByRole("button", { name: /当前为 仅有置顶对话的文件夹$/ })
+      .waitFor();
     await trigger.click();
     await groups.getByRole("button", { name: "Pinned", exact: true }).waitFor();
-    await capture("project-switcher-new-chat");
+    await capture("project-switcher-pinned");
     await page.keyboard.press("Escape");
     await threadTrigger.click();
     assert.deepEqual(await threads.getByRole("button").allTextContents(), [
       "仅有置顶对话的文件夹",
     ]);
-    await capture("conversation-switcher-new-chat");
     await page.keyboard.press("Escape");
-    await input.fill("跨项目的新对话草稿");
-    await trigger.click();
-    await groups.getByRole("button", { name: "未分类", exact: true }).click();
+    await input.fill("置顶对话的独立草稿");
+    const switchProject = async (name, title) => {
+      await trigger.click();
+      await groups.getByRole("button", { name, exact: true }).click();
+      await page
+        .getByRole("button", { name: `切换对话，当前为 ${title}`, exact: true })
+        .waitFor();
+    };
+    await switchProject("project", "发送较晚的进行中对话");
+    await threadTrigger.click();
+    assert.deepEqual(await threads.getByRole("button").allTextContents(), [
+      "发送较晚的进行中对话",
+      "发送较早的进行中对话",
+      "Claude 原生消息归属",
+    ]);
+    assert.equal(
+      await threads.locator(".conversation-switcher-status .spin").count(),
+      2,
+    );
+    assert.deepEqual(
+      await threads
+        .getByRole("button")
+        .evaluateAll((buttons) =>
+          buttons.map((button) => button.getAttribute("aria-description")),
+        ),
+      ["进行中", "进行中", "已结束"],
+    );
+    await capture("project-running-priority");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Control+k");
+    const searchDialog = page.getByRole("dialog", { name: "搜索对话" });
+    const firstResult = searchDialog
+      .locator(".search-results > button b")
+      .first();
+    await firstResult
+      .getByText("发送较晚的进行中对话", { exact: true })
+      .waitFor();
+    await page.evaluate(() =>
+      window.backendSocket.emit("turn/completed", {
+        threadId: "project-running-latest",
+        turn: {
+          id: "running-latest",
+          status: "completed",
+          startedAt: 30,
+          completedAt: 60,
+        },
+      }),
+    );
+    await firstResult
+      .getByText("发送较早的进行中对话", { exact: true })
+      .waitFor();
+    await searchDialog.getByRole("button", { name: "关闭窗口" }).click();
+    await switchProject("Pinned", "仅有置顶对话的文件夹");
+    await page.waitForFunction(
+      () =>
+        document.querySelector(".composer .ProseMirror")?.innerText ===
+        "置顶对话的独立草稿",
+    );
+    await switchProject("project", "发送较早的进行中对话");
+    await page.evaluate(() =>
+      window.backendSocket.emit("turn/completed", {
+        threadId: "project-running-first",
+        turn: {
+          id: "running-first",
+          status: "completed",
+          startedAt: 20,
+          completedAt: 70,
+        },
+      }),
+    );
+    await threadTrigger.click();
+    assert.deepEqual(await threads.getByRole("button").allTextContents(), [
+      "发送较早的进行中对话",
+      "发送较晚的进行中对话",
+      "Claude 原生消息归属",
+    ]);
+    assert.equal(
+      await threads.locator(".conversation-switcher-status .spin").count(),
+      0,
+    );
+    await page.keyboard.press("Escape");
+    await switchProject("未分类", "旧版未分类与 Markdown");
     await page.getByRole("button", { name: /当前为 未分类$/ }).waitFor();
-    assert.equal(await input.innerText(), "跨项目的新对话草稿");
+    assert.equal(await input.innerText(), "保留的输入草稿");
+    await switchProject("project", "发送较早的进行中对话");
+    await switchProject("未分类", "旧版未分类与 Markdown");
     await trigger.click();
     await input.click();
     await groups.waitFor({ state: "hidden" });

@@ -4,7 +4,7 @@ import { backendEnabled } from "../domain/backend-visibility.js";
 import { compatibleEffort } from "../domain/model-preferences.js";
 import { resolveServiceTier } from "../domain/service-tier.js";
 import {
-  sortThreads,
+  mergeThreadTimes,
   threadGroupPath,
   PROJECTLESS_SOURCE,
 } from "../domain/thread-order.js";
@@ -116,16 +116,7 @@ export function createThreadNavigation({
       if (epoch !== opening || records.deletedThreads.has(id)) return;
       const known = get().threads.find((thread) => thread.id === id);
       const thread = records.preserveThreadName(
-        records.threadOrdering.apply({
-          ...r.thread,
-          activityAt: Math.max(
-            known?.activityAt ?? 0,
-            r.thread.activityAt ?? 0,
-          ),
-          completedAt:
-            Math.max(known?.completedAt ?? 0, r.thread.completedAt ?? 0) ||
-            null,
-        }),
+        records.threadOrdering.apply(mergeThreadTimes(r.thread, known)),
         revision,
       );
       const projectless = !threadGroupPath(
@@ -143,7 +134,7 @@ export function createThreadNavigation({
           ? get().threads.map((t) =>
               t.id === id ? { ...t, name: thread.name } : t,
             )
-          : sortThreads([thread, ...get().threads]),
+          : [thread, ...get().threads],
         current: thread,
         ...(thread.tokenUsage &&
           get().tokenUsage[id] === usageSnapshot.value && {
@@ -166,15 +157,11 @@ export function createThreadNavigation({
           if (epoch !== opening || records.deletedThreads.has(id)) return;
           const update = (thread) =>
             thread?.id === id
-              ? records.threadOrdering.apply({
-                  ...thread,
-                  activityAt: hydrated.activityAt,
-                  completedAt: hydrated.completedAt,
-                })
+              ? records.threadOrdering.apply(mergeThreadTimes(thread, hydrated))
               : thread;
           set({
             current: update(get().current),
-            threads: sortThreads(get().threads.map(update)),
+            threads: get().threads.map(update),
           });
         });
       let access;
@@ -309,7 +296,12 @@ export function createThreadNavigation({
         const running = page.data.find((t) => t.status === "inProgress");
         if (records.turnRevisions.get(id) === turnRevision) {
           if (resumed && running) active[id] = running.id;
-          else delete active[id];
+          else if (
+            page.data.some(
+              (turn) => turn.id === active[id] && turn.status !== "inProgress",
+            )
+          )
+            delete active[id];
         }
         set({ turns: { ...get().turns, [id]: page.data }, active });
       })

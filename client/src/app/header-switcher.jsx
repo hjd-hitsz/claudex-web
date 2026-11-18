@@ -116,6 +116,7 @@ export function HeaderSwitcher({
               type="button"
               key={option.value}
               title={option.title || option.label}
+              aria-description={option.description}
               aria-current={option.value === current || undefined}
               onClick={() => {
                 close();

@@ -391,9 +391,9 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 
 双后端回退对照记录见[双后端回归审查](architecture/backend-regressions.md)。`tests/browser/backend-regressions.mjs` 使用生产构建、独立浏览器和隔离传输验证旧未分类目录、用户消息 Markdown、引用键盘打开、Claude 内部消息来源、主题、缩放与窄屏；通过 `CHROME_PATH`、`PLAYWRIGHT_MODULE` 配置浏览器工具。`tests/integration/claude-message-provenance.mjs` 通过真实 SDK 读取临时原生 JSONL，核对来源字段保留与用户轮次归属。
 
-后端启停回归执行 `npm run build` 后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/backend-toggle.mjs`。脚本在隔离传输中保留 Codex 与 Claude 对话，实际在设置中停用后端，核对所属对话立即从侧栏移除、正在查看的对话回到新对话、重新启用后恢复，并确认过程中未刷新页面；截图覆盖深浅主题与手机侧栏，保存在 `.cache/backend-toggle/after`。旧构建保存在 `.cache/backend-toggle-before/dist`，通过 `UI_BUILD_DIR` 与 `UI_BEFORE=1` 复现对话保留到刷新的状态，截图写入 `.cache/backend-toggle/before`。
+顶部文件夹与对话切换回归使用相同浏览器环境变量运行 `tests/browser/backend-interactions.mjs`。脚本核对分组顺序、置顶对话归属、空文件夹过滤、「未分类」、当前项与运行状态标记、进行中优先及开始与结束时间排序、切换文件夹直达首位对话、草稿恢复、键盘操作及底部工作目录选择器，并在深浅主题、桌面和窄屏的 80% 至 200% 实际页面缩放下检查两个菜单的边界。截图与结果位于 `.cache/backend-interactions/dual/`。
 
-顶部文件夹与对话切换回归使用相同浏览器环境变量运行 `tests/browser/backend-interactions.mjs`。脚本核对分组顺序、置顶对话归属、空文件夹过滤、「未分类」、当前项标记、分组内打开对话、草稿恢复、键盘操作及底部工作目录选择器，并在深浅主题、桌面和窄屏的 80% 至 200% 实际页面缩放下检查两个菜单的边界。截图与结果位于 `.cache/backend-interactions/dual/`。
+后端启停回归执行 `npm run build` 后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/backend-toggle.mjs`。脚本在隔离传输中保留 Codex 与 Claude 对话，实际在设置中停用后端，核对所属对话立即从侧栏移除、正在查看的对话回到新对话、重新启用后恢复，并确认过程中未刷新页面；截图覆盖深浅主题与手机侧栏，保存在 `.cache/backend-toggle/after`。旧构建保存在 `.cache/backend-toggle-before/dist`，通过 `UI_BUILD_DIR` 与 `UI_BEFORE=1` 复现对话保留到刷新的状态，截图写入 `.cache/backend-toggle/before`。
 
 ### 自定义模型显示别名回归
 

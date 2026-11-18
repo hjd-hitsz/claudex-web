@@ -1,17 +1,32 @@
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { titleOf } from "./format.js";
-export const threadTime = (thread) =>
-  Math.max(
-    thread.activityAt ?? 0,
-    thread.completedAt ?? 0,
-    thread.createdAt ?? 0,
-  );
+export const threadTime = (thread, running = false) =>
+  (running ? thread.startedAt : thread.completedAt) ?? thread.createdAt ?? 0;
 export const PROJECTLESS_SOURCE = "claudex-web-projectless";
 
-export function sortThreads(threads) {
-  return threads
-    .slice()
-    .sort((a, b) => threadTime(b) - threadTime(a) || a.id.localeCompare(b.id));
+export function sortThreads(threads, active = {}) {
+  return threads.slice().sort((a, b) => {
+    const aRunning = Boolean(active[a.id]);
+    const bRunning = Boolean(active[b.id]);
+    return (
+      Number(bRunning) - Number(aRunning) ||
+      threadTime(b, bRunning) - threadTime(a, aRunning) ||
+      a.id.localeCompare(b.id)
+    );
+  });
+}
+
+function latestTime(first, second) {
+  if (first == null) return second ?? null;
+  return second == null ? first : Math.max(first, second);
+}
+
+export function mergeThreadTimes(thread, times) {
+  return {
+    ...thread,
+    startedAt: latestTime(thread.startedAt, times?.startedAt),
+    completedAt: latestTime(thread.completedAt, times?.completedAt),
+  };
 }
 
 export function threadGroupPath(thread, projects, directories, root) {
@@ -43,13 +58,14 @@ export function projectGroups(
   projectlessDirectories = {},
   projectlessRoot = "",
   projectOrder = [],
+  active,
 ) {
   const groups = new Map(
     ["", ...projectOrder, ...projects].map((path) => [path, []]),
   );
   const times = new Map();
   const positions = new Map(projectOrder.map((path, index) => [path, index]));
-  for (const thread of sortThreads(threads)) {
+  for (const thread of sortThreads(threads, active)) {
     const path = threadGroupPath(
       thread,
       projects,
@@ -80,6 +96,7 @@ export function sidebarProjectGroups(state, { includePinned = false } = {}) {
       ? state.projectlessRoots
       : state.projectlessRoot,
     state.projectOrder ?? [],
+    state.active,
   );
 }
 
@@ -90,32 +107,22 @@ export function createThreadOrdering(rpc) {
 
   function observe(threadId, turn) {
     const previous = observed.get(threadId) ?? {};
-    const completedAt =
-      turn.status !== "inProgress" && Number.isFinite(turn.completedAt)
-        ? Math.max(previous.completedAt ?? 0, turn.completedAt)
-        : (previous.completedAt ?? null);
-    observed.set(threadId, {
-      completedAt,
-      activityAt: Math.max(
-        previous.activityAt ?? 0,
-        Number.isFinite(turn.startedAt) ? turn.startedAt : 0,
-        completedAt ?? 0,
-      ),
-    });
+    observed.set(
+      threadId,
+      mergeThreadTimes(previous, {
+        startedAt: Number.isFinite(turn.startedAt) ? turn.startedAt : null,
+        completedAt:
+          turn.status !== "inProgress" && Number.isFinite(turn.completedAt)
+            ? turn.completedAt
+            : null,
+      }),
+    );
     cache.delete(threadId);
   }
 
   function apply(thread) {
     if (!thread) return thread;
-    const latest = observed.get(thread.id);
-    return {
-      ...thread,
-      completedAt:
-        latest?.completedAt == null
-          ? (thread.completedAt ?? null)
-          : Math.max(thread.completedAt ?? 0, latest.completedAt),
-      activityAt: Math.max(threadTime(thread), latest?.activityAt ?? 0),
-    };
+    return mergeThreadTimes(thread, observed.get(thread.id));
   }
 
   async function activity(thread) {
@@ -125,7 +132,7 @@ export function createThreadOrdering(rpc) {
     entry.promise = (async () => {
       let cursor;
       let completedAt = null;
-      let activityAt = 0;
+      let startedAt = null;
       do {
         const page = await rpc("thread/turns/list", {
           threadId: thread.id,
@@ -136,16 +143,13 @@ export function createThreadOrdering(rpc) {
         });
         for (const turn of page.data) {
           if (Number.isFinite(turn.startedAt))
-            activityAt = Math.max(activityAt, turn.startedAt);
+            startedAt = latestTime(startedAt, turn.startedAt);
           if (turn.status !== "inProgress" && Number.isFinite(turn.completedAt))
-            completedAt = Math.max(completedAt ?? 0, turn.completedAt);
+            completedAt = latestTime(completedAt, turn.completedAt);
         }
         cursor = page.nextCursor;
       } while (cursor);
-      return {
-        completedAt,
-        activityAt: Math.max(activityAt, completedAt ?? 0),
-      };
+      return { startedAt, completedAt };
     })();
     cache.set(thread.id, entry);
     try {
@@ -164,14 +168,11 @@ export function createThreadOrdering(rpc) {
         while (index < threads.length) {
           const position = index++;
           const thread = threads[position];
-          const times = await activity(thread).catch(() => ({
-            completedAt: thread.completedAt ?? null,
-            activityAt: threadTime(thread),
-          }));
-          const merged = apply({ ...thread, ...times });
+          const times = await activity(thread).catch(() => null);
+          const merged = apply(mergeThreadTimes(thread, times));
           observed.set(thread.id, {
             completedAt: merged.completedAt,
-            activityAt: merged.activityAt,
+            startedAt: merged.startedAt,
           });
           result[position] = merged;
         }

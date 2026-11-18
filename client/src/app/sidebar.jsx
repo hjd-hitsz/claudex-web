@@ -35,6 +35,7 @@ export function Sidebar() {
         s.unreadCompletions[t.id] ||
         (t.id === selectedId && retained),
     ),
+    s.active,
   );
   const pinned = s.threads.filter((t) => s.pins.includes(t.id));
   const groups = sidebarProjectGroups(s);

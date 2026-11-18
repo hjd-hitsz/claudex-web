@@ -1,6 +1,6 @@
 import React from "react";
 import { Folder, MessageSquare } from "lucide-react";
-import { basename, newChat } from "../store.js";
+import { basename, openThread } from "../store.js";
 import { sidebarProjectGroups } from "../domain/thread-order.js";
 import { HeaderSwitcher } from "./header-switcher.jsx";
 
@@ -41,7 +41,11 @@ export function ProjectSwitcher({ state, path }) {
           };
         });
       }}
-      onSelect={newChat}
+      onSelect={(folder) => {
+        const groups = sidebarProjectGroups(state, { includePinned: true });
+        const thread = groups.find(([path]) => path === folder)?.[1][0];
+        if (thread) openThread(thread.id);
+      }}
     />
   );
 }

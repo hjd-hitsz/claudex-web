@@ -188,10 +188,15 @@ export function createEvents({
             },
           },
         });
-      records.recordTurnTimings(p.threadId, [
-        { ...p.turn, completedAt: p.turn.completedAt ?? Date.now() / 1000 },
-      ]);
-      records.recordThreadActivity(p.threadId, p.turn);
+      const turn = {
+        ...p.turn,
+        completedAt:
+          p.turn.completedAt ??
+          get().turnTimings[p.threadId]?.[p.turn.id]?.completedAt ??
+          Date.now() / 1000,
+      };
+      records.recordTurnTimings(p.threadId, [turn]);
+      records.recordThreadActivity(p.threadId, turn);
       const active = { ...get().active };
       if (active[p.threadId] === p.turn.id) delete active[p.threadId];
       const unreadCompletions = { ...get().unreadCompletions };

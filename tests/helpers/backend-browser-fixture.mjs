@@ -24,6 +24,7 @@ export function backendFixture(data) {
       createdAt: 1,
     },
   ];
+  const projectTurns = {};
   if (data.projectSwitcher) {
     localStorage.setItem(
       "cx-projects",
@@ -35,6 +36,38 @@ export function backendFixture(data) {
       name: "仅有置顶对话的文件夹",
       cwd: "/demo/Pinned",
       createdAt: 0,
+    });
+    threads.push(
+      {
+        id: "project-running-first",
+        name: "发送较早的进行中对话",
+        cwd: "/demo/project",
+        createdAt: 3,
+      },
+      {
+        id: "project-running-latest",
+        name: "发送较晚的进行中对话",
+        cwd: "/demo/project",
+        createdAt: 4,
+      },
+    );
+    Object.assign(projectTurns, {
+      "project-running-first": {
+        id: "running-first",
+        status: "inProgress",
+        startedAt: 20,
+      },
+      "project-running-latest": {
+        id: "running-latest",
+        status: "inProgress",
+        startedAt: 30,
+      },
+      "backend:claude:fixture": {
+        id: "human",
+        status: "completed",
+        startedAt: 10,
+        completedAt: 50,
+      },
     });
   }
   const messages = {
@@ -92,7 +125,14 @@ export function backendFixture(data) {
       ? "/native/claudex-web/workspaces"
       : "/web/workspaces",
     projectlessRoots: ["/web/workspaces", "/native/claudex-web/workspaces"],
-    activeTurns: data.activeTurns || {},
+    activeTurns: {
+      ...data.activeTurns,
+      ...Object.fromEntries(
+        Object.entries(projectTurns)
+          .filter(([, turn]) => turn.status === "inProgress")
+          .map(([id, turn]) => [id, turn.id]),
+      ),
+    },
     executionStatuses: {},
     compactions: {},
     undoneFiles: [],
@@ -257,6 +297,8 @@ export function backendFixture(data) {
             },
           ],
         };
+      if (m.method === "thread/turns/list" && projectTurns[p.threadId])
+        result = { data: [projectTurns[p.threadId]] };
       if (m.method === "skills/list")
         result = {
           data: [
@@ -287,6 +329,8 @@ export function backendFixture(data) {
       this.emit("lan/state", state());
     }
     emit(method, params) {
+      if (method === "turn/completed" && projectTurns[params.threadId])
+        projectTurns[params.threadId] = params.turn;
       this.onmessage({ data: JSON.stringify({ method, params }) });
     }
     close() {

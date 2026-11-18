@@ -68,6 +68,18 @@
 .header-switcher-options > button + button {
   margin-top: 2px;
 }
+.conversation-switcher-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.461538rem;
+  flex: none;
+}
+.conversation-switcher-status {
+  display: grid;
+  place-items: center;
+  width: 0.923077rem;
+  color: var(--muted);
+}
 .header-switcher-options > button[aria-current="true"] {
   background: var(--subtle);
   font-weight: 500;

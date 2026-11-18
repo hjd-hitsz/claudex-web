@@ -387,11 +387,13 @@ test("读取期间收到完成事件时采用后端完成时间，重建读取�
   );
 });
 
-test("运行中的新轮次按开始时间参与排序，更晚结束的对话仍排在前面", async () => {
+test("进行中按开始时间置前，已结束按完成时间排序", async () => {
   const threads = [
     { id: "running", cwd: "/project", createdAt: 1, updatedAt: 9999 },
+    { id: "newer-running", cwd: "/project", createdAt: 2, updatedAt: 22 },
     { id: "finished", cwd: "/project", createdAt: 2, updatedAt: 2 },
   ];
+  const active = { running: "active-a", "newer-running": "active-b" };
   const rpc = async (_, { threadId }) => ({
     data:
       threadId === "running"
@@ -399,28 +401,35 @@ test("运行中的新轮次按开始时间参与排序，更晚结束的对话�
             { status: "inProgress", startedAt: 120 },
             { status: "completed", startedAt: 5, completedAt: 10 },
           ]
-        : [{ status: "completed", startedAt: 20, completedAt: 100 }],
+        : threadId === "newer-running"
+          ? [{ status: "inProgress", startedAt: 125 }]
+          : [{ status: "completed", startedAt: 20, completedAt: 150 }],
   });
   const ordering = createThreadOrdering(rpc);
   const initial = await ordering.hydrate(threads);
   assert.deepEqual(
-    initial.map((t) => t.id),
-    ["running", "finished"],
+    sortThreads(initial, active).map((t) => t.id),
+    ["newer-running", "running", "finished"],
   );
-  assert.equal(initial[0].completedAt, 10);
-  assert.equal(threadTime(initial[0]), 120);
+  const running = initial.find((thread) => thread.id === "running");
+  assert.equal(running.completedAt, 10);
+  assert.equal(threadTime(running, true), 120);
   assert.deepEqual(
-    projectGroups(initial, [], [])[0][1].map((t) => t.id),
-    ["running", "finished"],
+    projectGroups(initial, [], [], {}, "", [], active)[0][1].map((t) => t.id),
+    ["newer-running", "running", "finished"],
   );
-  ordering.observe("finished", { status: "completed", completedAt: 130 });
+  ordering.observe("newer-running", { status: "completed", completedAt: 160 });
   assert.deepEqual(
-    (await ordering.hydrate(threads)).map((t) => t.id),
-    ["finished", "running"],
+    sortThreads(await ordering.hydrate(threads), { running: "active-a" }).map(
+      (t) => t.id,
+    ),
+    ["running", "newer-running", "finished"],
   );
   assert.deepEqual(
-    (await createThreadOrdering(rpc).hydrate(threads)).map((t) => t.id),
-    ["running", "finished"],
+    sortThreads(await createThreadOrdering(rpc).hydrate(threads), active).map(
+      (t) => t.id,
+    ),
+    ["newer-running", "running", "finished"],
     "完整刷新从后端开始时间恢复顺序",
   );
 });
@@ -436,8 +445,9 @@ test("读取期间的新轮次开始、迟到完成及旧历史响应保持最�
   ordering.observe(thread.id, { status: "completed", completedAt: 100 });
   finish({ data: [{ status: "completed", completedAt: 50 }] });
   const [result] = await pending;
-  assert.equal(threadTime(result), 200);
+  assert.equal(threadTime(result, true), 200);
   assert.equal(result.completedAt, 100);
+  assert.equal(threadTime(result), 100);
   ordering.forget(thread.id);
   assert.equal(threadTime(ordering.apply(thread)), 1);
 });

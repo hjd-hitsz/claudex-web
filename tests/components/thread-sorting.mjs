@@ -75,7 +75,7 @@ export async function testThreadSorting(app, fixture) {
     turn: { id: "new-turn", status: "inProgress", startedAt: 400 },
   });
   assert.equal(app.get().threads[0].id, "sort-0");
-  assert.equal(app.get().current.activityAt, 400);
+  assert.equal(app.get().current.startedAt, 400);
   await app.loadThreads();
   assert.equal(app.get().threads[0].id, "sort-0", "旧历史响应保留实时开始时间");
   completions.set("sort-64", 450);
@@ -85,8 +85,8 @@ export async function testThreadSorting(app, fixture) {
   });
   assert.equal(
     app.get().threads[0].id,
-    "sort-64",
-    "较晚结束的对话超过运行中的对话",
+    "sort-0",
+    "进行中对话仍排在最近结束的对话前",
   );
   assert.equal(app.get().active["sort-0"], "new-turn");
   completions.set("sort-0", 500);
@@ -111,6 +111,6 @@ export async function testThreadSorting(app, fixture) {
     ),
   );
   console.log(
-    "PASS 活动时间全局排序、分页、打开旧对话顺序稳定、开始与完成事件重排及搜索排序",
+    "PASS 进行中优先、开始与完成时间排序、分页、打开旧对话顺序稳定及搜索排序",
   );
 }
