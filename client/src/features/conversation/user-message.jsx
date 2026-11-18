@@ -85,6 +85,7 @@ function MessageEditor({ item, threadId, onCancel }) {
     >
       <div inert={pending}>
         <MarkdownEditor
+          fill
           value={text}
           inputRef={input}
           theme={s.theme}

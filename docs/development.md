@@ -371,6 +371,8 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 
 ### 原消息编辑回归
 
+挂载与文件引用回归在构建后执行 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/message-editing-mount.mjs`。脚本使用仅含 Markdown 文件引用的单条用户消息、隔离模拟历史及真实 Chromium 编辑器，验证点击编辑、取消重开、引用保留、长正文内部滚动、底部草稿和高度偏好隔离、Ctrl+Enter 提交及刷新后再次编辑。通过 Chromium 设置执行桌面与窄屏、深浅主题及 80%、100%、125%、150%、200% 实际页面缩放，并核对 DPR 和视口。证据位于 `.cache/message-editing-mount/after`；修改前将 `client/dist` 和 `build-info.json` 保存到 `.cache/message-editing-mount/before`，设置 `EDIT_MOUNT_BEFORE=1` 复现点击后整页报错。此回归直接挂载实际文档编辑器，组件测试中的文本框替身继续验证编辑用例。README 的现有截图未展示原位编辑，图片内容保持适用。
+
 执行 `npm run build` 后，使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/message-editing.mjs` 验证原地编辑。脚本使用生产构建、独立浏览器上下文与持久化的模拟历史，检查与底部输入框一致的背景、边框、阴影和聚焦反馈、主操作按钮配色、两行固定高度、紧凑宽度、长文本内部滚动及按钮位置稳定、铅笔图标、取消、Enter 换行、Ctrl+Enter 发送、文件引用、回退和发送失败重试、底部草稿隔离、刷新后的替换结果及切换对话时的迟到响应，覆盖深浅主题、80% 至 200% 缩放与窄屏。截图及构建来源保存在 `.cache/message-editing-browser/`。通过 `BROWSER_BEFORE=1`、`BROWSER_BUILD_DIR` 和 `BROWSER_BUILD_INFO` 指定隔离的旧构建及来源，复现恢复图标、回填底部输入和覆盖草稿，证据保存在 `.cache/message-editing-before-browser/`。领域与组件回归另覆盖完整轮次分页、旧接口兼容、运行状态、过期编辑、批注及附件独立性。
 
 客户端对照来自本机 Codex VS Code 扩展 `26.1021.22027` 的 `webview/assets/user-message-d77a1f7e2581.js`：消息组件在原位置切换编辑表单，包含独立正文、取消和发送操作；`local-conversation-thread-a37d62aef644.js` 将编辑动作提交到 `src-622b307a9baf.js` 的历史编辑流程，校验最近用户消息与活动轮次，调用 `thread/revert` 或 `thread/rollback` 后启动新轮次。本机后端 `codex-cli 0.162.1` 生成的协议确认 `thread/revert` 以 `beforeTurnId` 替换持久历史，并通过 `thread/reverted` 通知其他页面。客户端界面控制连接超时，交互证据使用本机打包实现；提取资源仅保存在忽略目录。

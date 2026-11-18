@@ -60,7 +60,7 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const browser = await chromium.launch({
   executablePath: process.env.CHROME_PATH,
   headless: true,
-  args: ["--no-sandbox", "--no-proxy-server"],
+  args: ["--no-sandbox", "--no-proxy-server", "--disable-gpu"],
 });
 const errors = [];
 try {
