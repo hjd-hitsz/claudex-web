@@ -211,6 +211,7 @@ try {
       (item) =>
         item.type === "text" &&
         item.text.includes("**加粗**") &&
+        item.text.includes("`inline`") &&
         item.text.includes("编辑") &&
         item.text.includes("$$x_i^2 + y_i^2 = 1$$"),
     ),

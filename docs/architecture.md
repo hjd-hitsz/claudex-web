@@ -285,6 +285,8 @@ Mermaid 的流程图主方向转换归 `domain/mermaid.js`，原始正文保持�
 
 原位消息编辑通过 `MarkdownEditor` 的 `fill` 模式挂载文档，沿用两行高度及内部滚动。底部输入区的 `EditorFrame` 独立持有高度偏好和调节手柄，按 `.composer` 容器测量可用空间；原位编辑保持自身尺寸。
 
+消息编辑器通过 `documentPaste` 将带语言的单行剪贴板文本转换为 ProseMirror 行内代码标记，多行剪贴板文本使用代码块节点。两种节点共用选区替换、撤销和 Markdown 序列化流程。
+
 批注编辑在 `features/annotations`，协议解析在 `domain/annotations.js`，存储和订阅在 `infrastructure/annotation-drafts.js`。选区编辑只更新草稿，统一发送由消息控制器完成。账户详情、侧栏宽度和主题分别保留自己的控件生命周期。
 
 `ui/resize-handle.jsx` 与 `styles/resize-handles.css` 统一所有尺寸手柄的透明操作区、局部圆角标记、默认/悬停/拖动/键盘聚焦状态及全局拖动光标；横向、纵向与双向仅改变标记方向。侧栏、终端高度、终端列表、详情与各类窗口使用同一组件，尺寸规则及持久化仍由各自容器持有。`ui/resizable-textarea.jsx` 为供应商模型、命令目标、提问回答和消息批注字段提供同一手柄，保留表单字段、草稿与禁用语义，高度仅在挂载期间保留。

@@ -40,7 +40,7 @@ export function insertDocumentMarkdown(view, doc, text) {
   return true;
 }
 
-export function documentPaste(ctx, mathPaste) {
+export function documentPaste(ctx, { mathPaste, inlineCode }) {
   return (view, event, slice) => {
     const clipboard = event.clipboardData;
     if (!clipboard || !view.editable) return false;
@@ -69,10 +69,14 @@ export function documentPaste(ctx, mathPaste) {
     }
     if (text && typeof language === "string" && language) {
       const { schema } = view.state;
-      const code = schema.nodes.code_block.create(
-        { language },
-        schema.text(text),
-      );
+      const line = text.replace(/\n$/, "");
+      const code =
+        inlineCode && line.trim() && !line.includes("\n")
+          ? schema.nodes.paragraph.create(
+              null,
+              schema.text(line, [schema.marks.inlineCode.create()]),
+            )
+          : schema.nodes.code_block.create({ language }, schema.text(text));
       return insertDocumentMarkdown(
         view,
         schema.topNodeType.create(null, code),

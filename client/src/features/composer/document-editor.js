@@ -118,7 +118,10 @@ export async function createDocumentEditor(
       ctx.update(editorViewOptionsCtx, (previous) => ({
         ...previous,
         ...mathInput,
-        handlePaste: documentPaste(ctx, mathInput.handlePaste),
+        handlePaste: documentPaste(ctx, {
+          mathPaste: mathInput.handlePaste,
+          inlineCode: !file,
+        }),
         ...(!file && { clipboardTextSerializer: referenceClipboardText }),
       }));
       ctx.set("CodeMirrorThemeCtx", [syntaxHighlighting(codeHighlightStyle)]);
