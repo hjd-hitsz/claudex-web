@@ -70,6 +70,19 @@ export function projectGroups(
   );
 }
 
+export function sidebarProjectGroups(state, { includePinned = false } = {}) {
+  return projectGroups(
+    state.threads,
+    state.projects,
+    includePinned ? [] : state.pins,
+    state.projectlessDirectories,
+    state.projectlessRoots.length
+      ? state.projectlessRoots
+      : state.projectlessRoot,
+    state.projectOrder ?? [],
+  );
+}
+
 // 先读取所有对话的轮次时间再排序，确保最近有活动的对话能进入第一页。
 export function createThreadOrdering(rpc) {
   const cache = new Map();

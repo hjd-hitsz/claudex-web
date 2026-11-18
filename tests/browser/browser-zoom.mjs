@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-export async function testBrowserZoom({ context, page, artifacts }) {
+export async function testBrowserZoom({
+  context,
+  page,
+  artifacts,
+  afterScale,
+}) {
   await mkdir(artifacts, { recursive: true });
   const settings = await context.newPage();
   await settings.goto("chrome://settings/appearance");
@@ -162,6 +167,7 @@ export async function testBrowserZoom({ context, page, artifacts }) {
             await close.click();
             await page.locator(".sidebar").waitFor({ state: "hidden" });
           }
+          await afterScale?.({ width, theme, scale });
         }
       }
     }

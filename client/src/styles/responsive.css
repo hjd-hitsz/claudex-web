@@ -65,15 +65,19 @@
   .breadcrumb {
     gap: 0.230769rem;
   }
-  .breadcrumb > button {
-    max-width: 110px;
-    font-size: 0.846154rem;
+  .project-switcher {
+    max-width: min(110px, 45%);
   }
-  .breadcrumb > span {
+  .header-switcher > button {
     font-size: 0.923077rem;
+    padding-inline: 0.461538rem;
   }
-  .breadcrumb > svg {
-    width: 0.769231rem;
+  .conversation-switcher {
+    position: static;
+    padding-inline-start: 0.307692rem;
+  }
+  .conversation-switcher .header-switcher-options {
+    left: 0;
   }
   .topbar-actions {
     gap: 0;
@@ -148,20 +152,14 @@
   .topbar {
     gap: 0.153846rem;
   }
-  .breadcrumb > button {
-    max-width: 95px;
-  }
-  .breadcrumb > span {
-    display: none;
+  .project-switcher {
+    max-width: min(95px, 44%);
   }
   .topbar-actions .icon-button {
     width: 2.076923rem;
   }
   .topbar-actions .icon-button svg {
     width: 1.230769rem;
-  }
-  .breadcrumb > svg {
-    display: none;
   }
   .welcome {
     padding: 1.923077rem 1.769231rem 2.692308rem;
@@ -344,11 +342,56 @@
   .composer-meta {
     gap: 0.538462rem;
   }
-  .breadcrumb > button {
-    max-width: 90px;
+  .project-switcher {
+    max-width: min(90px, 42%);
   }
   .topbar-actions .icon-button {
     width: 1.923077rem;
+  }
+}
+@media (max-width: 260px) {
+  .topbar {
+    position: relative;
+  }
+  .breadcrumb,
+  .project-switcher {
+    position: static;
+  }
+  .project-switcher {
+    flex: none;
+    max-width: none;
+  }
+  .project-switcher > button > span,
+  .project-switcher .switcher-chevron {
+    display: none;
+  }
+  .project-switcher .switcher-compact-icon {
+    display: block;
+  }
+  .header-switcher > button {
+    padding-inline: 0.307692rem;
+  }
+  .header-switcher-options,
+  .conversation-switcher .header-switcher-options {
+    --switcher-menu-available: calc(100vw - 1.538462rem);
+    top: calc(100% - 0.307692rem);
+    left: 0.769231rem;
+  }
+  .conversation-switcher .header-switcher-option-label > span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 220px) {
+  .conversation-switcher {
+    flex: none;
+  }
+  .conversation-switcher > button > span,
+  .conversation-switcher .switcher-chevron {
+    display: none;
+  }
+  .conversation-switcher .switcher-compact-icon {
+    display: block;
   }
 }
 @media (prefers-reduced-motion: reduce) {

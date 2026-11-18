@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useStore, set, newChat, loadThreads, report } from "../store.js";
 import { IconButton } from "../ui/primitives.jsx";
-import { projectGroups, sortThreads } from "../domain/thread-order.js";
+import { sidebarProjectGroups, sortThreads } from "../domain/thread-order.js";
 import { ProjectGroup } from "./project-group.jsx";
 import { ResizableSidebar } from "./sidebar-resize.jsx";
 import { AccountFooter } from "../features/account/account-usage.jsx";
@@ -37,14 +37,7 @@ export function Sidebar() {
     ),
   );
   const pinned = s.threads.filter((t) => s.pins.includes(t.id));
-  const groups = projectGroups(
-    s.threads,
-    s.projects,
-    s.pins,
-    s.projectlessDirectories,
-    s.projectlessRoots.length ? s.projectlessRoots : s.projectlessRoot,
-    s.projectOrder || [],
-  );
+  const groups = sidebarProjectGroups(s);
   return (
     <>
       <div

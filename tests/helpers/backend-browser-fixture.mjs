@@ -24,6 +24,19 @@ export function backendFixture(data) {
       createdAt: 1,
     },
   ];
+  if (data.projectSwitcher) {
+    localStorage.setItem(
+      "cx-projects",
+      JSON.stringify(["/demo/Empty", "/demo/project"]),
+    );
+    localStorage.setItem("cx-pins", JSON.stringify(["pinned-only"]));
+    threads.push({
+      id: "pinned-only",
+      name: "仅有置顶对话的文件夹",
+      cwd: "/demo/Pinned",
+      createdAt: 0,
+    });
+  }
   const messages = {
     legacy: data.codexItems || [
       {

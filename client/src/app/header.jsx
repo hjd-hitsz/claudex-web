@@ -1,15 +1,18 @@
 import { ServiceUpdateEntry } from "./service-maintenance.jsx";
 import React, { useState } from "react";
 
-import { PanelLeft, ChevronRight, Plus, MoreHorizontal } from "lucide-react";
-import { useStore, set, newChat, titleOf, basename } from "../store.js";
+import { PanelLeft, Plus, MoreHorizontal } from "lucide-react";
+import { useStore, set, newChat } from "../store.js";
 import { IconButton } from "../ui/primitives.jsx";
 import { BackendBadge } from "./backend-badge.jsx";
 import { currentBackendId } from "../domain/backends.js";
 import { ThreadMenu } from "./thread-row.jsx";
+import { ProjectSwitcher } from "./project-switcher.jsx";
+import { ConversationSwitcher } from "./conversation-switcher.jsx";
 export function Header() {
   const s = useStore(),
     [menu, show] = useState(false);
+  const path = s.projectless ? "" : s.cwd;
   return (
     <header className="topbar">
       <IconButton
@@ -22,14 +25,8 @@ export function Header() {
       />
       <BackendBadge backendId={currentBackendId(s)} />
       <div className="breadcrumb">
-        <button
-          title={s.projectless ? "未指定项目；可选择文件夹" : s.cwd}
-          onClick={() => set({ modal: { type: "directory" } })}
-        >
-          {s.projectless ? "未分类" : basename(s.cwd)}
-        </button>
-        <ChevronRight size={13} />
-        <span>{s.current ? titleOf(s.current) : "新对话"}</span>
+        <ProjectSwitcher state={s} path={path} />
+        <ConversationSwitcher state={s} path={path} />
         {s.current && (
           <div className="header-menu">
             <IconButton

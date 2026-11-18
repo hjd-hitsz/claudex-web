@@ -18,7 +18,12 @@ const output = join(
   before ? "before" : main ? "main" : "dual",
 );
 await mkdir(output, { recursive: true });
-const data = { main, markdown: "交互对照问题", claudeItems: [] };
+const data = {
+  main,
+  markdown: "交互对照问题",
+  claudeItems: [],
+  projectSwitcher: !main && !before,
+};
 const server = http.createServer(async (req, res) => {
   if (serveDemoSession(req, res)) return;
   try {
@@ -52,7 +57,7 @@ const context = await chromium.launchPersistentContext(profile, {
   viewport: { width: 1440, height: 1000 },
   executablePath: process.env.CHROME_PATH,
   headless: true,
-  args: ["--no-sandbox", "--no-proxy-server"],
+  args: ["--no-sandbox", "--no-proxy-server", "--disable-gpu"],
 });
 try {
   const page = await context.newPage();
@@ -214,11 +219,13 @@ try {
   }
   await page.evaluate(() => (document.documentElement.style.zoom = 1));
   await page.setViewportSize({ width: 390, height: 844 });
-  const breadcrumb = page.locator(".topbar .breadcrumb > button");
+  const breadcrumb = page.locator(
+    ".topbar .project-switcher > button, .topbar .breadcrumb > button",
+  );
   assert.equal(
     await breadcrumb.isVisible(),
     !before,
-    "窄屏保留当前项目及目录选择入口",
+    "窄屏保留当前项目及项目切换入口",
   );
   await capture("mobile-chat");
   await page.getByRole("button", { name: "显示侧栏", exact: true }).click();
@@ -242,12 +249,152 @@ try {
       false,
     );
   }
-  if (!main && !before)
+  if (data.projectSwitcher) {
+    const trigger = page.getByRole("button", { name: /^切换项目文件夹/ });
+    const groups = page.getByRole("group", { name: "项目文件夹" });
+    const threadTrigger = page.getByRole("button", { name: /^切换对话，/ });
+    const threads = page.getByRole("group", { name: "当前分组的对话" });
+    const directory = page.getByRole("dialog", { name: "选择工作目录" });
+    const requests = () => page.evaluate(() => window.fixtureRequests);
+    const previousRequests = (await requests()).length;
+    await trigger.press("Enter");
+    await groups.waitFor();
+    assert.deepEqual(await groups.getByRole("button").allTextContents(), [
+      "project",
+      "Pinned",
+      "未分类",
+    ]);
+    assert.equal(
+      await groups
+        .getByRole("button", { name: "未分类" })
+        .getAttribute("aria-current"),
+      "true",
+    );
+    await page.keyboard.press("Tab");
+    assert.equal(
+      await groups
+        .getByRole("button", { name: "project", exact: true })
+        .evaluate((element) => document.activeElement === element),
+      true,
+    );
+    await page.keyboard.press("Escape");
+    await groups.waitFor({ state: "hidden" });
+    assert.equal(
+      await trigger.evaluate((element) => document.activeElement === element),
+      true,
+    );
+    await trigger.click();
+    await groups.getByRole("button", { name: "未分类", exact: true }).click();
+    assert.equal(await input.innerText(), "保留的输入草稿");
+
+    await threadTrigger.press("ArrowDown");
+    await threads.locator("button:focus").waitFor();
+    assert.deepEqual(await threads.getByRole("button").allTextContents(), [
+      "旧版未分类与 Markdown",
+      "客户端未分类",
+    ]);
+    assert.equal(
+      await threads.locator("button:focus").textContent(),
+      "旧版未分类与 Markdown",
+    );
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: /当前为 客户端未分类$/ }).waitFor();
+    await threadTrigger.click();
+    assert.equal(
+      await threads.locator('button[aria-current="true"]').textContent(),
+      "客户端未分类",
+    );
+    await threads
+      .getByRole("button", { name: "旧版未分类与 Markdown" })
+      .click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector(".composer .ProseMirror")?.innerText ===
+        "保留的输入草稿",
+    );
+
+    await trigger.click();
+    await groups.getByRole("button", { name: "Pinned", exact: true }).click();
+    await page.getByRole("button", { name: /当前为 Pinned$/ }).waitFor();
+    assert.equal(
+      await page.locator(".breadcrumb > span").textContent(),
+      "新对话",
+    );
+    await trigger.click();
+    await groups.getByRole("button", { name: "Pinned", exact: true }).waitFor();
+    await capture("project-switcher-new-chat");
+    await page.keyboard.press("Escape");
+    await threadTrigger.click();
+    assert.deepEqual(await threads.getByRole("button").allTextContents(), [
+      "仅有置顶对话的文件夹",
+    ]);
+    await capture("conversation-switcher-new-chat");
+    await page.keyboard.press("Escape");
+    await input.fill("跨项目的新对话草稿");
+    await trigger.click();
+    await groups.getByRole("button", { name: "未分类", exact: true }).click();
+    await page.getByRole("button", { name: /当前为 未分类$/ }).waitFor();
+    assert.equal(await input.innerText(), "跨项目的新对话草稿");
+    await trigger.click();
+    await input.click();
+    await groups.waitFor({ state: "hidden" });
+    assert.equal(await directory.count(), 0);
+    assert.equal(
+      (await requests())
+        .slice(previousRequests)
+        .some(({ method }) =>
+          ["fs/readDirectory", "thread/start", "lan/thread/move"].includes(
+            method,
+          ),
+        ),
+      false,
+    );
+
+    await page.locator(".composer-meta > button").click();
+    await directory.waitFor();
+    await page.waitForFunction(() =>
+      window.fixtureRequests.some(
+        ({ method }) => method === "fs/readDirectory",
+      ),
+    );
+    await directory.getByRole("button", { name: "关闭窗口" }).click();
     await testBrowserZoom({
       context: page.context(),
       page,
       artifacts: join(output, "browser-zoom"),
+      async afterScale({ width, theme, scale }) {
+        for (const [name, button, options] of [
+          ["project-switcher", trigger, groups],
+          ["conversation-switcher", threadTrigger, threads],
+        ]) {
+          await button.click();
+          const bounds = await options.evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            return {
+              left: box.left,
+              top: box.top,
+              right: box.right,
+              bottom: box.bottom,
+              width: innerWidth,
+              height: innerHeight,
+            };
+          });
+          assert.ok(
+            bounds.left >= 0 &&
+              bounds.top >= 0 &&
+              bounds.right <= bounds.width &&
+              bounds.bottom <= bounds.height,
+            JSON.stringify({ name, ...bounds }),
+          );
+          if (scale === 1 || scale === 2)
+            await capture(`${name}-${width}-${theme}-${scale}`);
+          await page.keyboard.press("Escape");
+          await options.waitFor({ state: "hidden" });
+        }
+      },
     });
+  }
   await writeFile(
     join(output, "results.json"),
     JSON.stringify(
