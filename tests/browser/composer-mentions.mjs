@@ -139,17 +139,45 @@ try {
     await page.keyboard.press("Escape");
   }
   await clear();
+  await page.mouse.move(1, 1);
   await page.keyboard.type("@target");
   await page.waitForFunction(
     () =>
       document.querySelectorAll('.shortcut-options [role="option"]').length ===
-      4,
+      7,
   );
   assert.deepEqual(
     await page.locator('.shortcut-options [role="option"] b').allTextContents(),
-    ["target", "target.js", "a.js", "b.js"],
+    [
+      "target",
+      "target-assets",
+      "target.js",
+      "parseTarget.js",
+      "retarget.js",
+      "a.js",
+      "b.js",
+    ],
   );
-  await page.keyboard.press("Escape");
+  await page.locator(".shortcut-popover").screenshot({
+    path: join(output, "directories-first.png"),
+  });
+  await page.keyboard.press("ArrowDown");
+  assert.equal(
+    await page.locator('[role="option"][aria-selected="true"] b').textContent(),
+    "target-assets",
+  );
+  await page.keyboard.press("Enter");
+  assert.equal(
+    await field.locator('[data-reference-kind="directory"]').textContent(),
+    "target-assets",
+  );
+  await clear();
+  await page.keyboard.type("@src/server");
+  await page.getByRole("option", { name: /server.mjs/ }).waitFor();
+  assert.deepEqual(
+    await page.locator('.shortcut-options [role="option"] b').allTextContents(),
+    ["server.mjs"],
+  );
   await clear();
   await page.keyboard.type("@资");
   await page.getByRole("option").filter({ hasText: "资料" }).hover();

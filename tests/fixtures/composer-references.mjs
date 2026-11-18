@@ -44,14 +44,38 @@ export function composerReferenceFixture() {
       };
     if (method === "fuzzyFileSearch" && params.query === "target")
       result = {
-        files: ["target/a.js", "target/b.js", "z/target.js", "target"].map(
-          (path) => ({
+        files: [
+          ["target/a.js", "file"],
+          ["target/b.js", "file"],
+          ["target/fixtures", "directory"],
+          ["retarget.js", "file"],
+          ["parseTarget.js", "file"],
+          ["z/target.js", "file"],
+          ["target-assets", "directory"],
+          ["target", "directory"],
+        ].map(([path, type]) => ({
+          root: "/demo/history",
+          path,
+          file_name: path.split("/").at(-1),
+          match_type: type,
+        })),
+      };
+    if (method === "fuzzyFileSearch" && params.query === "src/server")
+      result = {
+        files: [
+          {
+            path: "client/src/assets/providers",
             root: "/demo/history",
-            path,
-            file_name: path.split("/").at(-1),
-            match_type: path === "target" ? "directory" : "file",
-          }),
-        ),
+            file_name: "providers",
+            match_type: "directory",
+          },
+          {
+            path: "server/src/server.mjs",
+            root: "/demo/history",
+            file_name: "server.mjs",
+            match_type: "file",
+          },
+        ],
       };
     if (method === "turn/start")
       result = { turn: { id: "reference-turn", status: "inProgress" } };
