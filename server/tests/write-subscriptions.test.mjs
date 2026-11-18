@@ -8,7 +8,6 @@ for (const method of [
   "thread/rollback",
   "turn/start",
   "review/start",
-  "thread/goal/get",
   "thread/goal/set",
   "thread/goal/clear",
   "thread/backgroundTerminals/list",
@@ -42,6 +41,26 @@ for (const method of [
     },
   );
 }
+
+test("读取已保存目标直接使用原生历史，发送仍先恢复写入权", async (t) => {
+  const app = await bridge(t);
+  const client = await app.connect();
+  await app.rpc(client, "thread/goal/get", { threadId: "idle-thread" });
+  assert.equal(
+    app.requests.some((request) => request.method === "thread/resume"),
+    false,
+  );
+  assert.equal(app.unsubscribed().length, 0);
+  await app.rpc(client, "turn/start", { threadId: "idle-thread", input: [] });
+  const methods = app.requests
+    .filter((request) => request.params?.threadId === "idle-thread")
+    .map((request) => request.method);
+  assert.deepEqual(methods.slice(0, 3), [
+    "thread/goal/get",
+    "thread/resume",
+    "turn/start",
+  ]);
+});
 
 test(
   "另一端持有写入权时保留错误且不发送轮次，释放后可重试",

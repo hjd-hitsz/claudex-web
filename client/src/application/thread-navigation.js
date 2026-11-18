@@ -92,11 +92,16 @@ export function createThreadNavigation({
       panelFile: null,
     });
   }
-  async function openThread(id, { preserveServiceTier = false } = {}) {
+  async function openThread(
+    id,
+    { preserveServiceTier = false, forkResult } = {},
+  ) {
     if (!backendEnabled(get().backends, resourceTarget(id).backendId)) return;
     if (get().current && !get().loading) models.rememberModelSelection();
     const epoch = ++opening;
     const revision = records.nameRevision;
+    const connection = transport.connection;
+    const connectionRevision = getConnectionRevision();
     set({
       loading: true,
       error: "",
@@ -112,7 +117,14 @@ export function createThreadNavigation({
       if (get().backendId !== backendId) await activateBackend(backendId);
       if (epoch !== opening) return;
       const usageSnapshot = { value: get().tokenUsage[id] };
-      const r = await rpc("thread/read", { threadId: id, includeTurns: false });
+      const created =
+        connection === transport.connection &&
+        connectionRevision === getConnectionRevision()
+          ? forkResult
+          : undefined;
+      const r =
+        created ||
+        (await rpc("thread/read", { threadId: id, includeTurns: false }));
       if (epoch !== opening || records.deletedThreads.has(id)) return;
       const known = get().threads.find((thread) => thread.id === id);
       const thread = records.preserveThreadName(
@@ -165,20 +177,21 @@ export function createThreadNavigation({
           });
         });
       let access;
+      const accessOptions = {
+        preserveServiceTier,
+        usageSnapshot,
+        ...(backendId === "codex" && { forkResult: created }),
+      };
       await loadHistory(epoch, {
         onFirstPage: () => {
           set({ loading: false });
-          access = refreshThreadAccess({
-            preserveServiceTier,
-            usageSnapshot,
-          });
+          access = refreshThreadAccess(accessOptions);
         },
       });
       await ordering;
       if (epoch !== opening || records.deletedThreads.has(id)) return;
       set({ loading: false });
-      await (access ||
-        refreshThreadAccess({ preserveServiceTier, usageSnapshot }));
+      await (access || refreshThreadAccess(accessOptions));
     } catch (e) {
       if (epoch === opening)
         set({
@@ -196,6 +209,7 @@ export function createThreadNavigation({
     preserveServiceTier = true,
     background = false,
     usageSnapshot = { value: get().tokenUsage[get().current?.id] },
+    forkResult,
   } = {}) {
     if (
       get().loading ||
@@ -234,15 +248,16 @@ export function createThreadNavigation({
     set({ threadAccess: checking, error: "" });
     let resumed = false;
     try {
-      const settings = await rpc("thread/resume", {
-        threadId: id,
-        excludeTurns: true,
-      });
+      // 原生 Codex 分支创建已加载对话并返回同一组模型设置。
+      const settings =
+        forkResult ||
+        (await rpc("thread/resume", { threadId: id, excludeTurns: true }));
       if (!current()) return false;
       resumed = true;
       const modelSelection = {
         model: settings.model || get().model,
-        effort: settings.reasoningEffort || "",
+        effort:
+          settings.reasoningEffort ?? forkResult?.thread.reasoningEffort ?? "",
       };
       set({
         threadAccess: { threadId: id, status: "ready" },

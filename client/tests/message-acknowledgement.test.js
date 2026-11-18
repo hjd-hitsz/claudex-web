@@ -17,6 +17,7 @@ for (const acknowledgedStatus of ["queued", "inProgress"]) {
       });
       let state = {
         current: { id: "thread" },
+        threads: [{ id: "thread" }],
         draft: "request",
         attachments: [],
         active: {},
@@ -49,7 +50,11 @@ for (const acknowledgedStatus of ["queued", "inProgress"]) {
           getAttachmentDraft: () => [],
           updateAttachmentDraft() {},
         },
-        catalog: { loadThreads: async () => {} },
+        catalog: {
+          loadThreads() {
+            assert.fail("已有对话的提交确认应通过轮次更新，不重新读取目录");
+          },
+        },
         models: { rememberModelSelection() {} },
         records: {
           recordThreadActivity() {},

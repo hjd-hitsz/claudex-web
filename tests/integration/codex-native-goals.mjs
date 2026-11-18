@@ -4,6 +4,7 @@ import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { setTimeout as delay } from "node:timers/promises";
 
 // 隔离原生目录；暂停目标验证协议及持久化，不发起模型请求。
 const root = await mkdtemp(join(tmpdir(), "codex-goals-"));
@@ -49,6 +50,7 @@ try {
     cwd: root,
     approvalPolicy: "never",
     sandbox: "danger-full-access",
+    config: { thread_unload_delay_secs: 0 },
   });
   const threadId = thread.id;
   assert.equal((await call("thread/goal/get", { threadId })).goal, null);
@@ -78,6 +80,14 @@ try {
   assert.equal((await call("thread/goal/get", { threadId })).goal, null);
   assert(events.some((e) => e.method === "thread/goal/updated"));
   assert(events.some((e) => e.method === "thread/goal/cleared"));
+  await call("thread/unsubscribe", { threadId });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (events.some((e) => e.method === "thread/closed")) break;
+    await delay(10);
+  }
+  assert(events.some((e) => e.method === "thread/closed"));
+  assert.equal((await call("thread/goal/get", { threadId })).goal, null);
+  assert(!(await call("thread/loaded/list", {})).data.includes(threadId));
   assert(!events.some((e) => e.method === "turn/started"));
   console.log(
     execFileSync("codex", ["--version"], { encoding: "utf8" }).trim(),

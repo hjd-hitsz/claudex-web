@@ -210,39 +210,45 @@ export function createThreadCatalog({
     await loadThreads().catch(report);
   }
   async function fork(thread = get().current, lastTurnId) {
+    const opening = navigation.opening;
+    const revision = records.nameRevision;
+    const backendId = resourceTarget(thread.id).backendId;
     const selection =
       get().current?.id === thread.id
         ? { model: get().model, reasoningEffort: get().effort }
-        : (
-            await rpc("thread/read", {
-              threadId: thread.id,
-              includeTurns: false,
-            })
-          ).thread;
-    const revision = records.nameRevision;
-    const family = [];
-    for (const archived of [false, true]) {
+        : rpc("thread/read", { threadId: thread.id, includeTurns: false }).then(
+            (result) => result.thread,
+          );
+    async function familyPageList(archived) {
+      const entries = [];
       let cursor;
       do {
         const page = await rpc("thread/list", {
+          backendId,
           archived,
           limit: 100,
           ...(cursor ? { cursor } : {}),
         });
-        family.push(...page.data);
+        entries.push(...page.data);
         cursor = page.nextCursor;
       } while (cursor);
+      return entries;
     }
-    const threads = family.map((record) =>
+    const [sourceSettings, live, archived] = await Promise.all([
+      selection,
+      familyPageList(false),
+      familyPageList(true),
+    ]);
+    const threads = [...live, ...archived].map((record) =>
       records.preserveThreadName(record, revision),
     );
     const source = threads.find((record) => record.id === thread.id) || thread;
     const name = nextForkTitle(source, threads);
     const r = await rpc("thread/fork", {
       threadId: thread.id,
-      ...(selection.model && { model: selection.model }),
-      ...(selection.reasoningEffort && {
-        config: { model_reasoning_effort: selection.reasoningEffort },
+      ...(sourceSettings.model && { model: sourceSettings.model }),
+      ...(sourceSettings.reasoningEffort && {
+        config: { model_reasoning_effort: sourceSettings.reasoningEffort },
       }),
       excludeTurns: true,
       ...(lastTurnId ? { lastTurnId } : {}),
@@ -257,9 +263,12 @@ export function createThreadCatalog({
       name,
     });
     records.updateThreadName(r.thread.id, name);
-    await navigation.openThread(r.thread.id);
-    await loadThreads();
     notice("已创建对话分支");
+    if (opening === navigation.opening)
+      await navigation.openThread(r.thread.id, {
+        forkResult: { ...r, thread: { ...r.thread, name } },
+      });
+    await loadThreads();
   }
   function applyThreadFolder(thread) {
     const known =

@@ -35,7 +35,12 @@ export async function testForkTitles(app, requests, setResponse) {
         reasoningEffort: params.config?.model_reasoning_effort || "high",
       };
       records.push(thread);
-      return { thread };
+      return {
+        thread,
+        model: thread.model,
+        reasoningEffort: thread.reasoningEffort,
+        cwd: thread.cwd,
+      };
     }
     if (method === "thread/name/set")
       records.find((thread) => thread.id === params.threadId).name =
@@ -76,6 +81,16 @@ export async function testForkTitles(app, requests, setResponse) {
     assert.equal(app.get().model, "gpt-6.1-sol");
     assert.equal(app.get().effort, "medium");
     assert.equal(forks[1].params.threadId, records[1].id);
+    assert.equal(forks[1].params.config.model_reasoning_effort, "medium");
+    assert(
+      sent.every(
+        (request) =>
+          request.method !== "thread/resume" ||
+          !records
+            .slice(1)
+            .some((record) => record.id === request.params.threadId),
+      ),
+    );
     assert(
       sent.some(
         (request) =>

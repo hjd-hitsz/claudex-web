@@ -9,7 +9,6 @@ export const loadedThreadMethods = new Set([
   "turn/start",
   "thread/compact/start",
   "review/start",
-  "thread/goal/get",
   "thread/goal/set",
   "thread/goal/clear",
   "thread/backgroundTerminals/list",

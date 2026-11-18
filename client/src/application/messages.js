@@ -243,7 +243,8 @@ export function createMessages({
       if (get().current?.id === thread.id)
         set({ threadAccess: { threadId: thread.id, status: "ready" } });
       if (replace) editing.finish(replace);
-      catalog.loadThreads().catch(() => {});
+      if (!get().threads.some((entry) => entry.id === thread.id))
+        catalog.loadThreads().catch(() => {});
       return true;
     } catch (e) {
       if (get().current?.id === thread?.id)

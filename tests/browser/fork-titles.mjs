@@ -280,6 +280,12 @@ try {
     url: `http://127.0.0.1:${server.address().port}`,
   });
   await waitFor("document.querySelector('[title=\"从这里创建分支\"]')");
+  const closedGroup =
+    '.project-heading button[title="/fixture/training"][aria-expanded="false"]';
+  if (
+    await evaluate(`!!document.querySelector(${JSON.stringify(closedGroup)})`)
+  )
+    await click(closedGroup);
   const edge = await evaluate(
     "(()=>{const r=document.querySelector('.sidebar-resizer').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()",
   );
@@ -311,7 +317,20 @@ try {
     );
     const name = await evaluate("window.forkFixture.records.at(-1).name");
     if (before) assert(name.endsWith(" (分支)".repeat(number - 2)));
-    else assert.equal(name, `汇总最新训练进展 (${number})`);
+    else {
+      assert.equal(name, `汇总最新训练进展 (${number})`);
+      const { methods, scopes } = await evaluate(`(() => {
+        const {records, requests} = window.forkFixture;
+        const id = records.at(-1).id;
+        return {
+          methods: requests.filter(r => r.params?.threadId === id).map(r => r.method),
+          scopes: requests.filter(r => r.method === 'thread/list' && r.params.backendId === 'codex').map(r => r.params.archived),
+        };
+      })()`);
+      assert(methods.includes("thread/items/list"));
+      assert(!methods.includes("thread/resume"));
+      assert(scopes.includes(false) && scopes.includes(true));
+    }
     await waitFor(
       `document.querySelector('.thread-row.selected .thread-link > span:last-of-type')?.textContent === ${JSON.stringify(name)}`,
     );
@@ -325,6 +344,11 @@ try {
     await evaluate("document.documentElement.dataset.theme='dark'");
     await screenshot("double-digit-dark");
     await page("Page.reload");
+    await waitFor("document.querySelector('[title=\"从这里创建分支\"]')");
+    if (
+      await evaluate(`!!document.querySelector(${JSON.stringify(closedGroup)})`)
+    )
+      await click(closedGroup);
     await waitFor(
       "document.querySelector('.thread-row.selected .thread-link > span:last-of-type')?.textContent==='汇总最新训练进展 (10)'",
     );
