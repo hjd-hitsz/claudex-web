@@ -28,7 +28,7 @@ flowchart TB
 
 生产网页与业务请求同源。浏览器统一使用 HTTPS/WSS；后端地址由配置解析，明文 WebSocket 限于回环地址，跨主机使用 WSS。会话凭据留在受保护的 Cookie 和服务器会话文件中，前端状态只保存会话结果。
 
-后台终端任务 MCP 的规划归属为独立项目，由独立服务持有任务进程、日志、持久化状态与完成通知，供后端代理及其他兼容客户端使用。`feat/mcp-background-tasks` 分支的集成方案保留为拆分参考，Claudex Web 的运行、安装和发行范围排除该分支的任务服务、专用管理界面及自动续跑实现。宿主相关的结果投递与对话续跑在独立项目中通过适配边界设计。网页继续使用现有交互终端、后端原生后台终端管理和通用 MCP 展示能力。计划状态、职责和验收要求见[后台任务 MCP 独立项目计划](background-tasks.md)。
+可选的 Codex 后台终端位于 `packages/background-terminal`，提供独立的 stdio MCP 和任务服务。任务服务持有进程、日志、状态和投递记录，通过同机 Codex app-server 核对会话并提交完成结果。Codex 网页适配器按部署配置注册 MCP，并把当前对话的扩展任务并入已有后台终端查询及清理。Claude Code 继续通过 SDK 管理后台 Bash。安装与协议见[Codex 后台终端 MCP](background-tasks.md)。
 
 持久化与执行边界保持清晰：
 
@@ -311,7 +311,7 @@ npm 分发由独立的 `npm-publish.yml` 工作流监听即时及定时 GitHub �
 
 Codex 启动脚本将 WebSocket 连接地址转换为原生 CLI 的 `ws://主机:端口` 监听参数，保留 IPv6 方括号并显式补齐默认端口 80。连接地址的 URL 规范化与原生监听参数构造分别处理，监听入口校验协议、路径、查询参数及片段。回归精确核对命令行和服务生成入口实际提交的完整参数。
 
-`npm run architecture:check` 扫描 `client/src`、`server/src`、`shared`、`scripts`、`bin` 和翻译子项目中的 JavaScript、JSX、MJS 与 CSS：
+`npm run architecture:check` 扫描 `client/src`、`server/src`、`shared`、`scripts`、`bin` 和两个独立子项目中的 JavaScript、JSX、MJS 与 CSS：
 
 1. 单文件最多 **500 行**，计入注释和空行。日常按单一职责组织，接近上限时先拆分，保持格式化后的正常排版。
 2. 检查相对导入、重导出、字符串动态导入和 CSS 导入是否存在，并检查整个源码图的循环。

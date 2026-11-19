@@ -1,0 +1,15 @@
+{
+  "name": "@hjd-hitsz/codex-background-terminal",
+  "version": "0.1.0",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=24.5"
+  },
+  "os": [
+    "linux"
+  ],
+  "bin": {
+    "codex-background-terminal": "cli.mjs"
+  }
+}

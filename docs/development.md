@@ -2,11 +2,9 @@
 
 本文面向修改、测试和发布 Claudex Web 的开发者。安装发行包及日常使用见 [README](../README.md)，运行配置和故障处理见[部署与维护](deployment.md)。实现设计见[架构说明](architecture.md)，版本选择和完整发布流程见[版本管理](versioning.md)。
 
-## 后台任务 MCP 的开发归属
+## 后台终端回归
 
-后台终端任务能力按[独立项目计划](background-tasks.md)推进。`feat/mcp-background-tasks` 是早期集成原型，后续工作应从中提取通用任务服务与 MCP 接口，在独立仓库设计、验证和发布。该分支的任务守护进程、自动续跑、专用网页面板、CLI 入口和服务安装配置均排除在 Claudex Web 的合并与发布范围之外。
-
-Claudex Web 的现有网页交互终端、后端原生后台终端 `/stop` 命令以及通用 MCP 状态与工具结果展示按各自契约维护。独立项目应能在未安装、未启动 Claudex Web 时完成任务执行与结果读取；宿主相关的完成通知及续跑适配单独验证。当前记录的是开发方向，独立仓库创建和代码迁移的实施范围另行确定。
+独立 MCP 服务与 Codex 适配的部署方式见[后台终端说明](background-tasks.md)。命令及日志回归纳入单元测试。运行 `node tests/integration/codex-background-terminal.mjs` 验证真实 Codex 与本机模拟 Responses 服务的调用和完成投递。运行 `node tests/integration/claude-runtime-lifecycle.mjs` 对照 Claude SDK 的原生后台执行、停止和唤醒。
 
 ## 本地环境与源码启动
 

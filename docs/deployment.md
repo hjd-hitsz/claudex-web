@@ -293,3 +293,7 @@ Claude Code 的网络代理使用服务器可访问的代理地址和端口，�
 通过 systemd 用户服务运行时，维护任务由独立用户单元执行；通过 `claudex-web start`、`npm start` 或 Node.js 直接启动时，由独立维护进程完成更新，并按原 Node.js、启动参数、工作目录和环境重新启动网页。原网页退出后，维护和新网页进程继续运行，日志保存在网页配置目录的 `maintenance/worker.log` 和 `maintenance/web.log`。后端 CLI 正在安装或更新时，网页更新与重启会提示等待当前任务结束。
 
 “重启服务”随时可用于重新启动整个网页服务进程，执行期间连接短暂中断，网页自动重连。网页交互终端会结束，请先保存文件编辑。原生后端由其独立服务管理。更新完成后保存编辑并手动刷新网页加载新版界面。维护进度保存在网页配置目录的 `maintenance/status.json`，执行日志可通过 `journalctl --user -u claudex-web-maintenance` 查询。
+
+## Codex 后台终端扩展
+
+需要在长命令完成后自动继续 Codex 对话时，可单独启动任务服务并设置 `CLAUDEX_BACKGROUND_TASKS_DIR`。配置、停止和日志读取见[后台终端说明](background-tasks.md)。

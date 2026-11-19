@@ -14,7 +14,7 @@
 
 本仓库是 Claudex Web 的独立源码项目。前端位于 `client`，桥接服务位于 `server`，维护脚本位于 `scripts`。生产服务直接读取 `client/dist`，支持其根部的 JavaScript 与 CSS 分块；增加按需加载功能时验证资源路由和发行包中的对应分块。依赖通过根目录 npm workspaces 和单一 `package-lock.json` 管理。
 
-后台终端任务 MCP 按独立项目规划，面向后端代理及其他兼容客户端提供可独立安装、配置和运行的任务服务。`feat/mcp-background-tasks` 分支仅作为拆分参考，其 MCP 服务、任务守护进程、完成后自动续跑、专用网页界面及安装配置不合入 Claudex Web；后续开发在独立仓库推进。任务执行、日志、持久化和完成通知归独立项目，宿主相关的对话续跑通过明确的适配边界设计，运行不依赖 Claudex Web 网页或桥接服务。Claudex Web 继续承担浏览器客户端职责，保留现有网页交互终端、后端原生后台终端的 `/stop` 入口及通用 MCP 状态和结果展示。拆分计划与验收范围见 `docs/background-tasks.md`。
+Codex 后台终端是默认关闭的独立 MCP 扩展。任务进程、日志与完成投递归独立服务，按后端、对话与原生调用 ID 隔离；网页只负责可选注册及现有 `/stop` 入口。Claude Code 沿用原生后台 Bash、任务事件与停止接口。修改后分别验证真实 Codex MCP 和 Claude SDK 的执行、取消与完成唤醒。
 
 架构设计统一维护在 `docs/architecture.md`，跨模块行为维护在 `docs/architecture/behavior.md`。修改模块边界、状态归属、协议生命周期或构建方式时同步维护文档和对应回归。新增功能先确定规则、用例、外部访问和展示各自的职责，沿既有边界实现。
 

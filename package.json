@@ -23,6 +23,7 @@
     "scripts/restart-when-idle.mjs",
     ".env.example",
     "docs/",
+    "packages/background-terminal/",
     "packages/translation-engine/src/",
     "packages/translation-engine/native/",
     "packages/translation-engine/bin/",

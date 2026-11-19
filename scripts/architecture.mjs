@@ -9,6 +9,7 @@ const sourceRoots = [
   "shared",
   "scripts",
   "bin",
+  "packages/background-terminal",
   "packages/translation-engine/src",
   "packages/translation-engine/native",
 ];
@@ -81,6 +82,11 @@ async function resolveImport(path, specifier) {
 }
 
 function boundaryError(from, to) {
+  if (
+    from.startsWith("packages/background-terminal/") &&
+    !to.startsWith("packages/background-terminal/")
+  )
+    return "后台终端扩展只能依赖自己的子项目与外部包";
   if (
     from.startsWith("packages/translation-engine/") &&
     !to.startsWith("packages/translation-engine/")

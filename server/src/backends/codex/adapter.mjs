@@ -1,3 +1,7 @@
+import {
+  backgroundParams,
+  backgroundTerminals,
+} from "./background-terminals.mjs";
 import { referenceToolParams } from "./reference-tools.mjs";
 import { subagentModelParams } from "./subagent-model.mjs";
 import { join } from "node:path";
@@ -55,7 +59,12 @@ export function createCodexAdapter({
   const sessionParams = async (method, params) =>
     subagentModelParams(
       method,
-      referenceToolParams(method, params, config),
+      backgroundParams(
+        method,
+        referenceToolParams(method, params, config),
+        config.backgroundTaskDir,
+        config.upstreamUrl,
+      ),
       ["thread/start", "thread/resume", "thread/fork"].includes(method)
         ? await readSubagentSettings()
         : backend,
@@ -119,6 +128,13 @@ export function createCodexAdapter({
     undoing: files.undoing,
     ...subscriptions,
     ...methods,
+    backgroundCall:
+      config.backgroundTaskDir &&
+      backgroundTerminals(
+        config.backgroundTaskDir,
+        config.upstreamUrl,
+        transport.call,
+      ),
     send,
     broadcast,
   });

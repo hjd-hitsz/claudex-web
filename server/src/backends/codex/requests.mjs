@@ -1,3 +1,4 @@
+import { terminalMethods } from "./background-terminals.mjs";
 import { MAX_RPC_MESSAGE_BYTES } from "../../rpc-transport.mjs";
 import { threadMethods, loadedThreadMethods } from "./methods.mjs";
 import { assertConversationOperation } from "../../bridge/conversation-policy.mjs";
@@ -14,6 +15,7 @@ export function createRequestHandler({
   releasing,
   resumeForWrite,
   releaseUnusedThreads,
+  backgroundCall,
   offline,
   online,
   send,
@@ -88,6 +90,21 @@ export function createRequestHandler({
           ...message.params,
           config: { ...message.params?.config, thread_unload_delay_secs: 0 },
         };
+      if (backgroundCall && terminalMethods.has(message.method)) {
+        try {
+          await resumeForWrite(threadId);
+          send(client, {
+            id: message.id,
+            result: await backgroundCall(message.method, message.params),
+          });
+        } catch (error) {
+          send(client, {
+            id: message.id,
+            error: { code: -32000, message: error.message },
+          });
+        }
+        return;
+      }
       const id = transport.nextId();
       const forwarded = JSON.stringify({ ...message, id });
       if (Buffer.byteLength(forwarded) > MAX_RPC_MESSAGE_BYTES) {
