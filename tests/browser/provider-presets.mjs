@@ -119,7 +119,7 @@ try {
     .click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
   const row = page.locator(".backend-heading").filter({ hasText: "DeepSeek" });
-  const first = page.locator(".provider-settings > .backend-heading").first();
+  const first = page.locator(".provider-settings .backend-heading").first();
   assert.match(await first.innerText(), /DeepSeek/);
   assert.doesNotMatch(
     await first.innerText(),
@@ -155,13 +155,18 @@ try {
     0,
   );
   await row.getByRole("button", { name: "编辑", exact: true }).click();
+  assert.ok(
+    await row.evaluate((el) =>
+      el.nextElementSibling?.matches(".provider-editor"),
+    ),
+  );
   const key = page.locator('input[name="apiKey"]');
   assert.equal(await key.inputValue(), "");
   assert.equal(await page.locator(".provider-settings form input").count(), 1);
   assert.equal(
     await page
       .locator(
-        ".provider-settings form select, .provider-settings form textarea, .provider-model-name",
+        ".provider-settings form select, .provider-settings form textarea, .provider-models",
       )
       .count(),
     0,

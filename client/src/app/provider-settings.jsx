@@ -1,12 +1,16 @@
 import { ResizableTextarea } from "../ui/resizable-textarea.jsx";
-import React, { useEffect, useState } from "react";
-import { ProviderModelNames } from "./provider-model-names.jsx";
+import React, { useEffect, useId, useState } from "react";
+import { ProviderModels } from "./provider-models.jsx";
 import { PresetProviderForm } from "./preset-provider-form.jsx";
 import { rpc, saveProvider, removeProvider } from "../store.js";
+import { contextWindowTokens } from "../domain/provider-context-window.js";
+
 export function ProviderSettings({ backend }) {
+  const apiKeyId = useId();
   const [providers, setProviders] = useState([]),
     [editing, setEditing] = useState(null),
     [error, setError] = useState(""),
+    [saveError, setSaveError] = useState(""),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     let current = true;
@@ -21,149 +25,109 @@ export function ProviderSettings({ backend }) {
       current = false;
     };
   }, [backend.id]);
-  return (
-    <div className="provider-settings">
-      {providers.map((p) => (
-        <div className="backend-heading" key={p.id}>
-          <span className="provider-identity">
-            {p.preset && (
-              <>
-                <img
-                  className="provider-brand-symbol"
-                  src={
-                    new URL(
-                      `../assets/providers/${p.icon}.svg`,
-                      import.meta.url,
-                    ).href
-                  }
-                  alt={`${p.name} 标识`}
-                />
-              </>
-            )}
-            <span>{p.name}</span>
-          </span>
-          {p.preset && <span>{p.hasApiKey ? "已启用" : "待填写 API Key"}</span>}
-          <button disabled={busy} onClick={() => setEditing(p)}>
-            编辑
-          </button>
-          {!p.preset && (
-            <button
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                setError("");
-                try {
-                  const result = await removeProvider({ id: p.id });
-                  setProviders(result.providers);
-                  if (editing?.id === p.id) setEditing(null);
-                } catch (error) {
-                  setError(error.message);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              删除
-            </button>
-          )}
-        </div>
-      ))}
-      <button
-        disabled={busy}
-        onClick={() => setEditing({ name: "", baseUrl: "", models: [] })}
+  function beginEditing(provider) {
+    setSaveError("");
+    setEditing(provider);
+  }
+  const editor =
+    editing &&
+    (editing.preset ? (
+      <PresetProviderForm
+        key={editing.id}
+        provider={editing}
+        busy={busy}
+        setBusy={setBusy}
+        backendId={backend.id}
+        onSaved={(providers) => {
+          setProviders(providers);
+          beginEditing(null);
+        }}
+        onCancel={() => beginEditing(null)}
+      />
+    ) : (
+      <form
+        className="backend-form provider-editor"
+        key={editing.id || "new"}
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const values = new FormData(event.currentTarget);
+          setBusy(true);
+          setSaveError("");
+          try {
+            const key = values.get("apiKey");
+            const models = editing.models
+              .map((model) => model.trim())
+              .filter(Boolean);
+            await saveProvider({
+              id: editing.id,
+              backendId: backend.id,
+              name: values.get("name"),
+              baseUrl: values.get("baseUrl"),
+              protocol: values.get("protocol"),
+              modelAliases: Object.fromEntries(
+                Object.entries(editing.modelAliases || {}).filter(([model]) =>
+                  models.includes(model),
+                ),
+              ),
+              modelCapabilities: Object.fromEntries(
+                models.map((model) => {
+                  const capability = editing.modelCapabilities?.[model];
+                  const contextWindow = contextWindowTokens(
+                    capability?.contextWindow,
+                    capability?.contextWindowUnit,
+                  );
+                  if (contextWindow === null)
+                    throw new Error(
+                      `模型「${model}」的上下文容量需换算为正整数，例如直接输入 32768，或点亮 k 后输入 32。`,
+                    );
+                  return [
+                    model,
+                    {
+                      ...(contextWindow !== undefined && { contextWindow }),
+                      supportedEffortLevels:
+                        capability?.supportedEffortLevels ?? [],
+                      supportsFastMode: Boolean(capability?.supportsFastMode),
+                      supportsAdaptiveThinking: Boolean(
+                        capability?.supportsAdaptiveThinking,
+                      ),
+                    },
+                  ];
+                }),
+              ),
+              models,
+              ...(values.has("clearKey")
+                ? { apiKey: "" }
+                : key
+                  ? { apiKey: key }
+                  : {}),
+            });
+            setProviders(
+              (
+                await rpc("lan/providers/list", {
+                  backendId: backend.id,
+                  includeDisabled: true,
+                })
+              ).providers,
+            );
+            beginEditing(null);
+          } catch (e) {
+            setSaveError(e.message);
+          } finally {
+            setBusy(false);
+          }
+        }}
       >
-        添加供应商
-      </button>
-      {editing?.preset && (
-        <PresetProviderForm
-          key={editing.id}
-          provider={editing}
-          backendId={backend.id}
-          onSaved={(providers) => {
-            setProviders(providers);
-            setEditing(null);
-          }}
-          onCancel={() => setEditing(null)}
-        />
-      )}
-      {editing && !editing.preset && (
-        <form
-          className="backend-form"
-          key={editing.id || "new"}
-          onSubmit={async (event) => {
-            event.preventDefault();
-            const values = new FormData(event.currentTarget);
-            setBusy(true);
-            setError("");
-            try {
-              const key = values.get("apiKey");
-              await saveProvider({
-                id: editing.id,
-                backendId: backend.id,
-                name: values.get("name"),
-                baseUrl: values.get("baseUrl"),
-                protocol: values.get("protocol"),
-                modelAliases: Object.fromEntries(
-                  editing.models
-                    .map((model) => model.trim())
-                    .filter(Boolean)
-                    .map((model) => [
-                      model,
-                      values.get("alias-" + model) || "",
-                    ]),
-                ),
-                modelCapabilities: Object.fromEntries(
-                  editing.models
-                    .map((model) => model.trim())
-                    .filter(Boolean)
-                    .map((model) => [
-                      model,
-                      {
-                        ...(values.get("context-" + model) && {
-                          contextWindow: Number(values.get("context-" + model)),
-                        }),
-                        supportedEffortLevels: values.getAll("effort-" + model),
-                        supportsFastMode: values.has("fast-" + model),
-                        supportsAdaptiveThinking: values.has(
-                          "adaptive-" + model,
-                        ),
-                      },
-                    ]),
-                ),
-                models: values
-                  .get("models")
-                  .split(/\r?\n/)
-                  .map((v) => v.trim())
-                  .filter(Boolean),
-                ...(values.has("clearKey")
-                  ? { apiKey: "" }
-                  : key
-                    ? { apiKey: key }
-                    : {}),
-              });
-              setProviders(
-                (
-                  await rpc("lan/providers/list", {
-                    backendId: backend.id,
-                    includeDisabled: true,
-                  })
-                ).providers,
-              );
-              setEditing(null);
-            } catch (e) {
-              setError(e.message);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
+        <div className="provider-fields">
           <label>
-            名称
+            <span>名称</span>
             <input name="name" required defaultValue={editing.name} />
           </label>
           <label>
-            API 协议
+            <span aria-hidden="true">
+              <span className="provider-field-prefix">API </span>协议
+            </span>
             <select
+              aria-label="API 协议"
               name="protocol"
               defaultValue={editing.protocol || "anthropic"}
             >
@@ -172,117 +136,165 @@ export function ProviderSettings({ backend }) {
             </select>
           </label>
           <label>
-            API 地址
+            <span aria-hidden="true">
+              <span className="provider-field-prefix">API </span>地址
+            </span>
             <input
+              aria-label="API 地址"
               name="baseUrl"
               type="url"
               required
               defaultValue={editing.baseUrl}
             />
           </label>
-          <label>
-            API Key
+          <div className="provider-key-field">
+            <label htmlFor={apiKeyId} aria-hidden="true">
+              <span>
+                <span className="provider-field-prefix">API </span>Key
+              </span>
+            </label>
             <input
+              id={apiKeyId}
+              aria-label="API Key"
               name="apiKey"
               type="password"
               autoComplete="new-password"
               placeholder={editing.hasApiKey ? "已配置；留空保留" : "可留空"}
             />
-          </label>
-          {editing.hasApiKey && (
-            <label className="backend-checkbox">
-              <input name="clearKey" type="checkbox" />
-              清除已保存凭据
-            </label>
-          )}
-          <label>
-            模型标识（每行一个）
-            <ResizableTextarea
-              name="models"
-              required
-              value={editing.models.join("\n")}
-              onChange={(event) =>
-                setEditing({
-                  ...editing,
-                  models: event.target.value.split(/\r?\n/),
-                })
-              }
-              rows={3}
-            />
-          </label>
-          <ProviderModelNames
-            models={editing.models}
-            aliases={editing.modelAliases}
-          />
-          <details>
-            <summary>模型参数</summary>
-            {editing.models
-              .map((model) => model.trim())
-              .filter(Boolean)
-              .map((model) => (
-                <fieldset key={model}>
-                  <legend>{model}</legend>
-                  <label>
-                    上下文容量（tokens）
-                    <input
-                      name={"context-" + model}
-                      type="number"
-                      min="1"
-                      step="1"
-                      placeholder="服务实际加载的容量"
-                      defaultValue={
-                        editing.modelCapabilities?.[model]?.contextWindow || ""
-                      }
-                    />
-                  </label>
-                  <span>思考强度</span>
-                  {["low", "medium", "high", "xhigh", "max"].map((level) => (
-                    <label className="backend-checkbox" key={level}>
-                      <input
-                        type="checkbox"
-                        name={"effort-" + model}
-                        value={level}
-                        defaultChecked={editing.modelCapabilities?.[
-                          model
-                        ]?.supportedEffortLevels?.includes(level)}
-                      />
-                      {level}
-                    </label>
-                  ))}
-                  <label className="backend-checkbox">
-                    <input
-                      type="checkbox"
-                      name={"fast-" + model}
-                      defaultChecked={
-                        editing.modelCapabilities?.[model]?.supportsFastMode
-                      }
-                    />
-                    支持快速模式
-                  </label>
-                  <label className="backend-checkbox">
-                    <input
-                      type="checkbox"
-                      name={"adaptive-" + model}
-                      defaultChecked={
-                        editing.modelCapabilities?.[model]
-                          ?.supportsAdaptiveThinking
-                      }
-                    />
-                    支持自适应思考
-                  </label>
-                </fieldset>
-              ))}
-          </details>
-          <div>
-            <button type="submit" disabled={busy}>
-              保存供应商
-            </button>
-            <button type="button" onClick={() => setEditing(null)}>
-              取消
-            </button>
+            {editing.hasApiKey && (
+              <label className="backend-checkbox" title="清除已保存凭据">
+                <input
+                  name="clearKey"
+                  type="checkbox"
+                  aria-label="清除已保存凭据"
+                />
+                清除
+              </label>
+            )}
           </div>
-        </form>
-      )}
+        </div>
+        <label>
+          模型标识（每行一个）
+          <ResizableTextarea
+            name="models"
+            required
+            value={editing.models.join("\n")}
+            onChange={(event) =>
+              setEditing({
+                ...editing,
+                models: event.target.value.split(/\r?\n/),
+              })
+            }
+            rows={2}
+          />
+        </label>
+        <ProviderModels
+          models={editing.models}
+          aliases={editing.modelAliases}
+          capabilities={editing.modelCapabilities}
+          onAliasChange={(model, alias) =>
+            setEditing((draft) => ({
+              ...draft,
+              modelAliases: { ...draft.modelAliases, [model]: alias },
+            }))
+          }
+          onCapabilityChange={(model, changes) =>
+            setEditing((draft) => ({
+              ...draft,
+              modelCapabilities: {
+                ...draft.modelCapabilities,
+                [model]: { ...draft.modelCapabilities?.[model], ...changes },
+              },
+            }))
+          }
+        />
+        {saveError && <p role="alert">{saveError}</p>}
+        <div className="provider-editor-actions">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => beginEditing(null)}
+          >
+            取消
+          </button>
+          <button type="submit" className="primary" disabled={busy}>
+            保存供应商
+          </button>
+        </div>
+      </form>
+    ));
+  return (
+    <div className="provider-settings">
+      {providers.map((p) => (
+        <div className="provider-entry" key={p.id}>
+          <div className="backend-heading">
+            <span className="provider-identity">
+              {p.preset && (
+                <>
+                  <img
+                    className="provider-brand-symbol"
+                    src={
+                      new URL(
+                        `../assets/providers/${p.icon}.svg`,
+                        import.meta.url,
+                      ).href
+                    }
+                    alt={`${p.name} 标识`}
+                  />
+                </>
+              )}
+              <span>{p.name}</span>
+            </span>
+            {p.preset && (
+              <span>{p.hasApiKey ? "已启用" : "待填写 API Key"}</span>
+            )}
+            <div className="provider-actions">
+              <button
+                aria-expanded={editing?.id === p.id}
+                disabled={busy}
+                onClick={() => beginEditing(editing?.id === p.id ? null : p)}
+              >
+                编辑
+              </button>
+              {!p.preset && (
+                <button
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    setError("");
+                    try {
+                      const result = await removeProvider({ id: p.id });
+                      setProviders(result.providers);
+                      if (editing?.id === p.id) beginEditing(null);
+                    } catch (error) {
+                      setError(error.message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  删除
+                </button>
+              )}
+            </div>
+          </div>
+          {editing?.id === p.id && editor}
+        </div>
+      ))}
+      <button
+        disabled={busy}
+        aria-expanded={Boolean(editing && !editing.id)}
+        onClick={() =>
+          beginEditing(
+            editing && !editing.id
+              ? null
+              : { name: "", baseUrl: "", models: [] },
+          )
+        }
+      >
+        添加供应商
+      </button>
+      {editing && !editing.id && editor}
       {error && <p role="alert">{error}</p>}
     </div>
   );

@@ -152,6 +152,25 @@
 .modal-settings .backend-settings button:hover {
   background: var(--hover);
 }
+.modal-settings .backend-settings button.provider-context-unit {
+  flex: none;
+  inline-size: var(--provider-context-unit-width, 1.8em);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border-color: var(--border);
+  border-inline-start: 0;
+  border-radius: 0 0.4em 0.4em 0;
+  color: var(--muted);
+  background: var(--subtle);
+}
+.modal-settings
+  .backend-settings
+  button.provider-context-unit[aria-pressed="true"] {
+  color: var(--link);
+  background: color-mix(in srgb, var(--link) 12%, var(--bg));
+  font-weight: 600;
+}
 .modal-settings .backend-version {
   margin: 0;
   color: var(--muted);
@@ -231,11 +250,49 @@
 }
 .modal-settings .provider-settings {
   width: 100%;
-  gap: 10px;
+  gap: 6px;
   margin-top: 12px;
 }
-.modal-settings .provider-settings > .backend-heading {
-  width: 100%;
+.modal-settings .provider-settings .provider-editor {
+  min-width: 0;
+  margin: 6px 0 4px;
+  padding: 12px;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.modal-settings .provider-settings > button {
+  justify-self: start;
+}
+.provider-editor [role="alert"] {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--red);
+}
+.provider-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-block-start: 8px;
+  border-block-start: 1px solid var(--border);
+}
+.backend-form .provider-editor-actions button {
+  margin: 0;
+}
+.modal-settings .backend-settings .provider-editor-actions .primary {
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+@container (max-width: 355px) {
+  .modal-settings .provider-settings .provider-editor {
+    padding: 10px 0;
+    border-inline: 0;
+    border-radius: 0;
+    background: transparent;
+  }
 }
 .modal-settings .provider-settings > button {
   border-color: transparent;
@@ -277,6 +334,12 @@
   }
   .modal-settings .proxy-row {
     align-items: stretch;
+  }
+}
+@media (max-width: 300px) {
+  .modal-settings .settings-body,
+  .modal-settings .backend-card {
+    padding-inline: 8px;
   }
 }
 

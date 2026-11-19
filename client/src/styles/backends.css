@@ -4,13 +4,12 @@
 }
 .provider-settings {
   display: grid;
-  justify-items: start;
-  gap: 0.5em;
   margin-top: 0.65em;
   min-width: 0;
+  container-type: inline-size;
 }
-.provider-settings > .backend-form {
-  width: 100%;
+.provider-entry {
+  min-width: 0;
 }
 .backend-card {
   border-block-end: 1px solid var(--border);
@@ -29,6 +28,14 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.provider-actions {
+  display: flex;
+  flex: none;
+  gap: 0.45em;
+  margin-inline-start: auto;
 }
 .provider-brand-symbol {
   width: 1.5em;
@@ -177,57 +184,198 @@
   cursor: default;
 }
 
-.provider-model-names {
+.provider-editor {
+  --provider-label-width: 4em;
+  --provider-label-gap: 0.65em;
+}
+.provider-fields {
   display: grid;
-  gap: 0.4em;
-  min-width: 0;
-}
-.provider-model-heading {
-  color: var(--muted);
-  font-size: 0.923077rem;
-}
-.provider-model-name {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 0.6em;
-  overflow: hidden;
-}
-.backend-settings .provider-model-name > summary {
-  display: flex;
+  grid-template-columns: repeat(2, var(--provider-label-width) minmax(0, 1fr));
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75em;
-  padding: 0.65em 0.8em;
-  list-style: none;
+  gap: 0.65em var(--provider-label-gap);
 }
-.provider-model-name > summary::-webkit-details-marker {
-  display: none;
+.provider-fields:has(.backend-checkbox) {
+  grid-template-columns:
+    repeat(2, var(--provider-label-width) minmax(0, 1fr))
+    max-content;
 }
-.provider-model-name > summary > span {
+.backend-form .provider-fields > label,
+.provider-key-field {
+  display: grid;
+  grid-column: span 2;
+  grid-template-columns: subgrid;
+  column-gap: normal;
+  align-items: center;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.provider-model-name > summary > svg {
+.backend-form .provider-fields:has(.backend-checkbox) > :nth-child(even) {
+  grid-column: span 3;
+}
+.provider-fields > label > select {
+  grid-column: 2 / -1;
+}
+.provider-fields :is(input:not([type="checkbox"]), select) {
+  height: 2.4em;
+}
+.provider-key-field .backend-checkbox {
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+@container (max-width: 355px) {
+  .provider-field-prefix {
+    display: none;
+  }
+}
+@container (max-width: 215px) {
+  .provider-editor {
+    --provider-label-width: 22px;
+    --provider-label-gap: 0.3em;
+  }
+  .provider-fields > label > span,
+  .provider-key-field > label {
+    font-size: 11px;
+  }
+  .provider-fields :is(input:not([type="checkbox"]), select) {
+    font-size: 12px;
+    padding-inline: 0.25em;
+  }
+  .modal-settings .settings-body .provider-key-field input[type="checkbox"] {
+    width: 12px;
+    height: 12px;
+  }
+}
+.provider-models {
+  display: grid;
+  gap: 0.5em;
+  min-width: 0;
+  container-type: inline-size;
+}
+.backend-form .provider-model-picker {
+  grid-template-columns: var(--provider-label-width) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--provider-label-gap);
+}
+.provider-model-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--provider-label-gap);
+}
+.backend-form .provider-model-fields > label,
+.provider-context-field {
+  display: flex;
+  align-items: center;
+  gap: var(--provider-label-gap);
+  white-space: nowrap;
+}
+.provider-model-fields label > span {
+  flex: none;
+}
+.provider-model-fields > label:first-child > span {
+  inline-size: var(--provider-label-width);
+}
+.provider-context-control {
+  display: flex;
+}
+.backend-form .provider-model-context {
+  inline-size: min(12ch, 32cqi);
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.provider-effort {
+  display: grid;
+  grid-template-columns: var(--provider-label-width) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--provider-label-gap);
+  min-width: 0;
+}
+.provider-effort-axis {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(max-content, 1fr));
+  container-type: inline-size;
+}
+.provider-effort-axis::before {
+  content: "";
+  position: absolute;
+  inset-inline: 10%;
+  top: 0.85em;
+  height: 2px;
+  background: color-mix(in srgb, var(--muted) 42%, var(--border));
+  pointer-events: none;
+}
+.backend-form .provider-effort-option {
+  position: relative;
+  justify-items: center;
+  gap: 0.2em;
+  padding-block: 0.4em 0.2em;
+  cursor: pointer;
   color: var(--muted);
 }
-.provider-model-name[open] > summary {
-  background: var(--subtle);
+.provider-effort-option > input {
+  position: absolute;
+  clip-path: inset(50%);
 }
-.provider-model-name-fields {
-  padding: 0.8em;
-  border-top: 1px solid var(--border);
+.provider-effort-dot {
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  border: 1px solid var(--muted);
+  background: var(--bg);
 }
-.provider-model-name-fields p {
-  font-size: 0.846154rem;
-  color: var(--muted);
-  margin: 0.75em 0 0;
+.provider-effort-option > span:last-child {
+  font-size: clamp(8px, 6.5cqi, 12px);
 }
-.provider-model-name-fields p span {
-  display: block;
-  font-family: var(--mono);
-  overflow-wrap: anywhere;
+.provider-effort-option:hover,
+.provider-effort-option:has(:checked) {
+  color: var(--link);
+}
+.provider-effort-option:hover .provider-effort-dot {
+  border-color: var(--link);
+}
+.provider-effort-option > :checked + .provider-effort-dot {
+  border: 0.3em solid var(--link);
+}
+.provider-effort-option > :focus-visible + .provider-effort-dot {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+.provider-model-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em 1em;
+}
+@container (max-width: 355px) {
+  .provider-context-field .provider-model-label-prefix {
+    display: none;
+  }
+}
+@container (max-width: 215px) {
+  .provider-effort {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.15em;
+  }
+  .provider-model-picker > span,
+  .provider-model-fields label > span {
+    font-size: 11px;
+  }
+  .provider-model-label-prefix {
+    display: none;
+  }
+  .provider-model-fields input {
+    font-size: 12px;
+    padding-inline: 0.25em;
+  }
+  .provider-context-control {
+    --provider-context-unit-width: 16px;
+  }
+  .backend-form .provider-model-context {
+    inline-size: calc(6ch + 0.5em + 2px);
+  }
 }
 
 .backend-version {

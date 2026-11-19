@@ -1,12 +1,18 @@
 import React, { useState } from "react";
 import { rpc, saveProvider } from "../store.js";
 
-export function PresetProviderForm({ provider, backendId, onSaved, onCancel }) {
-  const [busy, setBusy] = useState(false);
+export function PresetProviderForm({
+  provider,
+  backendId,
+  busy,
+  setBusy,
+  onSaved,
+  onCancel,
+}) {
   const [error, setError] = useState("");
   return (
     <form
-      className="backend-form"
+      className="backend-form provider-editor"
       onSubmit={async (event) => {
         event.preventDefault();
         const values = new FormData(event.currentTarget);
@@ -39,15 +45,15 @@ export function PresetProviderForm({ provider, backendId, onSaved, onCancel }) {
           placeholder="填写后启用；保存空值清除凭据并停用"
         />
       </label>
-      <div>
-        <button type="submit" disabled={busy}>
-          保存供应商
-        </button>
+      {error && <p role="alert">{error}</p>}
+      <div className="provider-editor-actions">
         <button type="button" disabled={busy} onClick={onCancel}>
           取消
         </button>
+        <button type="submit" className="primary" disabled={busy}>
+          保存供应商
+        </button>
       </div>
-      {error && <p role="alert">{error}</p>}
     </form>
   );
 }
