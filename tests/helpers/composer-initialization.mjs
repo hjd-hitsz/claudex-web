@@ -14,11 +14,16 @@ export async function holdDocumentEditor(page) {
 
 export async function checkComposerInitialization(page, release) {
   const fallback = page.locator(".markdown-composer > textarea");
+  await fallback.and(page.locator(":focus")).waitFor({ timeout: 3000 });
   await fallback.fill("短对话加载期间的草稿");
   await page.getByRole("button", { name: /^超长对话性能验证/ }).click();
+  await fallback.and(page.locator(":focus")).waitFor();
   await fallback.fill("长对话加载期间的草稿");
   await page.getByRole("button", { name: /^简短对话/ }).click();
+  await fallback.and(page.locator(":focus")).waitFor();
   assert.equal(await fallback.inputValue(), "短对话加载期间的草稿");
+  await page.keyboard.insertText("，继续输入");
+  assert.equal(await fallback.inputValue(), "短对话加载期间的草稿，继续输入");
   const text = "加载期间选择这两个字继续";
   await fallback.fill(text);
   await fallback.evaluate((element) => {
@@ -27,7 +32,7 @@ export async function checkComposerInitialization(page, release) {
   });
   const height = (await fallback.boundingBox()).height;
   release();
-  await page.locator(".markdown-composer .ProseMirror").waitFor();
+  await page.locator(".markdown-composer .ProseMirror:focus").waitFor();
   await page.waitForFunction(() => getSelection().toString() === "两个字");
   const viewport = page.locator(".document-editor-viewport");
   assert(

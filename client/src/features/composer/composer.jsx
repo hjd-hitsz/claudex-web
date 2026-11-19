@@ -2,7 +2,7 @@ import { GoalSummary } from "./goal-summary.jsx";
 import { ModelSelect } from "./model-select.jsx";
 import { InputQueue } from "./input-queue.jsx";
 import { backendReady, backendCapability } from "../../domain/backends.js";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
   ArrowUp,
@@ -49,6 +49,7 @@ export function Composer() {
     draft = useDraft(),
     area = useRef(),
     files = useRef();
+  const focusAfterOpen = useRef(null);
   useEffect(() => setEnlarged(false), [s.current?.id, s.backendId, s.modal]);
   const annotationDrafts = useAnnotationDrafts(s.current?.id);
   const shortcuts = useComposerShortcuts(area);
@@ -72,6 +73,27 @@ export function Composer() {
   const unavailable =
     s.loading ||
     (access && access.status !== "ready" && !(checking && access.background));
+  useLayoutEffect(() => {
+    if (s.loading) {
+      focusAfterOpen.current = access?.threadId;
+      return;
+    }
+    if (unavailable || enlarged) return;
+    const target = focusAfterOpen.current;
+    focusAfterOpen.current = null;
+    const input = area.current;
+    if (!target || target !== s.current?.id || s.modal || !input) return;
+    const end = input.value.length;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(end, end);
+  }, [
+    s.loading,
+    access?.threadId,
+    unavailable,
+    enlarged,
+    s.current?.id,
+    s.modal,
+  ]);
   return (
     <ComposerSurface
       expanded={enlarged}

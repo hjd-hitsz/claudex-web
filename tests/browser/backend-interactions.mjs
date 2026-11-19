@@ -300,6 +300,8 @@ try {
     await page.keyboard.press("End");
     await page.keyboard.press("Enter");
     await page.getByRole("button", { name: /当前为 客户端未分类$/ }).waitFor();
+    const focusedInput = input.and(page.locator(":focus"));
+    await focusedInput.waitFor();
     await threadTrigger.click();
     assert.equal(
       await threads.locator('button[aria-current="true"]').textContent(),
@@ -380,7 +382,10 @@ try {
     await firstResult
       .getByText("发送较早的进行中对话", { exact: true })
       .waitFor();
-    await searchDialog.getByRole("button", { name: "关闭窗口" }).click();
+    await searchDialog
+      .getByRole("button", { name: /发送较早的进行中对话/ })
+      .click();
+    await focusedInput.waitFor();
     await switchProject("Pinned", "仅有置顶对话的文件夹");
     await page.waitForFunction(
       () =>
@@ -412,7 +417,9 @@ try {
     await page.keyboard.press("Escape");
     await switchProject("未分类", "旧版未分类与 Markdown");
     await page.getByRole("button", { name: /当前为 未分类$/ }).waitFor();
+    await focusedInput.waitFor();
     assert.equal(await input.innerText(), "保留的输入草稿");
+    await capture("conversation-switch-focus");
     await switchProject("project", "发送较早的进行中对话");
     await switchProject("未分类", "旧版未分类与 Markdown");
     await trigger.click();
