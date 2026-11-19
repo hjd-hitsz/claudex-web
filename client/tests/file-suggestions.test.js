@@ -47,7 +47,7 @@ test("文件夹优先于精确匹配的文件，并在限制展示数量前排�
     ],
   );
 });
-test("路径输入按完整路径匹配，支持大小写、中文和跳字", () => {
+test("路径输入优先完整匹配，中文名称优先于父目录命中", () => {
   assert.deepEqual(rank(["src/target-old", "src/target"], "src/target"), [
     "src/target",
     "src/target-old",
@@ -55,10 +55,6 @@ test("路径输入按完整路径匹配，支持大小写、中文和跳字", ()
   assert.deepEqual(rank(["a/分析目录/x", "b/分析.md"], "分析"), [
     "b/分析.md",
     "a/分析目录/x",
-  ]);
-  assert.deepEqual(rank(["a/T---a---r---g---e---t", "b/Target"], "tgt"), [
-    "b/Target",
-    "a/T---a---r---g---e---t",
   ]);
 });
 test("同分保持原生顺序，目录浏览保持原有顺序且不修改输入", () => {
@@ -70,10 +66,10 @@ test("同分保持原生顺序，目录浏览保持原有顺序且不修改输�
   assert.deepEqual(files, snapshot);
 });
 
-test("精确、短前缀、长前缀、连续与跳字匹配依次排序", () => {
+test("精确、短前缀、长前缀、词边界与首字母匹配依次排序", () => {
   assert.deepEqual(
-    rank(["t-a-r", "x-target", "target-long", "target", "tar"], "tar"),
-    ["tar", "target", "target-long", "x-target", "t-a-r"],
+    rank(["t-a-r-log", "x-target", "target-long", "target", "tar"], "tar"),
+    ["tar", "target", "target-long", "x-target", "t-a-r-log"],
   );
 });
 
@@ -103,7 +99,7 @@ test("文件主名与名称分词优先，同分时优先较浅的路径", () =>
   );
 });
 
-test("名称缩写优先于零散跳字，普通查询将隐藏路径后置", () => {
+test("普通查询优先显示可见路径的名称命中，保留原生模糊候选", () => {
   const paths = [
     ".git/hooks/fsmonitor.sample",
     "files.js",
@@ -114,15 +110,14 @@ test("名称缩写优先于零散跳字，普通查询将隐藏路径后置", ()
   assert.deepEqual(rank(paths, "fs"), [
     "file-suggestions.js",
     "diffs.css",
+    ".git/hooks/fsmonitor.sample",
     "files.js",
-    ".git/hooks/fsmonitor.sample",
+    "random.js",
   ]);
-  assert.deepEqual(rank(paths, ".git/hooks/fs"), [
-    ".git/hooks/fsmonitor.sample",
-  ]);
+  assert.deepEqual(rank(paths, ".git/hooks/fs"), paths);
 });
 
-test("双字符关键词保留紧凑的文件夹匹配，过滤间隔过大的跳字", () => {
+test("文件夹优先适用于名称直接命中，其他候选保持原生顺序", () => {
   const files = [
     { ...file("tests/fixtures"), directory: true },
     { ...file("client/src/features"), directory: true },
@@ -134,12 +129,14 @@ test("双字符关键词保留紧凑的文件夹匹配，过滤间隔过大的�
   assert.deepEqual(rankFileSuggestions(files, "fs", "/work"), [
     files[3],
     files[2],
-    files[4],
     files[5],
+    files[0],
+    files[1],
+    files[4],
   ]);
 });
 
-test("路径查询逐级匹配，根目录前缀限定匹配范围", () => {
+test("路径查询提升路径命中，其余结果保持原生顺序", () => {
   const paths = [
     "client/src/assets/providers",
     "server/src/server.mjs",
@@ -152,22 +149,28 @@ test("路径查询逐级匹配，根目录前缀限定匹配范围", () => {
     "src/server.js",
     "server/src/server.mjs",
     "server/src-old/server",
+    "client/src/assets/providers",
+    "src/test/server.js",
+    "othersrc/server.js",
   ]);
-  assert.deepEqual(rank(paths, "./src/server"), ["src/server.js"]);
-  assert.deepEqual(rank(paths, "/work/src/server"), ["src/server.js"]);
+  const anchored = [paths[2], paths[0], paths[1], ...paths.slice(3)];
+  assert.deepEqual(rank(paths, "./src/server"), anchored);
+  assert.deepEqual(rank(paths, "/work/src/server"), anchored);
   assert.deepEqual(rank(paths, "SRC\\SERVER"), rank(paths, "src/server"));
 });
 
-test("只命中父级的文件后置，文件夹须匹配自身名称", () => {
-  const files = [
-    { ...file("target/fixtures"), directory: true },
-    file("target/config.json"),
-    file("elsewhere/retarget.js"),
-    { ...file("target-tools"), directory: true },
+test("目录缩写、跳过中间层和连续输入均保留原生对同名文件的判断", () => {
+  const paths = [
+    "client/src/features/commands/shortcuts.jsx",
+    "client/src/styles/shortcuts.css",
   ];
-  assert.deepEqual(rankFileSuggestions(files, "target", "/work"), [
-    files[3],
-    files[2],
-    files[1],
-  ]);
+  for (const query of ["cln/cmd/shct", "cln/shortcuts", "clncmdshortcuts"])
+    assert.deepEqual(rank(paths, query), paths);
+});
+
+test("省略文件名分隔符仍能优先匹配完整主名", () => {
+  assert.deepEqual(
+    rank(["tests/rpc-client.test.js", "src/rpc-client.js"], "rpcclient"),
+    ["src/rpc-client.js", "tests/rpc-client.test.js"],
+  );
 });

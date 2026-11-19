@@ -106,7 +106,7 @@ export function useComposerShortcuts(area) {
     setLoading(true);
     const timer = setTimeout(async () => {
       try {
-        let rows;
+        let rows, ranked;
         const q = trigger.query;
         if (!q || q.endsWith("/")) {
           const directory = q ? absolute(q, s.cwd) : s.cwd;
@@ -131,6 +131,7 @@ export function useComposerShortcuts(area) {
             providerId: s.providerId,
             ...(s.current?.id && { threadId: s.current.id }),
           });
+          ranked = result.ranked;
           rows = result.files.map((f) => ({
             path: absolute(f.path, f.root),
             name: f.file_name,
@@ -138,7 +139,9 @@ export function useComposerShortcuts(area) {
           }));
         }
         if (n === generation.current)
-          setFiles(rankFileSuggestions(rows, q, s.cwd).slice(0, 60));
+          setFiles(
+            (ranked ? rows : rankFileSuggestions(rows, q, s.cwd)).slice(0, 60),
+          );
       } catch (e) {
         if (n === generation.current) setError(e.message);
       } finally {

@@ -69,10 +69,12 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.318",
-    "node-pty": "1.1.0",
-    "ws": "8.22.0",
     "@claudex-web/translation-engine": "file:packages/translation-engine",
-    "fflate": "0.8.2"
+    "fflate": "0.8.2",
+    "fuzzysort": "4.0.2",
+    "ignore": "7.0.16",
+    "node-pty": "1.1.0",
+    "ws": "8.22.0"
   },
   "repository": {
     "type": "git",

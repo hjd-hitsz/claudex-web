@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { composerReferenceFixture } from "../fixtures/composer-references.mjs";
 import { historyPerformanceFixture } from "../fixtures/history-performance.mjs";
+import { createFileSearch } from "../../server/src/workspace/file-search.mjs";
 const editorAssetTypes = {
   js: "text/javascript",
   css: "text/css",
@@ -16,26 +17,40 @@ const editorAssetTypes = {
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const before = process.env.BROWSER_BEFORE === "1";
-const output = join(
-  root,
-  ".cache/composer-mentions",
-  before ? "before" : "after",
-);
+const build = process.env.BROWSER_BUILD_DIR || join(root, "client/dist");
+const output =
+  process.env.BROWSER_OUTPUT_DIR ||
+  join(root, ".cache/composer-mentions", before ? "before" : "after");
 await mkdir(output, { recursive: true });
+const workspace = await mkdtemp(join(tmpdir(), "claudex-mentions-workspace-"));
+const search = createFileSearch();
+const sharedSuggestions = {};
+try {
+  await mkdir(join(workspace, "nros_marsupial"));
+  await writeFile(join(workspace, "nrosmasp.js"), "");
+  for (const query of ["nrosmasp", "nrosmas"]) {
+    const { files } = await search.search({ roots: [workspace], query });
+    sharedSuggestions[query] = {
+      ranked: true,
+      files: files.map((file) => ({ ...file, root: "/demo/history" })),
+    };
+  }
+} finally {
+  search.close();
+  await rm(workspace, { recursive: true, force: true });
+}
 const { chromium } = await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE));
 const server = http.createServer(async (request, response) => {
   if (serveDemoSession(request, response)) return;
   try {
     const path = new URL(request.url, "http://fixture").pathname;
-    let body = await readFile(
-      join(root, "client/dist", path === "/" ? "index.html" : path),
-    );
+    let body = await readFile(join(build, path === "/" ? "index.html" : path));
     if (path === "/")
       body = body
         .toString()
         .replace(
           "<head>",
-          `<head><script>{const saved=location.search==='?restore=1'?localStorage.getItem('cx-draft-short'):null;(${historyPerformanceFixture.toString()})();(${composerReferenceFixture.toString()})();if(saved){localStorage.setItem('cx-draft-short',saved);localStorage.setItem('cx-current','short');}}</script>`,
+          `<head><script>{const saved=location.search==='?restore=1'?localStorage.getItem('cx-draft-short'):null;(${historyPerformanceFixture.toString()})();(${composerReferenceFixture.toString()})(${JSON.stringify(sharedSuggestions)});if(saved){localStorage.setItem('cx-draft-short',saved);localStorage.setItem('cx-current','short');}}</script>`,
         );
     response
       .writeHead(200, {
@@ -140,11 +155,41 @@ try {
   }
   await clear();
   await page.mouse.move(1, 1);
+  await page.keyboard.type("@cld/tknusg");
+  const suggestions = page.getByRole("listbox", { name: "引用建议" });
+  if (before) {
+    await page.waitForFunction(() =>
+      window.historyFixture.requests.some(
+        ({ method, params }) =>
+          method === "fuzzyFileSearch" && params.query === "cld/tknusg",
+      ),
+    );
+    await suggestions.getByText("没有匹配项，继续输入以搜索。").waitFor();
+  } else {
+    const match = suggestions.getByRole("option").first();
+    await match.waitFor();
+    assert.match(
+      await match.textContent(),
+      /server\/src\/backends\/claude\/token-usage\.mjs/,
+    );
+  }
+  await page.locator(".shortcut-popover").screenshot({
+    path: join(output, "fuzzy-path.png"),
+  });
+  if (!before) {
+    await page.keyboard.press("Enter");
+    assert.equal(
+      await field.locator('[data-reference-kind="file"]').textContent(),
+      "token-usage.mjs",
+    );
+  }
+  await clear();
   await page.keyboard.type("@target");
   await page.waitForFunction(
-    () =>
+    (count) =>
       document.querySelectorAll('.shortcut-options [role="option"]').length ===
-      7,
+      count,
+    before ? 7 : 8,
   );
   assert.deepEqual(
     await page.locator('.shortcut-options [role="option"] b').allTextContents(),
@@ -156,6 +201,7 @@ try {
       "retarget.js",
       "a.js",
       "b.js",
+      ...(before ? [] : ["fixtures"]),
     ],
   );
   await page.locator(".shortcut-popover").screenshot({
@@ -171,12 +217,36 @@ try {
     await field.locator('[data-reference-kind="directory"]').textContent(),
     "target-assets",
   );
+  if (!before) {
+    await clear();
+    await page.keyboard.type("@nrosmasp");
+    const selection = page.locator('[role="option"][aria-selected="true"] b');
+    await selection.waitFor();
+    assert.equal(await selection.textContent(), "nros_marsupial");
+    await page.keyboard.press("Backspace");
+    await page.waitForFunction(() =>
+      window.historyFixture.requests.some(
+        ({ method, params }) =>
+          method === "fuzzyFileSearch" && params.query === "nrosmas",
+      ),
+    );
+    await selection.waitFor();
+    assert.equal(await selection.textContent(), "nros_marsupial");
+    await page.locator(".shortcut-popover").screenshot({
+      path: join(output, "workspace-directory-first.png"),
+    });
+    await page.keyboard.press("Enter");
+    assert.equal(
+      await field.locator('[data-reference-kind="directory"]').textContent(),
+      "nros_marsupial",
+    );
+  }
   await clear();
   await page.keyboard.type("@src/server");
   await page.getByRole("option", { name: /server.mjs/ }).waitFor();
   assert.deepEqual(
     await page.locator('.shortcut-options [role="option"] b').allTextContents(),
-    ["server.mjs"],
+    before ? ["server.mjs"] : ["server.mjs", "providers"],
   );
   await clear();
   await page.keyboard.type("@资");

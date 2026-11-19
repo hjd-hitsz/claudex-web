@@ -429,7 +429,7 @@ export function createBackendManager({
     if (method === "thread/list" && !params.backendId)
       return reply(await listThreads(params));
     const entry = instance(target.backendId);
-    if (workspace.handles(method) && entry.adapter.workspaceOwner === "bridge")
+    if (workspace.handles(method, entry.backend, entry.adapter.workspaceOwner))
       return reply(await workspace.request(method, params));
     const recipient = proxy(entry, client);
     if (method === "thread/fork" && !(await tokenUsage.forkSource(params)))

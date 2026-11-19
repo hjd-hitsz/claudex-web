@@ -72,7 +72,7 @@ Claude Code 的附加能力通过后端扩展描述提供，采用显式命令�
 
 ## 已实现的模块与事实来源
 
-- `workspace/service.mjs` 提供共用文件、目录与网页交互终端。网页手动终端统一使用 `lan/terminal/*`，在后端路由之前由工作区服务处理；node-pty 持有实际 shell 和前台进程名称，终端按绝对启动目录隔离，同目录跨模型后端保留，代理的原生命令与后台任务保持原有路径。管理器依据所属后端路由 `fuzzyFileSearch`：Codex 沿用原生 app-server，Claude Code 调用 SDK 的原生 `file_suggestions` 控制请求，复用 CLI 文件索引；查询初始化预热索引并按目录、供应商配置与对话隔离，两者使用相同输入建议和结果展示。
+- `workspace/service.mjs` 提供共用文件、目录、文件搜索与网页交互终端。网页手动终端统一使用 `lan/terminal/*`，在后端路由之前由工作区服务处理；node-pty 持有实际 shell 和前台进程名称，终端按绝对启动目录隔离，同目录跨模型后端保留。输入区的 `fuzzyFileSearch` 由工作区所有者提供。本机工作区按根目录共享 FuzzySort 索引，跨主机 Codex 通过原生 app-server 搜索实际远端路径。
 - `claude/sessions.mjs` 管理网页逻辑对话与原生会话的对应关系。`history-actions.mjs` 使用 SDK 原生分支保留消息前缀，依据原生 `forkedFrom.messageUuid` 重新建立轮次、补充输入和自动唤醒消息锚点，截断使用下一轮输入的 `parentUuid` 保留已完成轮次的全部输出附件；网页对话标识保持稳定。`nativeAliases` 将保留的历史分支归入同一逻辑对话，列表和删除后的恢复避免重复导入。
 - `session-worker.mjs` 在独立工作进程中使用同一原生配置目录调用 SDK 会话 API；SDK 选择原生 `parentUuid` 链，`native-records.mjs` 通过 SDK `importSessionToStore` 加载临时内存快照，按 UUID 补回投影省略的时间、系统子类型及错误字段。原生正文和工具结果是事实来源，索引补充已确认的轮次状态、计划类型、错误分类和文件变更。
 - `worker-client.mjs` 与独立 `worker-server.mjs` 通过受限本机 IPC 协作，执行服务持有 Claude 适配器、原生进程和后台任务。systemd 环境使用独立用户 service 及 cgroup，网页桥接关闭或崩溃后仍保留任务。IPC 目录 0700、socket 0600，双方核对用户归属。源码、入口路径或运行配置变化时，忙碌服务先继续执行，完全空闲后确认停止并替换，较旧桥接保持较新执行代际。

@@ -1,4 +1,4 @@
-export function composerReferenceFixture() {
+export function composerReferenceFixture(sharedSuggestions = {}) {
   const original = WebSocket.prototype.send;
   const entries = [
     { fileName: "sample.js", isDirectory: false },
@@ -77,6 +77,22 @@ export function composerReferenceFixture() {
           },
         ],
       };
+    if (method === "fuzzyFileSearch" && params.query === "cld/tknusg")
+      result = {
+        files: [
+          {
+            path: "server/src/backends/claude/token-usage.mjs",
+            root: "/demo/history",
+            file_name: "token-usage.mjs",
+            match_type: "file",
+          },
+        ],
+      };
+    if (
+      method === "fuzzyFileSearch" &&
+      Object.hasOwn(sharedSuggestions, params.query)
+    )
+      result = sharedSuggestions[params.query];
     if (method === "turn/start")
       result = { turn: { id: "reference-turn", status: "inProgress" } };
     if (!result) return original.call(this, raw);

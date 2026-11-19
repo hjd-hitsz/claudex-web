@@ -23,7 +23,7 @@ test("Codex 文件、模糊搜索与终端请求保持原生参数、结果和�
       configDir: root,
       claudeHome: join(root, ".claude"),
       codexHome: root,
-      upstreamUrl: "ws://127.0.0.1:1",
+      upstreamUrl: "wss://codex.example.invalid",
     },
     version: {},
     send: (client, message) => client.deliver(message),

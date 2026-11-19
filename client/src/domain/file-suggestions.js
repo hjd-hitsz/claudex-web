@@ -2,28 +2,13 @@ function normalize(value) {
   return value.normalize("NFKC").replaceAll("\\", "/");
 }
 
-function fuzzyRelevance(text, query) {
-  let best = null;
-  for (let start = 0; start < text.length; start++) {
-    if (text[start] !== query[0]) continue;
-    let matched = 1;
-    let end = start;
-    while (++end < text.length && matched < query.length)
-      if (text[end] === query[matched]) matched++;
-    if (matched === query.length) {
-      const rank = [1, -(end - start - query.length), -start];
-      if (!best || compare(rank, best) < 0) best = rank;
-    }
-  }
-  return best;
-}
-
 function nameRelevance(name, query, directory) {
   const text = name.toLowerCase();
   const extension = text.lastIndexOf(".");
   const stem = !directory && extension > 0 ? text.slice(0, extension) : text;
-  if (text === query) return [8, 0, 0];
-  if (stem === query) return [7, 0, 0];
+  if (text === query) return [9, 0, 0];
+  if (stem === query) return [8, 0, 0];
+  if (stem.replace(/[^\p{L}\p{N}]+/gu, "") === query) return [7, 0, 0];
   if (text.startsWith(query)) return [6, -stem.length, 0];
 
   const words = name
@@ -40,10 +25,7 @@ function nameRelevance(name, query, directory) {
   if (initials.startsWith(query)) return [3, -initials.length, -stem.length];
   const offset = text.indexOf(query);
   if (offset >= 0) return [2, -offset, -stem.length];
-  const fuzzy = fuzzyRelevance(text, query);
-  if (directory && query.length === 2 && fuzzy && fuzzy[1] < -query.length)
-    return null;
-  return fuzzy;
+  return null;
 }
 
 function pathRelevance(parts, query, anchored, nameRank) {
@@ -63,7 +45,7 @@ function compare(a, b) {
   return 0;
 }
 
-// Rank the complete native result set before the menu applies its display limit.
+// Promote direct matches before trimming the menu. Native fuzzy hits keep their order.
 export function rankFileSuggestions(files, query, cwd) {
   const q = normalize(query).toLowerCase();
   if (!q || q.endsWith("/")) return files;
@@ -91,40 +73,29 @@ export function rankFileSuggestions(files, query, cwd) {
         ? full.slice(root.length + 1)
         : full;
       const parts = path.split("/").filter(Boolean);
-      const parents = parts.slice(0, -1);
       const directory = file.directory === true;
       const visible =
         explicitHidden || !parts.some((part) => part.startsWith("."));
       const nameRank = nameRelevance(normalize(file.name), term, directory);
-      let rank = nameRank;
-      if (usesPath) {
-        rank = pathRelevance(
-          anchored ? full.split("/").filter(Boolean) : parts,
-          queryParts,
-          anchored,
-          nameRank,
-        );
-      } else if (
-        !rank &&
-        !directory &&
-        parents.some((parent) => parent.startsWith(q))
-      ) {
-        rank = [0, 0, 0];
-      }
-      if (!rank) return null;
-      return {
-        file,
-        rank: [
-          Number(directory),
-          Number(nameRank !== null),
-          Number(visible),
-          ...rank,
-          -parts.length,
-        ],
-        index,
-      };
+      const pathRank = usesPath
+        ? pathRelevance(
+            anchored ? full.split("/").filter(Boolean) : parts,
+            queryParts,
+            anchored,
+            nameRank,
+          )
+        : null;
+      const rank = usesPath
+        ? pathRank && [1, ...pathRank, Number(directory), -parts.length]
+        : nameRank && [
+            1,
+            Number(directory),
+            Number(visible),
+            ...nameRank,
+            -parts.length,
+          ];
+      return { file, rank: rank || [0], index };
     })
-    .filter(Boolean)
     .sort((a, b) => compare(a.rank, b.rank) || a.index - b.index)
     .map(({ file }) => file);
 }
