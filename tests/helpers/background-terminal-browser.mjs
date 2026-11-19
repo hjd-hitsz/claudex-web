@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -39,8 +39,38 @@ export async function backgroundTerminalBrowser(url, cookie, output) {
         return input && !input.disabled && input.checked === expected;
       }, expected);
     }
+    async function checkSpacing(view) {
+      const rows = await page
+        .locator(".settings-preferences > div > label")
+        .evaluateAll((labels) =>
+          labels.map((label) => {
+            const box = label.querySelector("input").getBoundingClientRect();
+            const text = document.createRange();
+            text.selectNodeContents(label.lastChild);
+            return {
+              x: box.x,
+              y: box.y + box.height / 2,
+              textX: text.getBoundingClientRect().x,
+            };
+          }),
+        );
+      const distances = rows.slice(1).map((row, i) => row.y - rows[i].y);
+      await writeFile(
+        join(output, "spacing-" + view + ".json"),
+        JSON.stringify({ rows, distances }, null, 2),
+      );
+      assert.equal(rows.length, 3);
+      assert.ok(
+        rows.every((row) => row.x === rows[0].x && row.textX === rows[0].textX),
+      );
+      assert.ok(
+        Math.abs(distances[0] - distances[1]) < 0.5,
+        "复选框中心间距 " + distances.join(" / "),
+      );
+    }
     await button("设置").click();
     await check(false);
+    await checkSpacing("desktop");
     const preferences = page.getByRole("region", { name: "其他设置" });
     assert.equal(
       await preferences
@@ -78,6 +108,17 @@ export async function backgroundTerminalBrowser(url, cookie, output) {
     await toggle.click();
     await check(true);
     await page.setViewportSize({ width: 390, height: 780 });
+    await toggle.scrollIntoViewIfNeeded();
+    await checkSpacing("mobile");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await context.grantPermissions(["notifications"], { origin: url });
+    await page.reload();
+    await button("设置").click();
+    await check(true);
+    assert.equal(await button("允许系统通知").count(), 0);
+    await checkSpacing("desktop-granted");
+    await page.setViewportSize({ width: 390, height: 780 });
+    await checkSpacing("mobile-granted");
     await toggle.scrollIntoViewIfNeeded();
     const bounds = await toggle.boundingBox();
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 390);
