@@ -8,7 +8,10 @@ export function createSubscriptions({
     releasing = new Map(),
     resuming = new Map();
   const unwrittenThreads = new Set();
-  async function resumeForWrite(threadId, { cwd } = {}) {
+  async function resumeForWrite(
+    threadId,
+    { cwd, inheritPermissions = false } = {},
+  ) {
     if (subscriptions.has(threadId)) return;
     if (!resuming.has(threadId)) {
       const resume = transport
@@ -16,8 +19,10 @@ export function createSubscriptions({
           threadId,
           ...(cwd && { cwd }),
           excludeTurns: true,
-          approvalPolicy: "never",
-          sandbox: "danger-full-access",
+          ...(!inheritPermissions && {
+            approvalPolicy: "never",
+            sandbox: "danger-full-access",
+          }),
           config: { thread_unload_delay_secs: 0 },
         })
         .then(({ thread }) => {

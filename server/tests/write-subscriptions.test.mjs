@@ -42,6 +42,26 @@ for (const method of [
   );
 }
 
+test("按会话查看 MCP 状态时临时加载会话，沿用原工作目录和权限", async (t) => {
+  const app = await bridge(t, (req) => req.method === "mcpServerStatus/list");
+  const client = await app.connect();
+  const status = app.rpc(client, "mcpServerStatus/list", {
+    threadId: "idle-thread",
+    cwd: "/menu-directory",
+  });
+  const read = await waitFor(() =>
+    app.requests.find((req) => req.method === "mcpServerStatus/list"),
+  );
+  const resume = app.requests.find((req) => req.method === "thread/resume");
+  assert.equal(resume.params.threadId, "idle-thread");
+  for (const key of ["cwd", "sandbox", "approvalPolicy"])
+    assert.ok(!(key in resume.params));
+  assert.equal(app.unsubscribed().length, 0);
+  app.respond(read, { data: [] });
+  await status;
+  await waitFor(() => app.unsubscribed().length);
+});
+
 test("读取已保存目标直接使用原生历史，发送仍先恢复写入权", async (t) => {
   const app = await bridge(t);
   const client = await app.connect();

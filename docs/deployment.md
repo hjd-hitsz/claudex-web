@@ -296,4 +296,4 @@ Claude Code 的网络代理使用服务器可访问的代理地址和端口，�
 
 ## Codex 后台终端扩展
 
-需要在长命令完成后自动继续 Codex 对话时，可单独启动任务服务并设置 `CLAUDEX_BACKGROUND_TASKS_DIR`。配置、停止和日志读取见[后台终端说明](background-tasks.md)。
+在「设置 → 其他设置」勾选「为Codex开启后台终端功能」即可启动同机任务服务。已有独立服务可用 `CLAUDEX_BACKGROUND_TASKS_DIR` 指定其状态目录。配置、停止和日志读取见[后台终端说明](background-tasks.md)。

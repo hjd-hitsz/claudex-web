@@ -28,7 +28,7 @@ flowchart TB
 
 生产网页与业务请求同源。浏览器统一使用 HTTPS/WSS；后端地址由配置解析，明文 WebSocket 限于回环地址，跨主机使用 WSS。会话凭据留在受保护的 Cookie 和服务器会话文件中，前端状态只保存会话结果。
 
-可选的 Codex 后台终端位于 `packages/background-terminal`，提供独立的 stdio MCP 和任务服务。任务服务持有进程、日志、状态和投递记录，通过同机 Codex app-server 核对会话并提交完成结果。Codex 网页适配器按部署配置注册 MCP，并把当前对话的扩展任务并入已有后台终端查询及清理。Claude Code 继续通过 SDK 管理后台 Bash。安装与协议见[Codex 后台终端 MCP](background-tasks.md)。
+可选的 Codex 后台终端位于 `packages/background-terminal`，提供独立的 stdio MCP 和任务服务。任务服务持有进程、日志、状态和投递记录，通过同机 Codex app-server 核对会话并提交完成结果。网页的「其他设置」保存 Codex 注册偏好，启用时连接或启动独立任务服务。Codex 网页适配器在对话加载时按该偏好注册 MCP，并把当前对话的扩展任务并入已有后台终端查询及清理。Claude Code 继续通过 SDK 管理后台 Bash。安装与协议见[Codex 后台终端 MCP](background-tasks.md)。
 
 持久化与执行边界保持清晰：
 

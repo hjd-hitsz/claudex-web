@@ -2,6 +2,7 @@ import {
   backgroundParams,
   backgroundTerminals,
 } from "./background-terminals.mjs";
+import { threadMethods } from "./methods.mjs";
 import { referenceToolParams } from "./reference-tools.mjs";
 import { subagentModelParams } from "./subagent-model.mjs";
 import { join } from "node:path";
@@ -23,6 +24,8 @@ export function createCodexAdapter({
   version,
   send,
   broadcast,
+  background,
+  backgroundEnabled = () => false,
   readSubagentSettings = async () => backend,
 }) {
   config = { ...config, upstreamUrl: backend.url, codexHome: backend.dataDir };
@@ -62,12 +65,12 @@ export function createCodexAdapter({
       backgroundParams(
         method,
         referenceToolParams(method, params, config),
-        config.backgroundTaskDir,
+        threadMethods.has(method) && backgroundEnabled()
+          ? await background.ensure()
+          : null,
         config.upstreamUrl,
       ),
-      ["thread/start", "thread/resume", "thread/fork"].includes(method)
-        ? await readSubagentSettings()
-        : backend,
+      threadMethods.has(method) ? await readSubagentSettings() : backend,
     );
   transport.call = async (method, params, options) =>
     nativeCall(method, await sessionParams(method, params), options);
@@ -128,12 +131,15 @@ export function createCodexAdapter({
     undoing: files.undoing,
     ...subscriptions,
     ...methods,
+    includeBackground: () => backgroundEnabled() || background.listening(),
     backgroundCall:
-      config.backgroundTaskDir &&
+      background?.available &&
       backgroundTerminals(
-        config.backgroundTaskDir,
+        background.directory,
         config.upstreamUrl,
         transport.call,
+        undefined,
+        backgroundEnabled,
       ),
     send,
     broadcast,

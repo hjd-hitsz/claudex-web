@@ -1,3 +1,4 @@
+import { backgroundTerminalBrowser } from "../helpers/background-terminal-browser.mjs";
 import { received } from "../../packages/background-terminal/delivery.mjs";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -115,6 +116,7 @@ const inference = http.createServer(async (request, response) => {
         .join(""),
     );
   } catch (error) {
+    diagnostics += "\n模拟模型响应失败：" + error.message;
     response.writeHead(500).end(error.message);
   }
 });
@@ -154,13 +156,13 @@ const env = {
   ...process.env,
   CODEX_HOME: codexHome,
   CODEX_APP_SERVER_URL: upstreamUrl,
-  CLAUDEX_BACKGROUND_TASKS_DIR: join(directory, "tasks"),
+  CLAUDEX_BACKGROUND_TASKS_DIR: "",
   CLAUDEX_WEB_CONFIG_DIR: join(directory, "web"),
   CLAUDE_CONFIG_DIR: join(directory, "claude"),
   HOST: "127.0.0.1",
   PORT: "0",
 };
-const state = join(directory, "tasks");
+const state = join(env.CLAUDEX_WEB_CONFIG_DIR, "background-terminal");
 let diagnostics = "";
 function spawnProcess(command, args) {
   const child = spawn(command, args, {
@@ -181,7 +183,22 @@ async function until(read, description, timeout = 30000) {
     if (value) return value;
     await delay(30);
   }
-  throw new Error(description + "\n" + diagnostics);
+  throw new Error(
+    description +
+      "\n" +
+      JSON.stringify({
+        calls,
+        last: events
+          .slice(-8)
+          .map((e) => [
+            e.method,
+            e.params?.turn?.status,
+            e.params?.turn?.error?.message,
+          ]),
+      }) +
+      "\n" +
+      diagnostics,
+  );
 }
 async function connection(url, options) {
   const socket = new WebSocket(url, options);
@@ -222,6 +239,7 @@ async function connection(url, options) {
       }),
   };
 }
+let ui;
 try {
   const backend = spawnProcess(binary, ["app-server", "--listen", upstreamUrl]);
   const direct = await until(async () => {
@@ -294,6 +312,7 @@ try {
     join(env.CLAUDEX_WEB_CONFIG_DIR, "backends.json"),
     JSON.stringify({
       version: 1,
+      providers: [],
       backends: [
         { type: "codex", id: "codex", enabled: true },
         { type: "claude", id: "claude", enabled: false },
@@ -319,12 +338,56 @@ try {
     () => events.some((e) => e.method === "lan/state" && e.params.ready),
     "桥接连接",
   );
+  const preference = async (enabled) =>
+    (
+      await browser.rpc("lan/backends/save", {
+        id: "codex",
+        type: "codex",
+        backgroundTerminalEnabled: enabled,
+      })
+    ).backends.find((b) => b.id === "codex");
+  const config = (await browser.rpc("lan/backends/list")).backends;
+  assert.equal(
+    config.find((b) => b.id === "codex").backgroundTerminalEnabled,
+    false,
+  );
+  assert.equal(
+    config.find((b) => b.id === "claude").backgroundTerminalEnabled,
+    undefined,
+  );
+  const disabled = await browser.rpc("thread/start", {
+    cwd: workspace,
+    ephemeral: true,
+  });
+  const tools = async (threadId) =>
+    (await browser.rpc("mcpServerStatus/list", { threadId })).data.find(
+      (s) => s.name === "claudex_background",
+    )?.tools;
+  assert.equal(await tools(disabled.thread.id), undefined);
+  await browser.rpc("thread/unsubscribe", { threadId: disabled.thread.id });
+  if (process.env.PLAYWRIGHT_MODULE)
+    ui = await backgroundTerminalBrowser(
+      url,
+      auth.cookie,
+      join(root, ".cache/background-codex"),
+    );
+  else assert.equal((await preference(true)).backgroundTerminalEnabled, true);
+  assert.equal(
+    JSON.parse(
+      await readFile(join(env.CLAUDEX_WEB_CONFIG_DIR, "backends.json"), "utf8"),
+    ).backends.find((b) => b.id === "codex").backgroundTerminalEnabled,
+    true,
+  );
   await browser.rpc("thread/resume", {
     threadId: thread.id,
     excludeTurns: true,
     sandbox: "danger-full-access",
     approvalPolicy: "never",
   });
+  await until(
+    async () => Object.keys((await tools(thread.id)) || {}).length === 4,
+    "注册四项工具",
+  );
   const initial = await browser.rpc("turn/start", {
     threadId: thread.id,
     input: [{ type: "text", text: "启动后台任务并结束本轮。" }],
@@ -360,12 +423,19 @@ try {
       })
     ).data.some((t) => t.processId === running.jobs[0].id),
   );
+  if (ui) {
+    await ui.inspectTask(running.jobs[0].command);
+    await ui.close();
+    ui = null;
+  }
+  assert.equal((await preference(false)).backgroundTerminalEnabled, false);
   const { thread: other } = await browser.rpc("thread/fork", {
     threadId: thread.id,
     excludeTurns: true,
     sandbox: "danger-full-access",
     approvalPolicy: "never",
   });
+  assert.equal(await tools(other.id), undefined);
   const second = await taskRequest(state, "tool", {
     threadId: other.id,
     callId: "cancel-test",
@@ -450,6 +520,7 @@ try {
     `PASS ${version}：旧对话挂载 MCP、结束本轮、卸载、关闭页面、完成后自动继续且仅投递一次`,
   );
 } finally {
+  await ui?.close();
   for (const socket of sockets) socket.terminate();
   for (const child of children.reverse())
     if (child.exitCode === null && child.signalCode === null) {

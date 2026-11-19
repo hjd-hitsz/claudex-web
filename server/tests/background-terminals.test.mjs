@@ -1,9 +1,54 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createBackendConfiguration } from "../src/backends/configuration.mjs";
 import {
   backgroundParams,
   backgroundTerminals,
 } from "../src/backends/codex/background-terminals.mjs";
+
+test("旧部署沿用已启用的服务，显式关闭跨重启保存且仅作用于 Codex", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "codex-background-setting-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const config = {
+    configDir: directory,
+    codexHome: directory,
+    claudeHome: directory,
+    upstreamUrl: "ws://localhost:8765",
+  };
+  async function enabled(settings) {
+    return (await settings.read()).backends.find((b) => b.id === "codex")
+      .backgroundTerminalEnabled;
+  }
+  assert.equal(await enabled(createBackendConfiguration(config)), false);
+  const legacy = { ...config, backgroundTaskDir: join(directory, "tasks") };
+  const settings = createBackendConfiguration(legacy);
+  assert.equal(await enabled(settings), true);
+  await settings.save({
+    id: "codex",
+    type: "codex",
+    backgroundTerminalEnabled: false,
+  });
+  assert.equal(await enabled(createBackendConfiguration(legacy)), false);
+  await assert.rejects(
+    settings.save({
+      id: "claude",
+      type: "claude",
+      backgroundTerminalEnabled: true,
+    }),
+    /Codex/,
+  );
+  await assert.rejects(
+    settings.save({
+      id: "codex",
+      type: "codex",
+      backgroundTerminalEnabled: "false",
+    }),
+    /布尔/,
+  );
+});
 
 test("Codex 在启用时对新建、恢复和分支注册 MCP，保留所有既有配置", () => {
   const params = { config: { "mcp_servers.other": { enabled: true } } };

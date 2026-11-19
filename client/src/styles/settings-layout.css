@@ -50,16 +50,14 @@
 .settings-group > * {
   padding: 16px 20px;
 }
-.modal-settings .notification-settings,
-.modal-settings .translation-settings {
+.modal-settings .settings-preferences > div {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
-.modal-settings .notification-settings label,
-.modal-settings .translation-settings label {
+.modal-settings .settings-preferences label {
   display: flex;
   align-items: center;
   gap: 12px;

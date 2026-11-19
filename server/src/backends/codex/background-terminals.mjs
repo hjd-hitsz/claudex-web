@@ -23,6 +23,7 @@ export function backgroundTerminals(
   upstream,
   nativeCall,
   request = taskRequest,
+  enabled = () => true,
 ) {
   return async (method, params) => {
     const tool = (name, args = {}) =>
@@ -32,10 +33,17 @@ export function backgroundTerminals(
         threadId: params.threadId,
         expectedUpstream: new URL(upstream).href,
       });
-    const running = async () =>
-      (await tool("background_list")).jobs.filter(
-        (job) => job.status === "running",
-      );
+    const running = async () => {
+      try {
+        return (await tool("background_list")).jobs.filter(
+          (job) => job.status === "running",
+        );
+      } catch (error) {
+        if (!enabled() && ["ENOENT", "ECONNREFUSED"].includes(error.code))
+          return [];
+        throw error;
+      }
+    };
     if (method.endsWith("/clean")) {
       const cancel = async () => {
         const results = await Promise.allSettled(

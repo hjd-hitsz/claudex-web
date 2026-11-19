@@ -6,7 +6,9 @@
 
 扩展适用于 Linux、Node.js 24.5 或更高版本，以及同机监听 WebSocket 的 Codex app-server。任务服务与 Codex 使用同一系统账户和工作区。命令以该账户执行，服务在启动任务前核对原生会话的完全访问权限。
 
-在本分支源码根目录运行以下示例，地址应与目标 Codex app-server 一致。用户级 systemd 单元持有任务服务及命令的进程组，独立于网页和 MCP stdio 连接。
+在网页的「设置 → 其他设置」勾选「为Codex开启后台终端功能」。首次开启会通过用户级 systemd 启动独立任务服务，默认状态目录位于网页配置目录的 `background-terminal` 下。新建对话或重新加载已卸载的对话后生效，工具连接中会显示四项工具。关闭开关后，已提交的任务继续运行，仍可通过 `/stop` 查看和停止。
+
+手动运行独立服务时，在本分支源码根目录运行以下示例，地址应与目标 Codex app-server 一致。用户级 systemd 单元持有任务服务及命令的进程组，独立于网页和 MCP stdio 连接。
 
 ```bash
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/codex-background-terminal"
@@ -17,7 +19,7 @@ systemd-run --user --unit=codex-background-terminal --collect \
   "$(command -v node)" "$entry" serve "$state_dir" "$upstream"
 ```
 
-网页部署在其运行环境中设置 `CLAUDEX_BACKGROUND_TASKS_DIR` 为上述状态目录的绝对路径，重启网页桥接后，新建、恢复和分支出来的 Codex 对话会注册工具。去掉该变量并重启桥接，可关闭网页的扩展入口。停止独立任务服务使用 `systemctl --user stop codex-background-terminal`，服务会结束仍在运行的命令。示例创建的 transient 单元适用于当前用户管理器的运行期。
+已有部署会沿用 `CLAUDEX_BACKGROUND_TASKS_DIR` 指定的任务服务，首次读取时开关自动开启，之后以网页保存的偏好为准。停止独立任务服务使用 `systemctl --user stop codex-background-terminal`，服务会结束仍在运行的命令。示例创建的 transient 单元适用于当前用户管理器的运行期。
 
 独立使用时可从 `packages/background-terminal` 打包安装，安装后的命令为 `codex-background-terminal`。同一 app-server 的客户端也可通过 Codex 原生配置注册 stdio 入口。以下命令写入运行该 app-server 的 Codex 配置，工具按原生 MCP 调用元数据确定所属对话。
 

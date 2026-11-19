@@ -16,6 +16,7 @@ export function createRequestHandler({
   resumeForWrite,
   releaseUnusedThreads,
   backgroundCall,
+  includeBackground,
   offline,
   online,
   send,
@@ -90,7 +91,11 @@ export function createRequestHandler({
           ...message.params,
           config: { ...message.params?.config, thread_unload_delay_secs: 0 },
         };
-      if (backgroundCall && terminalMethods.has(message.method)) {
+      if (
+        backgroundCall &&
+        terminalMethods.has(message.method) &&
+        includeBackground()
+      ) {
         try {
           await resumeForWrite(threadId);
           send(client, {
@@ -163,7 +168,12 @@ export function createRequestHandler({
         compactions.start(threadId, id);
       if (threadId && loadedThreadMethods.has(message.method)) {
         try {
-          await resumeForWrite(threadId, { cwd: message.params?.cwd });
+          await resumeForWrite(
+            threadId,
+            message.method === "mcpServerStatus/list"
+              ? { inheritPermissions: true }
+              : { cwd: message.params?.cwd },
+          );
         } catch (error) {
           if (message.method === "thread/compact/start")
             compactions.reject(threadId, id, error.message);

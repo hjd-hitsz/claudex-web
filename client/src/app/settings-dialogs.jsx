@@ -1,4 +1,5 @@
 import { ServiceMaintenanceSettings } from "./service-maintenance.jsx";
+import { BackgroundTerminalSetting } from "./background-terminal-setting.jsx";
 import { BackendSettings } from "./backend-settings.jsx";
 import React from "react";
 import { Check } from "lucide-react";
@@ -22,6 +23,9 @@ export function SettingsDialog() {
         <div className="settings-group settings-preferences">
           <NotificationSettings />
           <TranslationSettings />
+          <BackgroundTerminalSetting
+            backend={s.backends.find((backend) => backend.id === "codex")}
+          />
         </div>
       </section>
       <section
