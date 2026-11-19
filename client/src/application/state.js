@@ -86,6 +86,7 @@ export function createAppState() {
     panel: null,
     panelFile: null,
     panelAgent: null,
+    panelBackgroundTask: null,
     contextOpen: false,
     terminalOpen: false,
     terminals: {},
@@ -189,7 +190,12 @@ export function createAppState() {
       patch = { ...patch, unreadCompletions };
     }
     if (patch.contextOpen === false)
-      patch = { ...patch, panel: null, panelAgent: null };
+      patch = {
+        ...patch,
+        panel: null,
+        panelAgent: null,
+        panelBackgroundTask: null,
+      };
     else if (patch.panel && patch.contextOpen === undefined)
       patch = { ...patch, contextOpen: true };
     if (patch.cwd) persist("cx-cwd", patch.cwd);

@@ -1,3 +1,4 @@
+import { backgroundTaskViews } from "./background-task-views.mjs";
 import {
   backgroundParams,
   backgroundTerminals,
@@ -131,6 +132,10 @@ export function createCodexAdapter({
     undoing: files.undoing,
     ...subscriptions,
     ...methods,
+    online: new Map([
+      ...methods.online,
+      ...backgroundTaskViews(background, config.upstreamUrl),
+    ]),
     includeBackground: () => backgroundEnabled() || background.listening(),
     backgroundCall:
       background?.available &&

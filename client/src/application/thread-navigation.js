@@ -1,3 +1,4 @@
+import { backgroundCompletionJobs } from "../domain/background-results.js";
 import { newDraftKey } from "../infrastructure/backend-storage.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { backendEnabled } from "../domain/backend-visibility.js";
@@ -361,6 +362,24 @@ export function createThreadNavigation({
     });
     apply(loaded);
   }
+  async function refreshBackgroundResults(threadId, taskIds) {
+    if (get().current?.id !== threadId) return [];
+    const epoch = opening;
+    const present = new Set(get().items.flatMap(backgroundCompletionJobs));
+    const missing = new Set(taskIds.filter((id) => !present.has(id)));
+    if (!missing.size) return taskIds;
+    const page = await rpc("thread/turns/list", {
+      threadId,
+      itemsView: "full",
+      limit: 10,
+    });
+    if (epoch !== opening || get().current?.id !== threadId) return [];
+    const finished = page.data
+      .filter((turn) => turn.status !== "inProgress")
+      .flatMap((turn) => (turn.items || []).flatMap(backgroundCompletionJobs));
+    if (finished.some((id) => missing.has(id))) await loadHistory(epoch);
+    return taskIds.filter((id) => present.has(id) || finished.includes(id));
+  }
   async function ensureThread() {
     if (get().current) return get().current;
     const epoch = opening;
@@ -406,6 +425,7 @@ export function createThreadNavigation({
     openThread,
     refreshThreadAccess,
     loadHistory,
+    refreshBackgroundResults,
     ensureThread,
     getAttachmentDraft,
     updateAttachmentDraft,

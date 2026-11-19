@@ -28,6 +28,15 @@ const codexHome = join(directory, "codex-home");
 const workspace = join(directory, "workspace");
 await mkdir(codexHome);
 await mkdir(workspace);
+await writeFile(
+  join(workspace, "background.test.cjs"),
+  `
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+test("解析任务配置", () => assert.equal(JSON.parse('{"enabled":true}').enabled, true));
+test("保留终端 Unicode 输出", () => assert.equal(Buffer.from("后台终端").toString(), "后台终端"));
+`,
+);
 const binary = process.env.CODEX_BINARY || "codex";
 const version = execFileSync(binary, ["--version"], {
   encoding: "utf8",
@@ -57,15 +66,20 @@ const inference = http.createServer(async (request, response) => {
         .find((entry) => entry.name === "background_start");
       assert(tool, "恢复旧对话后应向模型暴露 MCP 工具");
       const script =
-        'const timer=setInterval(()=>{if(require("fs").existsSync("release-fixture")){clearInterval(timer);console.log("真实后端后台任务完成")}},50)';
+        'const timer=setInterval(()=>{if(require("fs").existsSync("release-fixture"))clearInterval(timer)},50)';
       item = {
         type: "function_call",
         name: tool.name,
         namespace: tool.namespace,
         call_id: "background-real-call",
         arguments: JSON.stringify({
-          command: `'${process.execPath}' -e '${script}'`,
-          title: "真实后端隔离任务",
+          command: [
+            `npm --prefix "${root}" run architecture:check`,
+            `"${process.execPath}" -e 'process.emitWarning("回归验证标准错误输出")'`,
+            `"${process.execPath}" -e '${script}'`,
+            `"${process.execPath}" --test --test-reporter=tap background.test.cjs`,
+          ].join(" && "),
+          title: "项目架构检查与测试",
         }),
       };
     } else {
@@ -74,7 +88,7 @@ const inference = http.createServer(async (request, response) => {
           body.input.some(
             (entry) =>
               entry.type === "function_call_output" &&
-              JSON.stringify(entry).includes("真实后端后台任务完成"),
+              JSON.stringify(entry).includes("# pass 2"),
           ),
           "自动续跑应携带任务完成结果",
         );
@@ -138,7 +152,7 @@ plugins = false
 multi_agent = false
 hooks = false
 memories = false
-goals = false
+goals = true
 shell_snapshot = false
 code_mode = false
 code_mode_host = false
@@ -240,6 +254,7 @@ async function connection(url, options) {
   };
 }
 let ui;
+const liveBrowser = process.env.BACKGROUND_LIVE_BROWSER === "1";
 try {
   const backend = spawnProcess(binary, ["app-server", "--listen", upstreamUrl]);
   const direct = await until(async () => {
@@ -425,40 +440,69 @@ try {
   );
   if (ui) {
     await ui.inspectTask(running.jobs[0].command);
-    await ui.close();
-    ui = null;
+    if (!liveBrowser) {
+      await ui.close();
+      ui = null;
+    }
   }
-  assert.equal((await preference(false)).backgroundTerminalEnabled, false);
-  const { thread: other } = await browser.rpc("thread/fork", {
-    threadId: thread.id,
-    excludeTurns: true,
-    sandbox: "danger-full-access",
-    approvalPolicy: "never",
-  });
-  assert.equal(await tools(other.id), undefined);
-  const second = await taskRequest(state, "tool", {
-    threadId: other.id,
-    callId: "cancel-test",
-    name: "background_start",
-    args: { command: "sleep 120", title: "验证停止" },
-  });
-  assert(
-    (
-      await terminals("thread/backgroundTerminals/list", { threadId: other.id })
-    ).data.some((t) => t.processId === second.job.id),
-  );
-  await terminals("thread/backgroundTerminals/clean", { threadId: other.id });
-  const stopped = await taskRequest(state, "tool", {
-    threadId: other.id,
-    name: "background_list",
-    args: {},
-  });
-  assert.equal(stopped.jobs[0].status, "cancelled");
-  assert.equal((await list()).jobs[0].status, "running");
-  browser.socket.close();
-  const exit = once(bridge, "exit");
-  bridge.kill("SIGTERM");
-  await exit;
+  if (!liveBrowser) {
+    assert.equal((await preference(false)).backgroundTerminalEnabled, false);
+    const { thread: other } = await browser.rpc("thread/fork", {
+      threadId: thread.id,
+      excludeTurns: true,
+      sandbox: "danger-full-access",
+      approvalPolicy: "never",
+    });
+    assert.equal(await tools(other.id), undefined);
+    const second = await taskRequest(state, "tool", {
+      threadId: other.id,
+      callId: "cancel-test",
+      name: "background_start",
+      args: { command: "sleep 120", title: "验证停止" },
+    });
+    assert(
+      (
+        await terminals("thread/backgroundTerminals/list", {
+          threadId: other.id,
+        })
+      ).data.some((t) => t.processId === second.job.id),
+    );
+    const third = await taskRequest(state, "tool", {
+      threadId: other.id,
+      callId: "cancel-test-neighbour",
+      name: "background_start",
+      args: { command: "sleep 120", title: "同对话里的另一个任务" },
+    });
+    await assert.rejects(
+      terminals("thread/backgroundTasks/read", {
+        threadId: other.id,
+        taskId: running.jobs[0].id,
+      }),
+      /没有此后台任务/,
+    );
+    await terminals("thread/backgroundTasks/cancel", {
+      threadId: other.id,
+      taskId: second.job.id,
+    });
+    assert.deepEqual(
+      (
+        await terminals("thread/backgroundTasks/list", { threadId: other.id })
+      ).tasks.map((task) => task.id),
+      [third.job.id],
+    );
+    await terminals("thread/backgroundTerminals/clean", { threadId: other.id });
+    const stopped = await taskRequest(state, "tool", {
+      threadId: other.id,
+      name: "background_list",
+      args: {},
+    });
+    assert.ok(stopped.jobs.every((job) => job.status === "cancelled"));
+    assert.equal((await list()).jobs[0].status, "running");
+    browser.socket.close();
+    const exit = once(bridge, "exit");
+    bridge.kill("SIGTERM");
+    await exit;
+  }
   await writeFile(join(workspace, "release-fixture"), "done");
   const delivered = await until(async () => {
     const snapshot = await list();
@@ -480,6 +524,7 @@ try {
         ),
     );
   }, "自动续跑轮次完成");
+  if (liveBrowser) await ui.inspectCompletion();
   const files = await readdir(state);
   const batch = JSON.parse(
     await readFile(
@@ -517,7 +562,7 @@ try {
     ),
   );
   console.log(
-    `PASS ${version}：旧对话挂载 MCP、结束本轮、卸载、关闭页面、完成后自动继续且仅投递一次`,
+    `PASS ${version}：${liveBrowser ? "网页实时状态、右侧输出及完成回复" : "关闭页面后自动继续"}，完成结果仅投递一次`,
   );
 } finally {
   await ui?.close();

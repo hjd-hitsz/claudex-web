@@ -149,6 +149,33 @@ export async function backgroundTerminalBrowser(url, cookie, output) {
             });
           });
         await close();
+        const trigger = page.getByRole("button", {
+          name: "后台终端，1 个运行中",
+          exact: true,
+        });
+        await trigger.click();
+        const menu = page.getByRole("region", {
+          name: "后台终端",
+          exact: true,
+        });
+        await menu
+          .getByRole("button", { name: "停止 项目架构检查与测试", exact: true })
+          .waitFor();
+        await page.screenshot({ path: join(output, "task-menu.png") });
+        await page.setViewportSize({ width: 390, height: 780 });
+        const menuBounds = await menu.boundingBox();
+        assert.ok(menuBounds.x >= 0 && menuBounds.x + menuBounds.width <= 390);
+        await page.screenshot({ path: join(output, "task-menu-mobile.png") });
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await menu
+          .getByRole("button", { name: /项目架构检查与测试/ })
+          .first()
+          .click();
+        const outputPanel = page.getByRole("region", { name: "后台终端输出" });
+        await outputPanel
+          .getByText(/架构检查通过.*Warning: 回归验证标准错误输出/s)
+          .waitFor();
+        await page.screenshot({ path: join(output, "task-output.png") });
         const composer = page.locator(".composer .ProseMirror");
         await composer.fill("/stop");
         await composer.press("Enter");
@@ -160,6 +187,26 @@ export async function backgroundTerminalBrowser(url, cookie, output) {
           .waitFor();
         assert.ok((await dialog.innerText()).includes(command));
         await page.screenshot({ path: join(output, "tasks.png") });
+        await close();
+      },
+      async inspectCompletion() {
+        const panel = page.getByRole("region", { name: "后台终端输出" });
+        await panel.getByText("已完成", { exact: true }).waitFor();
+        await panel
+          .getByText(/架构检查通过.*Warning: 回归验证标准错误输出.*# pass 2/s)
+          .waitFor();
+        await page
+          .getByText("已收到后台结果并继续处理。", { exact: true })
+          .waitFor();
+        await page
+          .getByRole("button", { name: "后台终端，1 个运行中", exact: true })
+          .waitFor({ state: "hidden" });
+        const download = page.waitForEvent("download");
+        await panel.getByRole("link", { name: "完整日志" }).click();
+        const saved = await download;
+        assert.equal(await saved.failure(), null);
+        await saved.saveAs(join(output, "actual-task.log"));
+        await page.screenshot({ path: join(output, "task-completed.png") });
       },
       close: () => browser.close(),
     };

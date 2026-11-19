@@ -1,3 +1,4 @@
+import { BackgroundTaskMenu } from "../background-tasks/background-task-menu.jsx";
 import { GoalSummary } from "./goal-summary.jsx";
 import { ModelSelect } from "./model-select.jsx";
 import { InputQueue } from "./input-queue.jsx";
@@ -285,6 +286,10 @@ export function Composer() {
               />
             </div>
             <div className="send-controls">
+              <BackgroundTaskMenu
+                key={s.current?.id}
+                onOpenOutput={() => setEnlarged(false)}
+              />
               <IconButton
                 icon={enlarged ? Minimize2 : Maximize2}
                 title={enlarged ? "收起输入框" : "展开输入框"}

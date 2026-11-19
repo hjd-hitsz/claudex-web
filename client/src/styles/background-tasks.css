@@ -1,0 +1,162 @@
+.background-task-trigger {
+  position: relative;
+  flex: none;
+}
+
+.background-task-count {
+  display: inline-flex;
+  width: auto;
+  gap: 4px;
+  padding-inline: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.background-task-popover {
+  position: absolute;
+  z-index: 12;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: min(300px, calc(100vw - 42px));
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.background-task-popover header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 7px 6px;
+}
+
+.background-task-popover small {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.background-task-popover ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  max-height: min(260px, 38vh);
+}
+
+.background-task-popover li {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.background-task-select {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+  border: 0;
+  border-radius: 7px;
+  padding: 6px 7px;
+  background: transparent;
+  text-align: start;
+  justify-content: flex-start;
+}
+
+.background-task-select:hover {
+  background: var(--hover);
+}
+
+.background-task-select svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.background-task-select span {
+  display: grid;
+  min-width: 0;
+}
+
+.background-task-select strong,
+.background-task-panel-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-task-panel-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.background-task-output {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.background-task-output-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.background-task-output-status span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.background-task-output-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.background-task-output-actions a {
+  white-space: nowrap;
+}
+
+.background-task-output-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  position: relative;
+}
+
+.background-task-output pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--subtle);
+  border-radius: 8px;
+  font: var(--code-font-size) / var(--code-line-height) var(--mono);
+}
+
+.background-task-follow {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+
+@media (max-width: 600px) {
+  .background-task-popover {
+    right: -58px;
+    width: min(300px, calc(100vw - 40px));
+  }
+}

@@ -10,10 +10,10 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { userInfo } from "node:os";
+import { readTaskLog } from "./log.mjs";
 import { validateBackgroundArguments } from "./background-protocol.mjs";
 
 const LOG_LIMIT = 64 * 1024 * 1024;
-const READ_LIMIT = 32768;
 const terminal = (job) => job.status !== "running";
 
 export async function createBackgroundJobs({
@@ -84,29 +84,11 @@ export async function createBackgroundJobs({
       .map(publicJob);
   const read = async (threadId, id, offset) => {
     const job = owned(threadId, id);
-    const file = await open(join(directory, `output-${job.id}.log`), "r");
-    try {
-      const size = (await file.stat()).size;
-      const start = Math.min(offset ?? Math.max(0, size - READ_LIMIT), size);
-      const bytes = Buffer.alloc(Math.min(READ_LIMIT + 4, size - start));
-      const { bytesRead } = await file.read(bytes, 0, bytes.length, start);
-      let end = Math.min(READ_LIMIT, bytesRead),
-        begin = 0;
-      // 下一页从完整 UTF-8 字符边界开始，避免分段日志出现替代字符。
-      if (end < bytesRead)
-        while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
-      if (start > 0)
-        while (begin < end && (bytes[begin] & 0xc0) === 0x80) begin++;
-      return {
-        job: publicJob(job),
-        output: bytes.subarray(begin, end).toString("utf8"),
-        offset: start + begin,
-        nextOffset: start + end,
-        bytes: size,
-      };
-    } finally {
-      await file.close();
-    }
+    const output = await readTaskLog(
+      join(directory, `output-${job.id}.log`),
+      offset,
+    );
+    return { job: publicJob(job), ...output };
   };
   const start = async (threadId, callId, args) => {
     if (closing) throw new Error("后台任务服务正在停止");

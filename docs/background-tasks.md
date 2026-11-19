@@ -29,6 +29,8 @@ codex mcp add claudex_background -- "$(command -v node)" "$entry" mcp "$state_di
 
 ## 任务与结果
 
+输入框旁的终端图标显示当前对话正在运行的任务数。展开后可单独停止任务，点击任务在右侧查看标准输出与标准错误。输出跟随任务刷新，任务结束后保留最后 8 KiB。Codex 任务可从「完整日志」下载已保存的输出。Claude Code 的原生后台 Bash 使用相同入口。
+
 - `background_start(command, title, timeout_ms?)` 在当前对话的实际目录执行 shell 命令，返回任务 ID。相同会话的同一工具调用 ID 对应同一任务。
 - `background_list()` 列出当前对话的任务、执行状态与结果投递状态。
 - `background_read(job_id, offset?)` 读取任务状态、退出码及输出。省略字节偏移时取末尾，从零开始按 `nextOffset` 翻页可读取保留的日志。每页最多 32 KiB，每个任务最多保留 64 MiB；超过上限时记录 `logTruncated`。

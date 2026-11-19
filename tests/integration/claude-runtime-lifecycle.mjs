@@ -188,6 +188,18 @@ try {
     JSON.stringify(output).includes("background-ready"),
     "后台输出来自原生get_task_output",
   );
+  const view = runtime.tasks.handlers.get("thread/backgroundTasks/list");
+  const readOutput = runtime.tasks.handlers.get("thread/backgroundTasks/read");
+  const visible = await view({ threadId: id });
+  assert.equal(visible.tasks[0].id, tasks.data[0].processId);
+  assert.match(
+    (await readOutput({ threadId: id, taskId: visible.tasks[0].id })).output,
+    /background-ready/,
+  );
+  await assert.rejects(
+    readOutput({ threadId: randomUUID(), taskId: visible.tasks[0].id }),
+    /没有此后台任务/,
+  );
   let foregroundRelease;
   respond = async () => {
     await new Promise((resolve) => (foregroundRelease = resolve));
@@ -211,8 +223,9 @@ try {
     1,
     "原生perTaskStopAffordance保留独立后台任务",
   );
-  await runtime.tasks.handlers.get("thread/backgroundTerminals/clean")({
+  await runtime.tasks.handlers.get("thread/backgroundTasks/cancel")({
     threadId: id,
+    taskId: visible.tasks[0].id,
   });
   assert.equal((await list({ threadId: id })).data.length, 0);
 
