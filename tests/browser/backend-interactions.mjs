@@ -7,6 +7,10 @@ import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
+import {
+  verifyShellInteractions,
+  verifyZoomedSearchDialog,
+} from "./shell-interaction-scenarios.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const main = process.env.UI_MAIN === "1";
@@ -70,6 +74,7 @@ try {
       path: join(output, name + ".png"),
       animations: "disabled",
     });
+  if (!before && !main) await verifyShellInteractions(page, capture);
   const metrics = {};
   await input.fill("保留的输入草稿");
   await page.evaluate(() => {
@@ -450,6 +455,12 @@ try {
       page,
       artifacts: join(output, "browser-zoom"),
       async afterScale({ width, theme, scale }) {
+        await verifyZoomedSearchDialog(
+          page,
+          scale === 1 || scale === 2
+            ? () => capture(`search-dialog-${width}-${theme}-${scale}`)
+            : undefined,
+        );
         for (const [name, button, options] of [
           ["project-switcher", trigger, groups],
           ["conversation-switcher", threadTrigger, threads],

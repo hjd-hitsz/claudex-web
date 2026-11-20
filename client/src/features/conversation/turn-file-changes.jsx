@@ -84,7 +84,7 @@ function FileChange({ file, threadId, turnId }) {
         : file.oldPath && file.oldPath !== file.path
           ? "已移动"
           : "已编辑";
-  function viewChanges(view = "diff") {
+  function viewChanges(kind = "diff") {
     set({
       panel: "files",
       panelFile: {
@@ -92,7 +92,7 @@ function FileChange({ file, threadId, turnId }) {
         oldPath: file.oldPath,
         diff: file.diff,
         patches: file.patches,
-        view,
+        kind,
       },
     });
   }
@@ -157,7 +157,12 @@ function FileChange({ file, threadId, turnId }) {
             className="file-change-source"
             title="打开源文件（无变更标记）"
             aria-label={`打开 ${basename(file.path)} 的源文件`}
-            onClick={() => set({ panel: "files", panelFile: file.path })}
+            onClick={() =>
+              set({
+                panel: "files",
+                panelFile: { kind: "file", path: file.path },
+              })
+            }
           >
             <FileCode size={14} />
           </button>

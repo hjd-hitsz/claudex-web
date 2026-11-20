@@ -76,6 +76,12 @@ export function useStore() {
     application.store.sharedSnapshot,
   );
 }
+// Select a primitive or an existing reference from the shared snapshot.
+export function useStoreSelector(select) {
+  return useSyncExternalStore(application.store.subscribe, () =>
+    select(application.store.sharedSnapshot()),
+  );
+}
 export function useDraft() {
   return useSyncExternalStore(
     application.store.subscribeDraft,

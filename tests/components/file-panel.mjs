@@ -9,6 +9,8 @@ export async function testFilePanel(app, requests, setResponse) {
   let discard = false;
   let finishRead;
   let finishDirectory;
+  let finishWrite;
+  let holdWrite = false;
   globalThis.window = {
     addEventListener: (name, handler) => listeners.set(name, handler),
     removeEventListener: (name) => listeners.delete(name),
@@ -68,21 +70,29 @@ export async function testFilePanel(app, requests, setResponse) {
         dataBase64: app.b64encode(files.get(params.path) || "图片数据"),
       };
     if (method === "fs/writeFile") {
-      files.set(params.path, app.b64decode(params.dataBase64));
-      return {};
+      const save = () => {
+        files.set(params.path, app.b64decode(params.dataBase64));
+        return {};
+      };
+      if (holdWrite)
+        return new Promise((resolve) => {
+          finishWrite = () => resolve(save());
+        });
+      return save();
     }
     return {};
   });
   let view;
   const button = (label) => view.root.findByProps({ "aria-label": label });
-  const open = (path) => act(async () => app.set({ panelFile: path }));
+  const open = (intent) => act(async () => app.set({ panelFile: intent }));
+  const openFile = (path) => open({ kind: "file", path });
   try {
     app.set({
       connected: true,
       current: { id: "other-chat", cwd: "/unrelated-chat-directory" },
       cwd: "/file-fixture",
       panel: "files",
-      panelFile: documentPath,
+      panelFile: { kind: "file", path: documentPath },
     });
     await act(async () => {
       view = create(React.createElement(app.FilePanel));
@@ -141,7 +151,7 @@ export async function testFilePanel(app, requests, setResponse) {
       button("文件源码").props.value,
       files.get("/file-fixture/src/main.mjs"),
     );
-    await open(documentPath);
+    await openFile(documentPath);
 
     await act(async () => button("编辑 Markdown 源码").props.onClick());
     assert.equal(button("文件源码").props.value, markdown);
@@ -156,24 +166,24 @@ export async function testFilePanel(app, requests, setResponse) {
     assert.equal(button("文件源码").props.value, edited);
     await act(async () => button("预览 Markdown").props.onClick());
 
-    await open("/file-fixture/notes.markdown");
+    await openFile("/file-fixture/notes.markdown");
     assert.equal(view.root.findByType("h1").props.children, "修改后的文档");
     await act(async () => button("保存文件").props.onClick());
     assert.equal(files.get(documentPath), edited);
     assert.equal(button("保存文件").props.disabled, true);
     assert.equal(listeners.has("beforeunload"), false);
 
-    await open("/file-fixture/notes.markdown");
+    await openFile("/file-fixture/notes.markdown");
     assert.equal(view.root.findByType("h1").props.children, "另一份文档");
     await act(async () => button("编辑 Markdown 源码").props.onClick());
     await act(async () =>
       button("文件源码").props.onChange({ target: { value: "# 放弃的修改" } }),
     );
     discard = true;
-    await open(documentPath);
+    await openFile(documentPath);
     assert.equal(view.root.findByType("h1").props.children, "修改后的文档");
 
-    await open("/file-fixture/src/main.mjs");
+    await openFile("/file-fixture/src/main.mjs");
     assert.equal(view.root.findAllByType("h1").length, 0);
     assert.equal(
       button("文件源码").props.value,
@@ -189,6 +199,7 @@ export async function testFilePanel(app, requests, setResponse) {
     );
     const deletedPath = "/file-fixture/deleted.txt";
     const change = {
+      kind: "diff",
       path: deletedPath,
       oldPath: deletedPath,
       diff: "--- a/deleted.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-deleted content\n",
@@ -216,6 +227,7 @@ export async function testFilePanel(app, requests, setResponse) {
         .some((node) => node.props.children.startsWith("@@ -")),
     );
     await open({
+      kind: "diff",
       path: "/file-fixture/sample.mjs",
       diff: "--- a/sample.mjs\n+++ b/sample.mjs\n@@ -100,2 +100,2 @@ function draw()\n-old\n+new\n shared\n@@ -200 +200 @@\n-older\n+@@ literal in code\n",
     });
@@ -268,7 +280,7 @@ export async function testFilePanel(app, requests, setResponse) {
     await act(async () => button("查看完整文件变更").props.onClick());
     assert.equal(button("文件源码").props.value, source);
     discard = true;
-    await open("/file-fixture/slow.mjs");
+    await openFile("/file-fixture/slow.mjs");
     await open(change);
     await act(async () =>
       finishRead({ dataBase64: app.b64encode("late source") }),
@@ -300,7 +312,7 @@ export async function testFilePanel(app, requests, setResponse) {
     await open({ ...change, path: "/file-fixture/notes.markdown" });
     await act(async () => button("查看完整文件变更").props.onClick());
     assert.equal(button("文件源码").props.value, "# 磁盘中的最新内容");
-    await open("/file-fixture/notes.markdown");
+    await openFile("/file-fixture/notes.markdown");
     assert.equal(view.root.findByType("h1").props.children, "磁盘中的最新内容");
     const fullPath = "/file-fixture/full.mjs";
     const fullText = "unchanged before\nnew content\nunchanged after\n";
@@ -312,11 +324,11 @@ export async function testFilePanel(app, requests, setResponse) {
     ];
     const fullDiff = patches.join("\n");
     files.set(fullPath, fullText);
-    const request = { path: fullPath, diff: fullDiff, patches };
+    const request = { kind: "diff", path: fullPath, diff: fullDiff, patches };
     await open(request);
     assert.equal(view.root.findAllByType("textarea").length, 0);
     assert(!JSON.stringify(view.toJSON()).includes("unchanged before"));
-    await open({ ...request, view: "full" });
+    await open({ ...request, kind: "full" });
     assert.equal(
       view.root.findAllByProps({ "aria-label": "文件变更" }).length,
       0,
@@ -333,7 +345,7 @@ export async function testFilePanel(app, requests, setResponse) {
     assert.equal(button("文件源码").props.value, draft);
     assert.equal(button("文件源码").props["data-change-diff"], "");
     assert.equal(button("文件源码").props["data-change-patches"], undefined);
-    await open({ ...request, view: "full" });
+    await open({ ...request, kind: "full" });
     assert.equal(button("文件源码").props.value, draft);
     assert.equal(button("文件源码").props["data-change-diff"], fullDiff);
     await act(async () => button("查看本轮差异片段").props.onClick());
@@ -349,7 +361,7 @@ export async function testFilePanel(app, requests, setResponse) {
     const markdownChange = {
       path: documentPath,
       diff: "--- a/docs/README.MD\n+++ b/docs/README.MD\n@@ -1 +1 @@\n-old heading\n+# 修改后的文档\n",
-      view: "full",
+      kind: "full",
     };
     await open(markdownChange);
     assert.equal(view.root.findAllByType("h1").length, 0);
@@ -362,14 +374,14 @@ export async function testFilePanel(app, requests, setResponse) {
     await act(async () =>
       button("文件源码").props.onChange({ target: { value: "# 未保存文档" } }),
     );
-    await open("/file-fixture/训练 #1.MP4");
+    await openFile("/file-fixture/训练 #1.MP4");
     assert.equal(view.root.findAllByType("video").length, 0);
     assert.equal(button("文件源码").props.value, "# 未保存文档");
     discard = true;
     const videoReads = requests.filter(
       (r) => r.method === "fs/readFile",
     ).length;
-    await open("/file-fixture/训练 #1.MP4");
+    await openFile("/file-fixture/训练 #1.MP4");
     assert.equal(
       requests.filter((r) => r.method === "fs/readFile").length,
       videoReads,
@@ -404,7 +416,7 @@ export async function testFilePanel(app, requests, setResponse) {
     assert.equal(view.root.findAllByType("video").length, 0);
     await act(async () => app.set({ panel: "files" }));
     assert.equal(view.root.findAllByType("video").length, 1);
-    await open("/file-fixture/other.webm");
+    await openFile("/file-fixture/other.webm");
     video = view.root.findByType("video");
     assert.equal(
       new URL(video.props.src, "http://fixture").searchParams.get("path"),
@@ -412,7 +424,7 @@ export async function testFilePanel(app, requests, setResponse) {
     );
     const slowRead = open("/file-fixture/slow.mjs");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await open("/file-fixture/last.mp4");
+    await openFile("/file-fixture/last.mp4");
     await act(async () =>
       finishRead({ dataBase64: app.b64encode("late text") }),
     );
@@ -425,7 +437,7 @@ export async function testFilePanel(app, requests, setResponse) {
       ["/file-fixture/report.PDF", "object"],
     ]) {
       const reads = requests.filter((r) => r.method === "fs/readFile").length;
-      await open(path);
+      await openFile(path);
       assert(view.root.findByType(tag));
       assert.equal(
         requests.filter((r) => r.method === "fs/readFile").length,
@@ -443,7 +455,7 @@ export async function testFilePanel(app, requests, setResponse) {
       "/file-fixture/slides.pptx",
       "/file-fixture/document.docx",
     ]) {
-      await open(path);
+      await openFile(path);
       const download = view.root.findByProps({ className: "file-download" });
       assert.equal(
         new URL(download.props.href, "http://fixture").searchParams.get("path"),
@@ -458,19 +470,19 @@ export async function testFilePanel(app, requests, setResponse) {
       assert.equal(view.root.findAllByType("textarea").length, 0);
     }
     files.set("/file-fixture/unknown.data", "\0binary");
-    await open("/file-fixture/unknown.data");
+    await openFile("/file-fixture/unknown.data");
     assert(view.root.findByProps({ className: "file-download" }));
     assert.equal(view.root.findAllByType("textarea").length, 0);
-    await open(documentPath);
+    await openFile(documentPath);
     assert.equal(view.root.findByType("h1").props.children, "修改后的文档");
-    await open("/file-fixture/src/main.mjs");
+    await openFile("/file-fixture/src/main.mjs");
     await act(async () =>
       button("文件源码").props.onChange({
         target: { value: "保留目录跳转前的编辑" },
       }),
     );
     discard = false;
-    const directory = { path: "/file-fixture/src", view: "directory" };
+    const directory = { path: "/file-fixture/src", kind: "directory" };
     const directoryReads = requests.filter(
       ({ method, params }) =>
         method === "fs/readDirectory" && params.path === directory.path,
@@ -503,12 +515,12 @@ export async function testFilePanel(app, requests, setResponse) {
       button("文件源码").props.value,
       files.get("/file-fixture/src/main.mjs"),
     );
-    await open({ path: "/file-fixture/missing-directory", view: "directory" });
+    await open({ path: "/file-fixture/missing-directory", kind: "directory" });
     assert.equal(
       button("文件源码").props.value,
       files.get("/file-fixture/src/main.mjs"),
     );
-    await open({ path: "/file-fixture/slow-directory", view: "directory" });
+    await open({ path: "/file-fixture/slow-directory", kind: "directory" });
     await open(directory);
     await act(async () =>
       finishDirectory({
@@ -521,7 +533,7 @@ export async function testFilePanel(app, requests, setResponse) {
         .findByProps({ title: directory.path }),
     );
     assert(!JSON.stringify(view.toJSON()).includes("late.mjs"));
-    await open("/file-fixture/slow.mjs");
+    await openFile("/file-fixture/slow.mjs");
     await open(directory);
     await act(async () =>
       finishRead({ dataBase64: app.b64encode("迟到的文件内容") }),
@@ -530,12 +542,50 @@ export async function testFilePanel(app, requests, setResponse) {
       view.root.findAllByProps({ "aria-label": "文件源码" }).length,
       0,
     );
-    await open({ path: "/file-fixture/slow-directory", view: "directory" });
-    await open("/file-fixture/src/main.mjs");
+    await open({ path: "/file-fixture/slow-directory", kind: "directory" });
+    await openFile("/file-fixture/src/main.mjs");
     await act(async () => finishDirectory({ entries: [] }));
     assert.equal(
       button("文件源码").props.value,
       files.get("/file-fixture/src/main.mjs"),
+    );
+    const repeatedPath = "/file-fixture/src/main.mjs";
+    const originalThread = app.get().current;
+    const draftA = "原对话的文件草稿";
+    const draftB = "另一对话的文件草稿";
+    const typeSource = (value) =>
+      act(async () => button("文件源码").props.onChange({ target: { value } }));
+    await openFile("/file-fixture/slow.mjs");
+    await typeSource(draftA);
+    discard = false;
+    await act(async () =>
+      finishRead({ dataBase64: app.b64encode("延迟打开的新文件") }),
+    );
+    assert.equal(button("文件源码").props.value, draftA);
+    await act(async () =>
+      app.set({ current: { id: "same-file-other-thread" } }),
+    );
+    assert(listeners.has("beforeunload"));
+    await openFile(repeatedPath);
+    assert.equal(button("文件源码").props.value, files.get(repeatedPath));
+    await typeSource(draftB);
+    holdWrite = true;
+    await act(async () => {
+      void button("保存文件").props.onClick();
+    });
+    await typeSource(draftB + "（保存期间的修改）");
+    await act(async () => app.set({ current: originalThread }));
+    assert.equal(button("文件源码").props.value, draftA);
+    await act(async () => finishWrite());
+    assert.equal(files.get(repeatedPath), draftB);
+    assert.equal(button("文件源码").props.value, draftA);
+    await act(async () =>
+      app.set({ current: { id: "same-file-other-thread" } }),
+    );
+    assert.equal(button("文件源码").props.value, draftB + "（保存期间的修改）");
+    assert.equal(button("保存文件").props.disabled, false);
+    console.log(
+      "PASS 同路径的对话文件草稿隔离，迟到保存只结算提交快照，继续编辑仍为未保存",
     );
     console.log(
       "PASS 目录跳转、子文件打开、未保存编辑确认、失败保留，以及文件与目录迟到读取隔离",

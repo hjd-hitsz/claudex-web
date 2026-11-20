@@ -332,9 +332,18 @@ try {
   );
   await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
   await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
+  await page.locator(".sidebar").waitFor({ state: "hidden" });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const composer = page.getByRole("textbox", { name: "消息", exact: true });
+  await composer.fill("/model");
+  await composer.press("Control+Enter");
+  const modelDialog = page.getByRole("dialog", { name: "模型与思考强度" });
+  await modelDialog
+    .getByRole("button", { name: "Second Model", exact: true })
+    .waitFor();
   assert.equal(
-    await page.getByRole("button", { name: "设置", exact: true }).isVisible(),
-    false,
+    await modelDialog.getByRole("button", { name: "gpt", exact: true }).count(),
+    0,
   );
   assert.deepEqual(errors, []);
   await writeFile(
@@ -344,6 +353,7 @@ try {
         checks: [
           "independent backend settings",
           "Codex hidden models excluded and restored",
+          "model command uses the same hidden model settings",
           "per-model effort choices and persistence",
           "cross-provider selection",
           "write failure retains form",

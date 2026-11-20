@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useId, useState } from "react";
 import { Copy, Maximize, Minimize, Minus, Plus } from "lucide-react";
 import { IconButton } from "../../ui/primitives.jsx";
-import { copy, useStore } from "../../store.js";
+import { copy, useStoreSelector } from "../../store.js";
 import { renderMermaid } from "./mermaid-renderer.js";
 import { flowchartDirection, orientFlowchart } from "../../domain/mermaid.js";
 import { MermaidDiagram } from "./mermaid-diagram.jsx";
 
 export function MermaidBlock({ source }) {
-  const { theme } = useStore();
+  const theme = useStoreSelector((state) => state.theme);
   const [systemDark, setSystemDark] = useState(
     () => matchMedia("(prefers-color-scheme: dark)").matches,
   );

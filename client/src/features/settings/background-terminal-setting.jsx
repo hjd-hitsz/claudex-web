@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { saveBackend } from "../store.js";
+import { saveBackend } from "../../store.js";
 
 export function BackgroundTerminalSetting({ backend }) {
   const [saving, setSaving] = useState(false);

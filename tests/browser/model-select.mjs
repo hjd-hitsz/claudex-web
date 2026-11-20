@@ -202,6 +202,18 @@ try {
                     const input = document.querySelector(
                       ".document-editor-viewport",
                     );
+                    const editor = input.querySelector(".ProseMirror");
+                    const inputBounds = input.getBoundingClientRect();
+                    const range = document.createRange();
+                    const text = document.createTreeWalker(
+                      editor,
+                      NodeFilter.SHOW_TEXT,
+                    );
+                    const lines = [];
+                    while (text.nextNode()) {
+                      range.selectNodeContents(text.currentNode);
+                      lines.push(...range.getClientRects());
+                    }
                     return {
                       label: label.textContent.trim(),
                       selected: select.selectedOptions[0].textContent.trim(),
@@ -215,8 +227,13 @@ try {
                       pageWidth: document.documentElement.scrollWidth,
                       inputHeight: input.clientHeight,
                       lineHeight: parseFloat(
-                        getComputedStyle(input.querySelector(".ProseMirror"))
-                          .lineHeight,
+                        getComputedStyle(editor).lineHeight,
+                      ),
+                      textLines: new Set(lines.map((line) => line.top)).size,
+                      textVisible: lines.every(
+                        (line) =>
+                          line.top >= inputBounds.top - 1 &&
+                          line.bottom <= inputBounds.bottom + 1,
                       ),
                       controls,
                     };
@@ -251,6 +268,8 @@ try {
                   metrics.inputHeight >= metrics.lineHeight * 2 - 2,
                   JSON.stringify(result),
                 );
+                assert.equal(metrics.textLines, 2, JSON.stringify(result));
+                assert.equal(metrics.textVisible, true, JSON.stringify(result));
                 for (const control of metrics.controls)
                   assert(
                     control.left >= -1 &&
@@ -262,6 +281,10 @@ try {
                 if (scale === 1 && active)
                   await page.screenshot({
                     path: join(output, `${width}-${theme}-${name}.png`),
+                  });
+                if (width === 390 && scale === 2 && active)
+                  await page.screenshot({
+                    path: join(output, `390-${theme}-200-${name}.png`),
                   });
                 if (
                   width === 800 &&

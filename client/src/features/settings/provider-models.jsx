@@ -2,7 +2,7 @@ import React, { useId, useRef, useState } from "react";
 import {
   CONTEXT_WINDOW_K,
   contextWindowTokens,
-} from "../domain/provider-context-window.js";
+} from "../../domain/provider-context-window.js";
 
 const effortLevels = ["low", "medium", "high", "xhigh", "max"];
 

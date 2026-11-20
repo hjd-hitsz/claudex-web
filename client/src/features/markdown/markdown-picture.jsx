@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import parseSrcset from "parse-srcset";
 import { MessageImage } from "./message-image.jsx";
-import { rpc, useStore } from "../../store.js";
+import { rpc, useStoreSelector } from "../../store.js";
+import { useMarkdownDirectory } from "./use-markdown-directory.js";
 import {
   imageDataUrl,
   localImagePath,
@@ -9,8 +10,9 @@ import {
 } from "../../domain/image-source.js";
 
 export function MarkdownPicture({ node, cwd: baseDirectory }) {
-  const { connected, current, cwd, defaultCwd, theme } = useStore();
-  const directory = baseDirectory ?? (current?.cwd || cwd || defaultCwd);
+  const connected = useStoreSelector((state) => state.connected);
+  const theme = useStoreSelector((state) => state.theme);
+  const directory = useMarkdownDirectory(baseDirectory);
   const image = node.children.find((child) => child.tagName === "img");
   const sourceText = JSON.stringify(
     node.children

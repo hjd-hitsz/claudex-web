@@ -1,4 +1,4 @@
-import { ServiceUpdateEntry } from "./service-maintenance.jsx";
+import { ServiceUpdateEntry } from "../features/settings/service-maintenance.jsx";
 import { ThreadListErrors } from "./thread-list-errors.jsx";
 import React, { useState } from "react";
 import {
@@ -19,7 +19,7 @@ import { ResizableSidebar } from "./sidebar-resize.jsx";
 import { AccountFooter } from "../features/account/account-usage.jsx";
 import claudexWebIcon from "../assets/claudex-web.svg";
 import { ThreadRow } from "./thread-row.jsx";
-export function Sidebar() {
+export function Sidebar({ drawerOpen, onClose, onShowMaintenance }) {
   const s = useStore();
   const [selection, setSelection] = useState({ id: null, retained: false });
   const selectedId = s.current?.id ?? null;
@@ -42,27 +42,17 @@ export function Sidebar() {
   return (
     <>
       <div
-        className={"sidebar-backdrop " + (s.sidebar ? "visible" : "")}
-        onClick={() => set({ sidebar: false })}
+        className={"sidebar-backdrop " + (drawerOpen ? "visible" : "")}
+        onClick={onClose}
       />
-      <ResizableSidebar open={s.sidebar}>
+      <ResizableSidebar open={drawerOpen}>
         <div className="sidebar-top">
           <button className="brand" onClick={() => newChat()}>
             <img src={claudexWebIcon} width={24} height={24} alt="" />
             <strong>Claudex</strong>
             <span>Web</span>
           </button>
-          <IconButton
-            icon={PanelLeft}
-            title="收起侧栏"
-            onClick={() => {
-              set({ sidebar: false });
-              document.body.classList.toggle("sidebar-collapsed");
-              document
-                .querySelector('.topbar button[aria-label="显示侧栏"]')
-                ?.focus();
-            }}
-          />
+          <IconButton icon={PanelLeft} title="收起侧栏" onClick={onClose} />
         </div>
         <nav className="primary-nav">
           <button onClick={() => newChat()}>
@@ -105,6 +95,7 @@ export function Sidebar() {
         </div>
         <div className="thread-list">
           <ThreadListErrors
+            backends={s.backends}
             errors={s.threadListErrors}
             onRetry={() => loadThreads().catch(report)}
           />
@@ -148,7 +139,7 @@ export function Sidebar() {
           )}
         </div>
         <div className="sidebar-footer">
-          <ServiceUpdateEntry />
+          <ServiceUpdateEntry onOpen={onShowMaintenance} />
           <AccountFooter />
         </div>
       </ResizableSidebar>

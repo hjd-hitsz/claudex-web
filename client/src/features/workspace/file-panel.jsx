@@ -1,4 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import {
   Folder,
@@ -16,16 +21,12 @@ import {
   ArrowUpRight,
   Download,
 } from "lucide-react";
-import { readWorkspaceFile } from "../../infrastructure/workspace-files.js";
+import { createWorkspaceBuffers } from "../../application/workspace-buffers.js";
 import { CodeEditor } from "./code-editor.jsx";
 import { isMarkdownFile } from "./editor-language.js";
 import { fileChangeHighlights } from "../../domain/file-changes.js";
 import { FileMarkdownEditor } from "./file-markdown-editor.jsx";
 import { FilePreview } from "./file-preview.jsx";
-import {
-  filePresentation,
-  decodeTextFile,
-} from "../../../../shared/file-types.mjs";
 import {
   useStore,
   get,
@@ -34,7 +35,6 @@ import {
   report,
   notice,
   basename,
-  b64encode,
   addAttachment,
   uid,
   copy,
@@ -44,24 +44,35 @@ import { DiffBlock } from "../../ui/diff-block.jsx";
 import { TreeRow } from "./file-tree.jsx";
 export function FilePanel() {
   const s = useStore();
-  const [entries, setEntries] = useState([]),
-    [path, setPath] = useState(s.cwd),
-    [file, setFile] = useState(null),
-    [text, setText] = useState(""),
-    [original, setOriginal] = useState(""),
-    [loading, setLoading] = useState(false),
-    [filter, setFilter] = useState(""),
-    [fileKind, setFileKind] = useState(null),
-    [preview, setPreview] = useState(true),
-    [change, setChange] = useState(null),
-    [fileChange, setFileChange] = useState(null),
-    [fileThreadId, setFileThreadId] = useState(s.current?.id),
-    [changeThreadId, setChangeThreadId] = useState(s.current?.id);
-  const opening = useRef(0);
-  const directoryOpening = useRef(0);
-  const fileVisible = file && fileThreadId === s.current?.id;
-  const changeVisible = change && changeThreadId === s.current?.id;
+  const [workspace] = useState(() =>
+    createWorkspaceBuffers({
+      get,
+      rpc,
+      report,
+      notice,
+      confirmDiscard: (message) => window.confirm(message),
+    }),
+  );
+  const { views, directory, dirty } = useSyncExternalStore(
+    workspace.subscribe,
+    workspace.getSnapshot,
+  );
+  const { path, entries, loading } = directory;
+  const owner = s.current?.id ?? null;
+  const { buffer, change } = views.get(owner) ?? {};
+  const {
+    path: file,
+    change: fileChange,
+    preview,
+    text,
+    original,
+    kind: fileKind,
+    token,
+  } = buffer ?? {};
+  const fileVisible = Boolean(buffer);
+  const changeVisible = Boolean(change);
   const markdownFile = file && isMarkdownFile(file);
+  const [filter, setFilter] = useState("");
   const changesMatch = useMemo(
     () =>
       !fileChange ||
@@ -69,159 +80,44 @@ export function FilePanel() {
         .matches,
     [original, fileChange],
   );
-  async function load(p, { navigate = false } = {}) {
-    if (
-      navigate &&
-      file &&
-      text !== original &&
-      !window.confirm("当前文件有未保存的修改。放弃修改并打开其他目录？")
-    )
-      return;
-    const request = ++directoryOpening.current;
-    const target = navigate ? ++opening.current : null;
-    const current = () =>
-      request === directoryOpening.current &&
-      get().current?.id === s.current?.id &&
-      (target === null || target === opening.current);
-    setLoading(true);
-    try {
-      const r = await rpc("fs/readDirectory", { path: p });
-      if (!current()) return;
-      setEntries(
-        r.entries.sort(
-          (a, b) =>
-            Number(b.isDirectory) - Number(a.isDirectory) ||
-            a.fileName.localeCompare(b.fileName),
-        ),
-      );
-      setPath(p);
-      if (navigate) {
-        setFile(null);
-        setFileKind(null);
-        setChange(null);
-        setFileChange(null);
-        setFilter("");
-        setText("");
-        setOriginal("");
-      }
-    } catch (e) {
-      if (current()) report(e);
-    } finally {
-      if (request === directoryOpening.current) setLoading(false);
-    }
-  }
-  function returnToFile() {
-    opening.current++;
-    setChange(null);
-  }
-  async function open(p, selectedChange = null) {
-    if (file === p && text !== original) {
-      setFileThreadId(s.current?.id);
-      setFileChange(selectedChange);
-      if (selectedChange) setPreview(false);
-      returnToFile();
-      return;
-    }
-    if (
-      file &&
-      text !== original &&
-      !window.confirm("当前文件有未保存的修改。放弃修改并打开其他文件？")
-    )
-      return;
-    const request = ++opening.current;
-    const presentation = filePresentation(p);
-    if (presentation) {
-      setFileThreadId(s.current?.id);
-      setFileKind(presentation.kind);
-      setFile(p);
-      setText("");
-      setOriginal("");
-      setChange(null);
-      setFileChange(null);
-      return;
-    }
-    try {
-      const bytes = await readWorkspaceFile({
-        path: p,
-        backendId: s.backendId,
-        cwd: s.cwd,
-        providerId: s.providerId,
-        threadId: s.current?.id,
-        rpc,
-      });
-      if (request !== opening.current || get().current?.id !== s.current?.id)
-        return;
-      const body = decodeTextFile(bytes);
-      setFileKind(body === null ? "download" : null);
-      setFileThreadId(s.current?.id);
-      setFile(p);
-      setText(body ?? "");
-      setOriginal(body ?? "");
-      setPreview(!selectedChange);
-      setChange(null);
-      setFileChange(body === null ? null : selectedChange);
-    } catch (e) {
-      if (request === opening.current && get().current?.id === s.current?.id)
-        report(e);
-    }
-  }
+  const edit = (value) => workspace.updateBuffer(owner, token, { text: value });
+  const { loadDirectory, openFile, showDiff, save } = workspace;
   useEffect(() => {
-    opening.current++;
-    directoryOpening.current++;
     setFilter("");
-    if (s.connected) load(s.cwd);
-  }, [s.current?.id, s.cwd, s.connected]);
+    workspace.syncDirectory();
+  }, [workspace, owner, s.cwd, s.connected, s.backendId, s.providerId]);
   useEffect(() => {
-    if (text === original) return;
-    const warn = (e) => {
-      e.preventDefault();
-      e.returnValue = "";
+    if (!dirty) return;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [text, original]);
+  }, [dirty]);
   useEffect(() => {
-    if (s.panelFile) {
-      if (typeof s.panelFile === "string") open(s.panelFile);
-      else if (s.panelFile.view === "directory")
-        load(s.panelFile.path, { navigate: true });
-      else if (s.panelFile.view === "full") open(s.panelFile.path, s.panelFile);
-      else {
-        opening.current++;
-        setChange(s.panelFile);
-        setChangeThreadId(s.current?.id);
-      }
-      set({ panelFile: null });
-    }
-  }, [s.panelFile]);
-  useEffect(
-    () => () => {
-      opening.current++;
-      directoryOpening.current++;
-    },
-    [],
-  );
-  async function save() {
-    const request = opening.current;
-    try {
-      await rpc("fs/writeFile", { path: file, dataBase64: b64encode(text) });
-      if (request !== opening.current) return;
-      setOriginal(text);
-      notice("文件已保存");
-    } catch (e) {
-      if (request === opening.current) report(e);
-    }
-  }
+    const intent = s.panelFile;
+    if (!intent) return;
+    void workspace.navigate(intent).then((changedDirectory) => {
+      if (changedDirectory) setFilter("");
+    });
+    set({ panelFile: null });
+  }, [s.panelFile, workspace]);
+  useEffect(() => workspace.dispose, [workspace]);
   useEffect(() => {
-    const key = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s" && fileVisible) {
-        e.preventDefault();
-        if (!changeVisible && !fileKind) save();
+    const key = (event) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key === "s" &&
+        fileVisible
+      ) {
+        event.preventDefault();
+        if (!changeVisible && !fileKind) void save();
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [file, text, changeVisible, fileVisible, fileKind]);
+  }, [changeVisible, fileVisible, fileKind, save]);
   return (
     <>
       <div className="panel-heading">
@@ -232,7 +128,7 @@ export function FilePanel() {
           <IconButton
             icon={RefreshCw}
             title="刷新文件"
-            onClick={() => load(path)}
+            onClick={() => loadDirectory(path)}
           />
           <IconButton
             icon={X}
@@ -244,7 +140,7 @@ export function FilePanel() {
       {changeVisible ? (
         <>
           <div className="file-tab">
-            <button onClick={returnToFile}>
+            <button onClick={() => showDiff(null)}>
               <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} />
               {fileVisible ? "返回文件" : "文件列表"}
             </button>
@@ -252,12 +148,12 @@ export function FilePanel() {
             <IconButton
               icon={ArrowUpRight}
               title="查看完整文件变更"
-              onClick={() => open(change.path, change)}
+              onClick={() => openFile(change.path, change)}
             />
             <IconButton
               icon={Code}
               title="打开源文件"
-              onClick={() => open(change.path)}
+              onClick={() => openFile(change.path)}
             />
             <IconButton
               icon={Copy}
@@ -282,14 +178,7 @@ export function FilePanel() {
       ) : fileVisible ? (
         <>
           <div className="file-tab">
-            <button
-              onClick={() => {
-                if (text === original || window.confirm("放弃未保存的修改？")) {
-                  setFile(null);
-                  setFileChange(null);
-                }
-              }}
-            >
+            <button onClick={workspace.leaveFile}>
               <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} />
               文件列表
             </button>
@@ -314,15 +203,12 @@ export function FilePanel() {
                 <IconButton
                   icon={FileDiff}
                   title="查看本轮差异片段"
-                  onClick={() => {
-                    opening.current++;
-                    setChange(fileChange);
-                  }}
+                  onClick={() => showDiff(fileChange)}
                 />
                 <IconButton
                   icon={Code}
                   title="打开源文件"
-                  onClick={() => open(file)}
+                  onClick={() => openFile(file)}
                 />
               </>
             )}
@@ -331,7 +217,9 @@ export function FilePanel() {
                 icon={preview ? Code : Eye}
                 title={preview ? "编辑 Markdown 源码" : "预览 Markdown"}
                 aria-pressed={preview}
-                onClick={() => setPreview(!preview)}
+                onClick={() =>
+                  workspace.updateBuffer(owner, token, { preview: !preview })
+                }
               />
             )}
             <IconButton
@@ -365,16 +253,17 @@ export function FilePanel() {
             )
           ) : markdownFile && preview ? (
             <FileMarkdownEditor
-              key={file}
+              key={JSON.stringify([owner, file])}
               path={file}
               text={text}
-              onChange={setText}
+              onChange={edit}
             />
           ) : (
             <CodeEditor
+              key={JSON.stringify([owner, file])}
               path={file}
               text={text}
-              onChange={setText}
+              onChange={edit}
               diff={fileChange?.diff || ""}
               patches={fileChange?.patches}
             />
@@ -401,7 +290,9 @@ export function FilePanel() {
             <IconButton
               icon={ArrowUp}
               title="上一级目录"
-              onClick={() => load(path.slice(0, path.lastIndexOf("/")) || "/")}
+              onClick={() =>
+                loadDirectory(path.slice(0, path.lastIndexOf("/")) || "/")
+              }
             />
             <span title={path}>{path}</span>
           </div>
@@ -426,7 +317,7 @@ export function FilePanel() {
                     key={path + "/" + e.fileName}
                     entry={e}
                     path={path}
-                    onOpen={open}
+                    onOpen={openFile}
                   />
                 ))
             )}

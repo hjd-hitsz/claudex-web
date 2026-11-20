@@ -2,7 +2,7 @@ import { TextSelection } from "@milkdown/kit/prose/state";
 import { closeHistory } from "@milkdown/kit/prose/history";
 import {
   documentReferenceSchema,
-  documentReferenceView,
+  createDocumentReferenceViews,
   documentReferenceKeys,
   referenceClipboardText,
 } from "./document-references.jsx";
@@ -70,7 +70,15 @@ function restoreTrailingSpace(view, text) {
 
 export async function createDocumentEditor(
   parent,
-  { value, onChange, placeholder, file = false, configure },
+  {
+    value,
+    onChange,
+    placeholder,
+    file = false,
+    configure,
+    referenceSkills,
+    onOpenReference,
+  },
 ) {
   let suppressed = false;
   let destroyed = false;
@@ -136,11 +144,14 @@ export async function createDocumentEditor(
     .use(documentInputRules)
     .use(documentLinkRule)
     .use(documentList);
-  if (!file)
+  const references = file
+    ? null
+    : createDocumentReferenceViews(referenceSkills, onOpenReference);
+  if (references)
     crepe.editor
       .use(documentMathParser)
       .use(documentReferenceSchema)
-      .use(documentReferenceView)
+      .use(references.plugin)
       .use(documentReferenceKeys)
       .use(documentMathSchema)
       .use(documentMathView);
@@ -216,6 +227,9 @@ export async function createDocumentEditor(
       } finally {
         suppressed = false;
       }
+    },
+    setReferenceSkills(skills) {
+      references?.setSkills(skills);
     },
     setAttributes(attributes) {
       view.setProps({ attributes });

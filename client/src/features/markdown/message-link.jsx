@@ -1,13 +1,14 @@
 import React from "react";
-import { set, useStore } from "../../store.js";
+import { openThread, set, useStoreSelector } from "../../store.js";
 import { localImagePath } from "../../domain/image-source.js";
 import { pathIcon } from "../../ui/path-icon.jsx";
 import {
   inlineReference,
   referencePath,
+  skillReferenceDisplayName,
 } from "../../domain/inline-references.js";
 import { InlineReference } from "../../ui/inline-reference.jsx";
-import { openThread } from "../../store.js";
+import { useMarkdownDirectory } from "./use-markdown-directory.js";
 
 function labelText(node) {
   return node.type === "text"
@@ -22,7 +23,7 @@ export function MessageLink({
   node,
   cwd: baseDirectory,
 }) {
-  const { current, cwd, defaultCwd, skills } = useStore();
+  const directory = useMarkdownDirectory(baseDirectory);
   const imageOnly = node?.children?.every(
     (child) =>
       child.tagName === "img" || (child.type === "text" && !child.value.trim()),
@@ -32,12 +33,10 @@ export function MessageLink({
     node ? labelText(node) : String(children),
     title,
   );
-  if (reference?.kind === "skill")
-    reference.displayName = skills.find(
-      (skill) =>
-        skill.path === reference.path ||
-        (reference.native && skill.name === reference.name),
-    )?.interface?.displayName;
+  const displayName = useStoreSelector((state) =>
+    skillReferenceDisplayName(reference, state.skills),
+  );
+  if (reference?.kind === "skill") reference.displayName = displayName;
   if (reference && !imageOnly)
     return (
       <InlineReference
@@ -49,10 +48,10 @@ export function MessageLink({
               ? set({ modal: { type: "skills" } })
               : set({
                   panel: "files",
-                  panelFile:
-                    reference.kind === "directory"
-                      ? { path: reference.path, view: "directory" }
-                      : reference.path,
+                  panelFile: {
+                    kind: reference.kind === "directory" ? "directory" : "file",
+                    path: reference.path,
+                  },
                 })
         }
       />
@@ -61,11 +60,7 @@ export function MessageLink({
     (href || "").replace(/^file:\/\/(?:localhost)?(?=\/)|^sandbox:(?=\/)/i, ""),
   );
   if (href && !href.startsWith("#"))
-    href =
-      localImagePath(
-        href,
-        baseDirectory ?? (current?.cwd || cwd || defaultCwd),
-      ) || href;
+    href = localImagePath(href, directory) || href;
   return (
     <a
       className="message-link"
@@ -103,7 +98,10 @@ export function MessageLink({
           event.preventDefault();
           set({
             panel: "files",
-            panelFile: href.replace(/:\d+(?::\d+)?$/, ""),
+            panelFile: {
+              kind: "file",
+              path: href.replace(/:\d+(?::\d+)?$/, ""),
+            },
           });
         }
       }}

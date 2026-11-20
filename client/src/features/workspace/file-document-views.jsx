@@ -244,7 +244,10 @@ export function fileDocumentViews(cwd) {
                 event.preventDefault();
                 set({
                   panel: "files",
-                  panelFile: path.replace(/:\d+(?::\d+)?$/, ""),
+                  panelFile: {
+                    kind: "file",
+                    path: path.replace(/:\d+(?::\d+)?$/, ""),
+                  },
                 });
                 return true;
               },

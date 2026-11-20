@@ -332,7 +332,7 @@ function SubAgentConversation({ agent }) {
   );
 }
 
-export function ContextWorkspace() {
+export function ContextWorkspace({ toggleRef }) {
   const s = useStore();
   const [filesOpened, keepFiles] = useState(s.panel === "files");
   const detailsOpen = s.contextOpen === true;
@@ -460,6 +460,7 @@ export function ContextWorkspace() {
         />
         <IconButton
           icon={detailsOpen ? ChevronRight : ChevronLeft}
+          ref={toggleRef}
           title={detailsOpen ? "折叠对话详情" : "展开对话详情"}
           aria-expanded={detailsOpen}
           aria-controls="conversation-context"

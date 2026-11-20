@@ -1,7 +1,7 @@
 import { saved, persist } from "../../infrastructure/storage.js";
 import React, { useEffect, useRef, useState } from "react";
 import * as store from "../../store.js";
-import { MarkdownEditor } from "../composer/markdown-editor.jsx";
+import { ReferenceEditor } from "../composer/reference-editor.jsx";
 import { Undo2, ChevronRight } from "lucide-react";
 import { isCompacting } from "../../domain/compaction.js";
 
@@ -107,7 +107,7 @@ export function GoalEditor() {
         </div>
       )}
       <div className="goal-editor-input">
-        <MarkdownEditor
+        <ReferenceEditor
           fill
           inputRef={inputRef}
           aria-label="目标"

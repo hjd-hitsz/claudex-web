@@ -116,14 +116,17 @@ export async function testFileChanges(app, requests, setResponse, emit) {
     assert.equal(app.get().panel, "files");
     assert.equal(app.get().panelFile.path, cwd + "/main.js");
     assert.equal(app.get().panelFile.diff, diff);
-    assert.equal(app.get().panelFile.view, "full");
+    assert.equal(app.get().panelFile.kind, "full");
     assert.deepEqual(app.get().panelFile.patches, [diff]);
     await act(async () =>
       rows()[0]
         .findByProps({ className: "file-change-source" })
         .props.onClick(),
     );
-    assert.equal(app.get().panelFile, cwd + "/main.js");
+    assert.deepEqual(app.get().panelFile, {
+      kind: "file",
+      path: cwd + "/main.js",
+    });
     assert.equal(
       rows()[0].findAllByProps({ className: "diff-block" }).length,
       0,
@@ -132,7 +135,7 @@ export async function testFileChanges(app, requests, setResponse, emit) {
       rows()[0].findByProps({ className: "file-change-name" }).props.onClick(),
     );
     assert.equal(app.get().panelFile.path, cwd + "/main.js");
-    assert.equal(app.get().panelFile.view, "diff");
+    assert.equal(app.get().panelFile.kind, "diff");
     await act(async () => undo().props.onClick());
     assert.equal(
       rows()[0].findByProps({ role: "alert" }).props.children,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { saveBackend } from "../store.js";
+import { saveBackend } from "../../store.js";
 
 export function ProxySettings({ backend, disabled }) {
   const [mode, setMode] = useState("system");

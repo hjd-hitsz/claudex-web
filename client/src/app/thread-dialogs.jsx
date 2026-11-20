@@ -97,7 +97,7 @@ export function SearchDialog() {
       <label className="search-input">
         <Search size={20} />
         <input
-          autoFocus
+          data-dialog-focus
           placeholder="按标题或内容搜索对话"
           value={q}
           onChange={(e) => query(e.target.value)}
@@ -105,6 +105,7 @@ export function SearchDialog() {
         {loading && <LoaderCircle size={16} className="spin" />}
       </label>
       <ThreadListErrors
+        backends={s.backends}
         errors={errors}
         loading={loading}
         onRetry={() => retry((value) => value + 1)}
@@ -147,7 +148,7 @@ export function RenameDialog({ thread }) {
       <label className="field-label">
         对话名称
         <input
-          autoFocus
+          data-dialog-focus
           value={name}
           onChange={(e) => update(e.target.value)}
         />

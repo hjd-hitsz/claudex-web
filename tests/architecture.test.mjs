@@ -22,6 +22,8 @@ test("架构检查识别文件膨胀、逆向依赖、跨端耦合和循环，�
   );
   assert.deepEqual((await inspectArchitecture(root)).errors, []);
   await file("client/src/domain/a.js", "import('../application/a.js');\n");
+  await file("client/src/app/shell.js", "export const shell = {};\n");
+  await file("client/src/features/shell.js", "import '../app/shell.js';\n");
   await file(
     "client/src/features/a.js",
     "import '../../../server/src/a.mjs';\n",
@@ -71,6 +73,7 @@ test("架构检查识别文件膨胀、逆向依赖、跨端耦合和循环，�
   assert(errors.some((error) => error.includes("翻译引擎通过服务端公共入口")));
   assert(errors.some((error) => error.includes("超过 500 行")));
   assert(errors.some((error) => error.includes("domain 层")));
+  assert(errors.some((error) => error.includes("通过参数取得应用外壳")));
   assert(errors.some((error) => error.includes("通过 shared/")));
   assert(errors.some((error) => error.includes("禁止平台依赖")));
   assert(errors.some((error) => error.includes("循环依赖")));

@@ -1,16 +1,18 @@
 import React from "react";
 
-export function ThreadListErrors({ errors = [], onRetry, loading = false }) {
+export function ThreadListErrors({
+  backends = [],
+  errors = [],
+  onRetry,
+  loading = false,
+}) {
   if (!errors.length) return null;
   return (
     <div className="inline-error" role="alert">
       {errors.map((error, index) => (
         <p key={error.backendId || index}>
-          {error.backendId === "claude"
-            ? "Claude Code"
-            : error.backendId === "codex"
-              ? "Codex"
-              : "对话"}
+          {backends.find((backend) => backend.id === error.backendId)?.name ||
+            "对话"}
           读取失败：{error.message}
         </p>
       ))}

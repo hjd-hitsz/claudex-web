@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useStore, setThinkingTranslation } from "../store.js";
+import { useStore, setThinkingTranslation } from "../../store.js";
 export function TranslationSettings() {
   const { translation } = useStore();
   const [saving, setSaving] = useState(false);

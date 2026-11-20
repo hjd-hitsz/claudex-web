@@ -19,7 +19,7 @@ export async function runGoalScenarios({
   );
   await submit("替换目标的可衡量完成条件");
   await waitFor(
-    `document.querySelector('[role="dialog"]')?.textContent.includes('替换当前目标')`,
+    `document.querySelector('.modal')?.textContent.includes('替换当前目标')`,
   );
   assert.equal(
     await evaluate(
@@ -29,7 +29,7 @@ export async function runGoalScenarios({
   );
   await screenshot("goal-replace-confirmation");
   await clickText("取消");
-  await waitFor(`!document.querySelector('[role="dialog"]')`);
+  await waitFor(`!document.querySelector('.modal')`);
   assert.equal(
     await evaluate(
       `document.querySelector('.composer [aria-label="消息"]').innerText.trim()`,
@@ -37,10 +37,10 @@ export async function runGoalScenarios({
     "替换目标的可衡量完成条件",
   );
   await click('button[aria-label="发送消息"]');
-  await waitFor(`!!document.querySelector('[role="dialog"]')`);
+  await waitFor(`!!document.querySelector('.modal')`);
   await clickText("替换目标");
   await waitFor(
-    `!document.querySelector('[role="dialog"]') && document.querySelector('.goal-summary')?.textContent.includes('替换目标的可衡量完成条件')`,
+    `!document.querySelector('.modal') && document.querySelector('.goal-summary')?.textContent.includes('替换目标的可衡量完成条件')`,
   );
   await evaluate(`commandFixture.updateGoal({status:'complete'})`);
   await waitFor(

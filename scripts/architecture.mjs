@@ -99,6 +99,11 @@ function boundaryError(from, to) {
     return "服务端不能依赖浏览器实现";
   if (from.startsWith("shared/") && !to.startsWith("shared/"))
     return "共享模块只能依赖共享模块";
+  if (
+    from.startsWith("client/src/features/") &&
+    to.startsWith("client/src/app/")
+  )
+    return "界面功能通过参数取得应用外壳操作";
   for (const [layer, allowed] of [
     ["domain", ["domain"]],
     ["infrastructure", ["domain", "infrastructure"]],

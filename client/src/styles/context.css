@@ -2,16 +2,6 @@
   width: 1.769231rem;
   height: 1.769231rem;
 }
-.workspace-panel {
-  width: 40%;
-  min-width: 320px;
-  max-width: 650px;
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  min-height: 0;
-}
 .context-workspace {
   width: 224px;
   flex: none;

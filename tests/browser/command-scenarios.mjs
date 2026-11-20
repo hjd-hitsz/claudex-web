@@ -180,12 +180,12 @@ export async function runCommandScenarios({
   });
   await submit("/stop");
   await waitFor(
-    `document.querySelector('[role="dialog"]')?.textContent.includes('npm run dev')`,
+    `document.querySelector('.modal')?.textContent.includes('npm run dev')`,
   );
   await screenshot("background-terminals");
   await clickText("停止全部后台终端");
   await waitFor(
-    `document.querySelector('[role="dialog"]')?.textContent.includes('没有后台终端')`,
+    `document.querySelector('.modal')?.textContent.includes('没有后台终端')`,
   );
   await screenshot("background-terminals-cleaned");
   assert.equal(

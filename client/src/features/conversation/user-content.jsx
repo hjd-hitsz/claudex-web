@@ -79,9 +79,10 @@ export function FileReference({ file }) {
         event.preventDefault();
         set({
           panel: "files",
-          panelFile: file.directory
-            ? { path: file.path, view: "directory" }
-            : file.path,
+          panelFile: {
+            kind: file.directory ? "directory" : "file",
+            path: file.path,
+          },
         });
       }}
     >

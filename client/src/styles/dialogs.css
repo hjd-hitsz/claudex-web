@@ -107,21 +107,9 @@
   right: 3px;
   top: 100%;
 }
-.click-away {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-}
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
+.modal::backdrop {
   background: #0005;
   backdrop-filter: blur(3px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.846154rem;
-  z-index: 100;
 }
 .modal {
   width: 590px;
@@ -131,9 +119,13 @@
   border: 1px solid var(--border);
   border-radius: 20px;
   box-shadow: var(--shadow);
-  display: flex;
+  padding: 0;
+  color: inherit;
   flex-direction: column;
   overflow: hidden;
+}
+.modal[open] {
+  display: flex;
 }
 .modal-heading {
   padding: 1.307692rem 1.538462rem;

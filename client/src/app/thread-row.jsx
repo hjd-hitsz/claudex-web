@@ -27,14 +27,15 @@ import {
 import { threadTime } from "../domain/thread-order.js";
 import { isCompacting } from "../domain/compaction.js";
 import { ThreadRunningIcon } from "./thread-running-icon.jsx";
-export function ThreadMenu({ thread, onClose }) {
+import { useDismissibleMenu } from "../ui/dismissible-menu.js";
+export function ThreadMenu({ thread, onClose, ...props }) {
   const s = useStore();
   const action = (fn) => {
     onClose();
     Promise.resolve().then(fn).catch(report);
   };
   return (
-    <div className="dropdown" role="menu">
+    <div className="dropdown" role="menu" {...props}>
       <button
         onClick={() => action(() => set({ modal: { type: "rename", thread } }))}
       >
@@ -78,8 +79,8 @@ export function ThreadMenu({ thread, onClose }) {
 }
 export function ThreadRow({ thread }) {
   const s = useStore(),
-    [menu, show] = useState(false),
     [tooltip, setTooltip] = useState(null);
+  const menu = useDismissibleMenu();
   const tooltipId = useId();
   const title = titleOf(thread);
   const backendId = resourceTarget(thread.id).backendId;
@@ -135,13 +136,14 @@ export function ThreadRow({ thread }) {
       className={
         "thread-row " + (s.current?.id === thread.id ? "selected" : "")
       }
+      {...menu.scopeProps}
     >
       <button
         className="thread-link"
         draggable
         onDragStart={(event) => {
           setTooltip(null);
-          show(false);
+          menu.dismiss();
           event.dataTransfer.setData("application/x-claudex-thread", thread.id);
           event.dataTransfer.effectAllowed = "move";
         }}
@@ -202,16 +204,13 @@ export function ThreadRow({ thread }) {
         </button>
         <button
           aria-label={"管理对话 " + titleOf(thread)}
-          onClick={() => show(!menu)}
+          {...menu.triggerProps}
         >
           <MoreHorizontal size={15} />
         </button>
       </div>
-      {menu && (
-        <>
-          <div className="click-away" onClick={() => show(false)} />
-          <ThreadMenu thread={thread} onClose={() => show(false)} />
-        </>
+      {menu.open && (
+        <ThreadMenu thread={thread} onClose={menu.close} {...menu.menuProps} />
       )}
     </div>
   );

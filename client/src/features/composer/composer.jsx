@@ -47,17 +47,18 @@ import { ComposerAnnotations } from "../annotations/message-annotations.jsx";
 import { useAnnotationDrafts } from "../annotations/annotation-drafts.js";
 import { isCompacting } from "../../domain/compaction.js";
 import { CompactionStatus } from "./compaction-status.jsx";
-import { MarkdownEditor } from "./markdown-editor.jsx";
+import { ReferenceEditor } from "./reference-editor.jsx";
 import { AttachmentPreview } from "./attachment-preview.jsx";
 import { ComposerSurface } from "./composer-surface.jsx";
-export function Composer() {
+export function Composer({ inputRef }) {
   const backgroundTaskCount = useContext(BackgroundTasks).tasks.length;
   const [preview, setPreview] = useState(null);
   const [enlarged, setEnlarged] = useState(false);
   const s = useStore(),
     draft = useDraft(),
-    area = useRef(),
+    localInput = useRef(),
     files = useRef();
+  const area = inputRef ?? localInput;
   const focusAfterOpen = useRef(null);
   useEffect(() => setEnlarged(false), [s.current?.id, s.backendId, s.modal]);
   const annotationDrafts = useAnnotationDrafts(s.current?.id);
@@ -203,7 +204,7 @@ export function Composer() {
               ))}
             </div>
           )}
-          <MarkdownEditor
+          <ReferenceEditor
             key={s.current?.id || "new-" + s.backendId}
             inputRef={area}
             theme={s.theme}

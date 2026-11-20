@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { rpc, saveProvider } from "../store.js";
+import { rpc, saveProvider } from "../../store.js";
 
 export function PresetProviderForm({
   provider,

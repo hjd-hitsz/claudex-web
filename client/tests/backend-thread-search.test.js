@@ -19,7 +19,14 @@ test("search retains failed backend rows, retries, and rejects late query result
     createdAt: 1,
   };
   globalThis.__searchFixture = {
-    state: { archived: false, threads: [old] },
+    state: {
+      archived: false,
+      threads: [old],
+      backends: [
+        { id: "codex", name: "Codex", enabled: true },
+        { id: "claude", name: "Configured Claude", enabled: true },
+      ],
+    },
     listThreads: (params, options) =>
       new Promise((resolve, reject) =>
         requests.push({ params, options, resolve, reject }),
@@ -69,6 +76,7 @@ test("search retains failed backend rows, retries, and rejects late query result
       ]);
     });
     assert.match(JSON.stringify(renderer.toJSON()), /disk unavailable/);
+    assert.match(JSON.stringify(renderer.toJSON()), /Configured Claude/);
     assert.match(JSON.stringify(renderer.toJSON()), /Matching Claude/);
     const retry = renderer.root
       .findAllByType("button")

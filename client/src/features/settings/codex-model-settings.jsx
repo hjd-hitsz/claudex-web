@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { useStore, rpc, set } from "../store.js";
+import { useStoreSelector, rpc, set } from "../../store.js";
+import { isModelHidden } from "../../domain/backends.js";
 
 export function CodexModelSettings({ backend }) {
-  const s = useStore();
+  const cwd = useStoreSelector((state) => state.cwd);
   const [models, setModels] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let active = true;
-    rpc("model/list", { backendId: "codex", cwd: s.cwd }).then(
+    rpc("model/list", { backendId: backend.id, cwd }).then(
       (result) => {
         if (active) {
           setModels(result.data);
@@ -22,7 +23,7 @@ export function CodexModelSettings({ backend }) {
     return () => {
       active = false;
     };
-  }, [backend.ready, s.cwd]);
+  }, [backend.id, backend.ready, cwd]);
   async function toggle(id, shown) {
     setBusy(true);
     setError("");
@@ -31,8 +32,8 @@ export function CodexModelSettings({ backend }) {
       if (shown) hidden.delete(id);
       else hidden.add(id);
       const result = await rpc("lan/backends/save", {
-        id: "codex",
-        type: "codex",
+        id: backend.id,
+        type: backend.type,
         hiddenModels: [...hidden],
       });
       set({ backends: result.backends });
@@ -51,7 +52,7 @@ export function CodexModelSettings({ backend }) {
             <input
               type="checkbox"
               disabled={busy}
-              checked={!backend.hiddenModels?.includes(model.model)}
+              checked={!isModelHidden(backend, model.model)}
               onChange={(event) => toggle(model.model, event.target.checked)}
             />
             {model.displayName || model.model}

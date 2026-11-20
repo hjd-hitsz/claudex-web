@@ -1,14 +1,12 @@
 .modal {
-  position: relative;
-  flex-shrink: 0;
+  --window-inset: 1.846154rem;
+  position: fixed;
+  inset: 0;
+  margin: auto;
   min-width: min(20rem, calc(100vw - 2 * var(--window-inset)));
   max-width: calc(100vw - 2 * var(--window-inset));
   min-height: min(12rem, calc(100dvh - 2 * var(--window-inset)));
   max-height: calc(100dvh - 2 * var(--window-inset));
-}
-.modal-backdrop {
-  --window-inset: 1.846154rem;
-  padding: var(--window-inset);
 }
 .modal > :not(.modal-heading, .surface-resizer) {
   min-height: 0;
@@ -68,7 +66,7 @@
   border-radius: 1rem;
 }
 @media (max-width: 600px) {
-  .modal-backdrop {
+  .modal {
     --window-inset: 0.75rem;
   }
 }

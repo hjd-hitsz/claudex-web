@@ -463,6 +463,111 @@ try {
   await page
     .locator(".user-text")
     .screenshot({ path: join(output, "sent.png") });
+  if (!before) {
+    await clear();
+    await page.keyboard.insertText("保留正文 ");
+    await choose("demo-skill", "skill");
+    await page.keyboard.insertText("继续编辑");
+    const skill = field.locator(
+      '.document-reference:has([data-reference-kind="skill"])',
+    );
+    const node = await skill.elementHandle();
+    const reference = await node.getAttribute("data-inline-reference");
+    const readDraft = () =>
+      page.evaluate(() => localStorage.getItem("cx-draft-short"));
+    await page.waitForFunction(() =>
+      localStorage.getItem("cx-draft-short")?.endsWith("继续编辑"),
+    );
+    const draft = await readDraft();
+    const originalText = await field.textContent();
+    assert.equal(await node.textContent(), "demo-skill");
+    assert.match(draft, /^保留正文 .*\$demo-skill.*继续编辑$/);
+
+    await page.evaluate(() => {
+      window.pendingSkillCatalogues = [];
+      const send = WebSocket.prototype.send;
+      WebSocket.prototype.send = function (raw) {
+        const request = JSON.parse(raw);
+        if (request.method !== "skills/list") return send.call(this, raw);
+        window.pendingSkillCatalogues.push({
+          params: request.params,
+          respond: (displayName) => {
+            const skill = {
+              name: "demo-skill",
+              path: "/demo/SKILL.md",
+              interface: { displayName },
+            };
+            this.onmessage({
+              data: JSON.stringify({
+                id: request.id,
+                result: { data: [{ skills: [skill] }] },
+              }),
+            });
+          },
+        });
+      };
+    });
+    const skillsButton = page.getByRole("button", {
+      name: "技能",
+      exact: true,
+    });
+    if (!(await skillsButton.isVisible()))
+      await page.getByRole("button", { name: "显示侧栏", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "技能", exact: true });
+    async function openSkillCatalogue() {
+      await skillsButton.click();
+      await dialog.waitFor();
+      await page.waitForFunction(() => window.pendingSkillCatalogues.length);
+      const pending = await page.evaluate(() =>
+        window.pendingSkillCatalogues.map(({ params }) => params),
+      );
+      assert.equal(pending.length, 1);
+      assert.equal(pending[0].cwd, "/demo/history");
+      assert.equal(pending[0].threadId, "short");
+    }
+    async function deliverSkillName(displayName) {
+      await page.evaluate((name) => {
+        window.pendingSkillCatalogues.shift().respond(name);
+      }, displayName);
+      await dialog
+        .getByRole("button", { name: displayName, exact: true })
+        .waitFor();
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+    }
+    await openSkillCatalogue();
+    assert.equal(await node.textContent(), "demo-skill");
+    assert.equal(await readDraft(), draft);
+    const updatedName = "更新后的技能名称";
+    await deliverSkillName(updatedName);
+    await page.waitForFunction(
+      ({ element, name }) =>
+        element.isConnected && element.textContent === name,
+      { element: node, name: updatedName },
+    );
+    assert.equal(await node.getAttribute("data-inline-reference"), reference);
+    assert.equal(await readDraft(), draft);
+    assert.equal(
+      await field.textContent(),
+      originalText.replace("demo-skill", updatedName),
+    );
+    await page
+      .locator(".composer")
+      .screenshot({ path: join(output, "skill-catalogue-refresh.png") });
+    await clear();
+    await page.waitForFunction(
+      (element) => !element.isConnected && !element.firstChild,
+      node,
+    );
+    await openSkillCatalogue();
+    await deliverSkillName("删除引用后的技能名称");
+    assert.equal(await skill.count(), 0);
+    assert.equal(await node.textContent(), "");
+    assert.equal(await field.textContent(), "");
+    console.log(
+      "PASS 延迟技能目录刷新更新同一个引用节点的名称并保留正文，删除后释放节点",
+    );
+  }
   assert.deepEqual(errors, []);
   console.log(
     "PASS 文件类型、技能、会话节点，Enter/Tab、空格、整段删除、撤销、刷新草稿与原生提交回显",

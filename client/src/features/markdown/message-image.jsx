@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { rpc, useStore } from "../../store.js";
+import { rpc, useStoreSelector } from "../../store.js";
 import { imageDataUrl, localImagePath } from "../../domain/image-source.js";
 import { ImageViewer } from "./image-viewer.jsx";
+import { useMarkdownDirectory } from "./use-markdown-directory.js";
 
 export function MessageImage({
   src,
@@ -12,10 +13,10 @@ export function MessageImage({
   sources,
   cwd: baseDirectory,
 }) {
-  const { connected, current, cwd, defaultCwd } = useStore();
-  const path = localImagePath(
-    src,
-    baseDirectory ?? (current?.cwd || cwd || defaultCwd),
+  const directory = useMarkdownDirectory(baseDirectory);
+  const path = localImagePath(src, directory);
+  const connected = useStoreSelector((state) =>
+    Boolean(path && state.connected),
   );
   const [result, setResult] = useState(null);
   const [attempt, setAttempt] = useState(0);

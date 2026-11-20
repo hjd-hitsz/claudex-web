@@ -1,42 +1,55 @@
 import React from "react";
 import { ChevronDown } from "lucide-react";
 import {
-  useStore,
+  useStoreSelector,
   selectModel,
   selectModelChoice,
   report,
 } from "../../store.js";
+import { isModelHidden } from "../../domain/backends.js";
 
 const key = (choice) =>
   JSON.stringify([choice.backendId, choice.providerId, choice.model]);
-export function ModelSelect() {
-  const s = useStore();
-  const hidden = s.backends.find((b) => b.id === "codex")?.hiddenModels || [];
-  const visible = (model, backendId) =>
-    backendId !== "codex" || !hidden.includes(model.model);
-  const choices = (s.modelChoices || []).filter(
+export const ModelSelect = React.memo(function ModelSelect() {
+  const backends = useStoreSelector((state) => state.backends);
+  const modelChoices = useStoreSelector((state) => state.modelChoices);
+  const models = useStoreSelector((state) => state.models);
+  const modelId = useStoreSelector((state) => state.model);
+  const backendId = useStoreSelector((state) => state.backendId);
+  const providerId = useStoreSelector((state) => state.providerId);
+  const inConversation = useStoreSelector((state) => Boolean(state.current));
+  const active = useStoreSelector((state) =>
+    Boolean(state.active[state.current?.id]),
+  );
+  const locked = useStoreSelector((state) => state.busy || state.loading);
+  const backend = backends.find((entry) => entry.id === backendId);
+  const hidden = isModelHidden(backend, modelId);
+  const choices = (modelChoices || []).filter(
     (choice) =>
-      (!s.current || choice.backendId === s.backendId) &&
-      visible(choice, choice.backendId),
+      (!inConversation || choice.backendId === backendId) &&
+      !isModelHidden(
+        backends.find((entry) => entry.id === choice.backendId),
+        choice.model,
+      ),
   );
   const current = choices.find(
     (choice) =>
-      choice.backendId === s.backendId &&
-      choice.providerId === s.providerId &&
-      choice.model === s.model,
+      choice.backendId === backendId &&
+      choice.providerId === providerId &&
+      choice.model === modelId,
   );
-  const locked = s.busy || s.loading;
-  const unavailable = s.model
-    ? hidden.includes(s.model) && s.backendId === "codex"
-      ? `当前模型已隐藏：${s.model}`
-      : `当前模型不可用：${s.model}`
+  const unavailable = modelId
+    ? hidden
+      ? `当前模型已隐藏：${modelId}`
+      : `当前模型不可用：${modelId}`
     : "请选择模型";
+  const catalogueAvailable = choices.length > 0 || hidden;
   const label = current
     ? `${current.providerName} · ${current.displayName || current.model}`
-    : choices.length || (s.backendId === "codex" && hidden.includes(s.model))
+    : catalogueAvailable
       ? unavailable
-      : s.models.find((model) => model.model === s.model)?.displayName ||
-        s.model ||
+      : models.find((model) => model.model === modelId)?.displayName ||
+        modelId ||
         "请选择模型";
   return (
     <label className="select-control model-select">
@@ -45,7 +58,7 @@ export function ModelSelect() {
       </span>
       <select
         aria-label="模型"
-        value={current ? key(current) : s.model}
+        value={current ? key(current) : modelId}
         disabled={locked}
         onChange={(event) => {
           const choice = choices.find(
@@ -53,18 +66,17 @@ export function ModelSelect() {
           );
           if (choice) selectModelChoice(choice).catch(report);
           else {
-            const model = s.models.find(
+            const model = models.find(
               (model) => model.model === event.target.value,
             );
             if (model) selectModel(model);
           }
         }}
       >
-        {choices.length ||
-        (s.backendId === "codex" && hidden.includes(s.model)) ? (
+        {catalogueAvailable ? (
           <>
             {!current && (
-              <option value={s.model} disabled>
+              <option value={modelId} disabled>
                 {unavailable}
               </option>
             )}
@@ -72,18 +84,15 @@ export function ModelSelect() {
               <option
                 key={key(choice)}
                 value={key(choice)}
-                disabled={
-                  Boolean(s.active[s.current?.id]) &&
-                  choice.providerId !== s.providerId
-                }
+                disabled={active && choice.providerId !== providerId}
               >
                 {choice.providerName} · {choice.displayName || choice.model}
               </option>
             ))}
           </>
         ) : (
-          s.models
-            .filter((model) => visible(model, s.backendId))
+          models
+            .filter((model) => !isModelHidden(backend, model.model))
             .map((model) => (
               <option key={model.id} value={model.model}>
                 {model.displayName || model.model}
@@ -94,4 +103,4 @@ export function ModelSelect() {
       <ChevronDown size={12} />
     </label>
   );
-}
+});

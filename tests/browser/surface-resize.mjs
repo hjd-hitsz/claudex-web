@@ -16,8 +16,31 @@ const output =
   join(root, ".cache/surface-resize", before ? "before" : "after");
 await mkdir(output, { recursive: true });
 const data = {
-  markdown:
-    "# 窗口调节测试\n\n请选择这段正文创建批注。\n\n![测试图片](https://fixture.test/image.svg)",
+  retainStorageOnReload: true,
+  codexItems: [
+    {
+      id: "markdown-user",
+      type: "userMessage",
+      turnId: "legacy-turn",
+      content: [
+        {
+          type: "text",
+          text: "# 窗口调节测试\n\n请选择这段正文创建批注。\n\n![测试图片](https://fixture.test/image.svg)",
+        },
+        {
+          type: "text",
+          text: "引用本机文件：/demo/notes.md\n请根据任务按需读取。",
+        },
+      ],
+    },
+    {
+      id: "resize-answer",
+      type: "agentMessage",
+      turnId: "legacy-turn",
+      phase: "final_answer",
+      text: "请选择这段正文创建批注。",
+    },
+  ],
   claudeItems: [],
 };
 const server = http.createServer(async (req, res) => {
@@ -30,7 +53,7 @@ const server = http.createServer(async (req, res) => {
         .toString()
         .replace(
           "<head>",
-          `<head><script>(${backendFixture.toString().replace("legacy: [", 'legacy: [{ id: "resize-answer", type: "agentMessage", phase: "final_answer", text: "请选择这段正文创建批注。" },').replace("localStorage.clear();", "if (!sessionStorage.seeded) { localStorage.clear(); sessionStorage.seeded = '1'; }")})(${JSON.stringify(data)})</script>`,
+          `<head><script>(${backendFixture.toString()})(${JSON.stringify(data)})</script>`,
         );
     res
       .writeHead(200, {

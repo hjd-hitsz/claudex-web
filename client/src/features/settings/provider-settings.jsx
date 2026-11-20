@@ -1,9 +1,9 @@
-import { ResizableTextarea } from "../ui/resizable-textarea.jsx";
+import { ResizableTextarea } from "../../ui/resizable-textarea.jsx";
 import React, { useEffect, useId, useState } from "react";
 import { ProviderModels } from "./provider-models.jsx";
 import { PresetProviderForm } from "./preset-provider-form.jsx";
-import { rpc, saveProvider, removeProvider } from "../store.js";
-import { contextWindowTokens } from "../domain/provider-context-window.js";
+import { rpc, saveProvider, removeProvider } from "../../store.js";
+import { contextWindowTokens } from "../../domain/provider-context-window.js";
 
 export function ProviderSettings({ backend }) {
   const apiKeyId = useId();
@@ -235,7 +235,7 @@ export function ProviderSettings({ backend }) {
                     className="provider-brand-symbol"
                     src={
                       new URL(
-                        `../assets/providers/${p.icon}.svg`,
+                        `../../assets/providers/${p.icon}.svg`,
                         import.meta.url,
                       ).href
                     }

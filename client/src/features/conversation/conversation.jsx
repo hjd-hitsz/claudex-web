@@ -56,7 +56,7 @@ export function ReadOnlyConversation({ items, cwd, turns }) {
     ) : null,
   );
 }
-export function Conversation({ children, footer }) {
+export function Conversation({ children, footer, focusComposer }) {
   const s = useStore(),
     scroll = useRef(),
     column = useRef(),
@@ -201,7 +201,7 @@ export function Conversation({ children, footer }) {
                 key={title}
                 onClick={() => {
                   setDraft(text);
-                  document.querySelector('[aria-label="消息"]')?.focus();
+                  focusComposer?.();
                 }}
               >
                 <Icon size={19} />
@@ -269,6 +269,7 @@ export function Conversation({ children, footer }) {
                         item={group.item}
                         editable={group.item.id === editableId}
                         annotations={annotations.get(group.item.id)}
+                        focusComposer={focusComposer}
                       />
                     )}
                     {turnId && lastGroups.get(turnId) === group.id && (

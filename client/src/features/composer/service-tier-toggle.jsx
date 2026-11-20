@@ -1,15 +1,17 @@
 import React from "react";
 import { Zap } from "lucide-react";
-import { set, useStore } from "../../store.js";
+import { set, useStoreSelector } from "../../store.js";
 import {
   modelServiceTiers,
   resolveServiceTier,
 } from "../../domain/service-tier.js";
 
-export function ServiceTierToggle() {
-  const s = useStore();
-  const model = s.models.find((m) => m.model === s.model);
-  const tier = resolveServiceTier(s.serviceTier, model);
+export const ServiceTierToggle = React.memo(function ServiceTierToggle() {
+  const model = useStoreSelector((state) =>
+    state.models.find((model) => model.model === state.model),
+  );
+  const selectedTier = useStoreSelector((state) => state.serviceTier);
+  const tier = resolveServiceTier(selectedTier, model);
   const tiers = modelServiceTiers(model);
   const fast = tiers.find((option) => ["fast", "priority"].includes(option.id));
   const name =
@@ -34,4 +36,4 @@ export function ServiceTierToggle() {
       <Zap size={17} fill={tier ? "currentColor" : "none"} />
     </button>
   );
-}
+});

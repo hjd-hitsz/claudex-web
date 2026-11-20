@@ -6,7 +6,7 @@ import { approvePlan, copy, set, useStore } from "../../store.js";
 import { pendingPlan } from "../../domain/plans.js";
 import { isCompacting } from "../../domain/compaction.js";
 
-export function PlanMessage({ item, readOnly, cwd }) {
+export function PlanMessage({ item, readOnly, cwd, focusComposer }) {
   const s = useStore();
   const [expanded, setExpanded] = useState(false);
   const bodyId = useId();
@@ -78,7 +78,7 @@ export function PlanMessage({ item, readOnly, cwd }) {
             disabled={disabled}
             onClick={() => {
               set({ mode: "plan" });
-              document.querySelector('[aria-label="消息"]')?.focus();
+              focusComposer?.();
             }}
           >
             修改计划

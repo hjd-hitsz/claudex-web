@@ -106,7 +106,7 @@ export async function testUserMessage(app, requests, setResponse) {
     );
     assert(prevented);
     assert.equal(app.get().panel, "files");
-    assert.equal(app.get().panelFile, file.path);
+    assert.deepEqual(app.get().panelFile, { kind: "file", path: file.path });
     assert.equal(app.get().contextOpen, true);
     assert.equal(
       view.root.findByProps({ className: "annotation-card" }).props.open,

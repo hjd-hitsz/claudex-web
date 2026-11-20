@@ -202,7 +202,11 @@ export async function testContextPanel(app, requests, setResponse, emit) {
         .find((node) => node.type === "button").props["aria-pressed"],
       true,
     );
-    await act(async () => app.set({ panelFile: "/fixture/parent/report.txt" }));
+    await act(async () =>
+      app.set({
+        panelFile: { kind: "file", path: "/fixture/parent/report.txt" },
+      }),
+    );
     const editor = view.root.findByProps({ "aria-label": "文件源码" });
     await act(async () =>
       editor.props.onChange({ target: { value: "文件未保存内容" } }),
@@ -458,7 +462,7 @@ export async function testContextPanel(app, requests, setResponse, emit) {
     for (const panel of ["files", "changes", "agent"]) {
       await act(async () => {
         app.set({ panel, panelAgent: { id: "agent-a", parentId: parent.id } });
-        app.set({ panelFile: "/fixture/pending.txt" });
+        app.set({ panelFile: { kind: "file", path: "/fixture/pending.txt" } });
         app.newChat(parent.cwd);
       });
       assert.equal(app.get().contextOpen, false, panel);

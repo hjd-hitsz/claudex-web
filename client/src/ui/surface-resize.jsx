@@ -211,17 +211,40 @@ export function useSurfaceResize({
   };
 }
 
-export function ResizableWindow({
-  as: Tag = "section",
-  resizeId,
-  children,
-  ...props
-}) {
+export function ResizableDialog({ resizeId, onDismiss, children, ...props }) {
   const { ref, style, handle } = useSurfaceResize({ id: resizeId });
+  useLayoutEffect(() => {
+    const dialog = ref.current;
+    dialog.showModal();
+    dialog.querySelector("[data-dialog-focus]")?.focus({ preventScroll: true });
+    return () => dialog.close();
+  }, []);
+
   return (
-    <Tag {...props} ref={ref} style={style}>
+    <dialog
+      {...props}
+      ref={ref}
+      style={style}
+      onCancel={(event) => {
+        event.preventDefault();
+        onDismiss();
+      }}
+      onPointerDown={(event) => {
+        if (event.target !== event.currentTarget || event.button !== 0) return;
+        const box = event.currentTarget.getBoundingClientRect();
+        if (
+          event.clientX < box.left ||
+          event.clientX > box.right ||
+          event.clientY < box.top ||
+          event.clientY > box.bottom
+        ) {
+          event.preventDefault();
+          onDismiss();
+        }
+      }}
+    >
       {children}
       {handle}
-    </Tag>
+    </dialog>
   );
 }

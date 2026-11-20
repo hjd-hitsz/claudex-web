@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useStore, setCompletionNotifications } from "../store.js";
+import { useStore, setCompletionNotifications } from "../../store.js";
 
 export function NotificationSettings() {
   const { notifications: status } = useStore();

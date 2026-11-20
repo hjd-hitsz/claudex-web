@@ -8,8 +8,8 @@ import {
   referencePath,
   referenceTitle,
   referenceUrl,
+  skillReferenceDisplayName,
 } from "../../domain/inline-references.js";
-import { set, useStore } from "../../store.js";
 import { InlineReference } from "../../ui/inline-reference.jsx";
 
 function fromMarkdown(node) {
@@ -143,66 +143,72 @@ export const documentReferenceSchema = $nodeSchema("reference_inline", () => ({
   },
 }));
 
-function ComposerReference({ reference, onOpen }) {
-  const { skills } = useStore();
-  const metadata =
-    reference.kind === "skill"
-      ? skills.find(
-          (skill) =>
-            skill.path === reference.path ||
-            (reference.native && skill.name === reference.name),
-        )
-      : null;
-  return (
-    <InlineReference
-      reference={{
-        ...reference,
-        displayName: metadata?.interface?.displayName,
-      }}
-      onOpen={onOpen}
-    />
-  );
-}
-
-export const documentReferenceView = $view(
-  documentReferenceSchema.node,
-  () => (node, view) => {
-    const dom = document.createElement("span");
+export function createDocumentReferenceViews(skills = [], onOpenReference) {
+  const skillViews = new Set();
+  const plugin = $view(documentReferenceSchema.node, () => (node, view) => {
+    const dom = view.dom.ownerDocument.createElement("span");
     dom.contentEditable = "false";
     dom.className = "document-reference";
     const root = createRoot(dom);
     let current = node;
+    let displayName;
     function render() {
-      dom.dataset.inlineReference = JSON.stringify(current.attrs.reference);
       const reference = current.attrs.reference;
-      const onOpen = ["file", "directory"].includes(reference.kind)
-        ? () => {
-            view.focus();
-            set({
-              panel: "files",
-              panelFile:
-                reference.kind === "directory"
-                  ? { path: reference.path, view: "directory" }
-                  : reference.path,
-            });
-          }
-        : undefined;
-      root.render(<ComposerReference reference={reference} onOpen={onOpen} />);
+      displayName = skillReferenceDisplayName(reference, skills);
+      const onOpen =
+        onOpenReference &&
+        (reference.kind === "file" || reference.kind === "directory")
+          ? () => {
+              view.focus();
+              onOpenReference(reference);
+            }
+          : undefined;
+      root.render(
+        <InlineReference
+          reference={{ ...reference, displayName }}
+          onOpen={onOpen}
+        />,
+      );
     }
-    render();
+    function refreshSkill() {
+      if (
+        displayName !==
+        skillReferenceDisplayName(current.attrs.reference, skills)
+      )
+        render();
+    }
+    function syncNode() {
+      const { reference } = current.attrs;
+      dom.dataset.inlineReference = JSON.stringify(reference);
+      if (reference.kind === "skill") skillViews.add(refreshSkill);
+      else skillViews.delete(refreshSkill);
+      render();
+    }
+    syncNode();
     return {
       dom,
       update(next) {
         if (next.type !== current.type) return false;
         current = next;
-        render();
+        syncNode();
         return true;
       },
       ignoreMutation: () => true,
-      destroy: () => root.unmount(),
+      destroy() {
+        skillViews.delete(refreshSkill);
+        queueMicrotask(() => root.unmount());
+      },
     };
-  },
-);
+  });
+  return {
+    plugin,
+    setSkills(next) {
+      if (skills === next) return;
+      skills = next;
+      for (const refresh of skillViews) refresh();
+    },
+  };
+}
 
 export const documentReferenceKeys = $prose(
   () =>

@@ -155,10 +155,31 @@ try {
             const alert = card.querySelector('[role="alert"]');
             const outer = card.getBoundingClientRect();
             const inner = alert?.getBoundingClientRect();
+            const range = document.createRange();
+            const actions = [
+              ...card.querySelectorAll(".service-maintenance-actions > button"),
+            ].map((button) => {
+              const lines = [...button.childNodes]
+                .filter((node) => node.nodeType === Node.TEXT_NODE)
+                .flatMap((node) => {
+                  range.selectNodeContents(node);
+                  return [...range.getClientRects()].map((line) => line.top);
+                });
+              const rect = button.getBoundingClientRect();
+              return {
+                text: button.textContent,
+                lineCount: new Set(lines).size,
+                top: rect.top,
+                insideCard:
+                  rect.left >= outer.left && rect.right <= outer.right,
+              };
+            });
             return {
-              width: el.clientWidth,
+              panelWidth: el.clientWidth,
               scroll: el.scrollWidth,
               dpr: devicePixelRatio,
+              viewportWidth: innerWidth,
+              actions,
               feedbackInsideCard: Boolean(
                 inner &&
                 inner.left >= outer.left &&
@@ -168,9 +189,20 @@ try {
               ),
             };
           });
-          assert.ok(bounds.scroll <= bounds.width + 1);
+          assert.ok(bounds.scroll <= bounds.panelWidth + 1);
           assert.ok(Math.abs(bounds.dpr - scale) < 0.02);
+          assert.ok(Math.abs(bounds.viewportWidth - width / scale) <= 1);
           assert.equal(bounds.feedbackInsideCard, true);
+          assert.equal(bounds.actions.length, 3);
+          for (const action of bounds.actions) {
+            assert.equal(action.insideCard, true, JSON.stringify(action));
+            assert.equal(action.lineCount, 1, JSON.stringify(action));
+          }
+          if (width === 1440)
+            assert.equal(
+              new Set(bounds.actions.map((action) => action.top)).size,
+              1,
+            );
           layouts.push({ theme, width, scale, ...bounds });
           await page.screenshot({
             path: join(output, `${theme}-${width}-${scale}.png`),

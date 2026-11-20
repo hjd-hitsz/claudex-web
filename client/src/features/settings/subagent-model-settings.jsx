@@ -1,13 +1,14 @@
 import React, { useEffect, useId, useState } from "react";
-import { useStore, saveBackend } from "../store.js";
-import { reasoningEffortLabels } from "../features/composer/reasoning-effort.jsx";
+import { useStoreSelector, saveBackend } from "../../store.js";
+import { isModelHidden } from "../../domain/backends.js";
+import { reasoningEffortLabels } from "../composer/reasoning-effort.jsx";
 import { Check } from "lucide-react";
 
 const choiceKey = (providerId, model) =>
   JSON.stringify([providerId || "", model]);
 
 export function SubagentModelSettings({ backend, disabled }) {
-  const s = useStore();
+  const modelChoices = useStoreSelector((state) => state.modelChoices);
   const selectId = useId();
   const saved = backend.subagentModel
     ? choiceKey(backend.subagentProviderId, backend.subagentModel)
@@ -21,12 +22,10 @@ export function SubagentModelSettings({ backend, disabled }) {
     () => setEffort(backend.subagentEffort || ""),
     [backend.subagentEffort],
   );
-  const choices = (s.modelChoices || [])
+  const choices = (modelChoices || [])
     .filter(
       (entry) =>
-        entry.backendId === backend.id &&
-        (backend.id !== "codex" ||
-          !backend.hiddenModels?.includes(entry.model)),
+        entry.backendId === backend.id && !isModelHidden(backend, entry.model),
     )
     .map((entry) =>
       backend.id === "claude" && !entry.providerId
@@ -48,10 +47,7 @@ export function SubagentModelSettings({ backend, disabled }) {
   const efforts = selected?.supportedReasoningEfforts || [];
   const invalidEffort =
     effort && !efforts.some((option) => option.reasoningEffort === effort);
-  const hidden =
-    backend.id === "codex" &&
-    selection &&
-    backend.hiddenModels?.includes(JSON.parse(selection)[1]);
+  const hidden = selection && isModelHidden(backend, JSON.parse(selection)[1]);
   async function submit(event) {
     event.preventDefault();
     setBusy(true);

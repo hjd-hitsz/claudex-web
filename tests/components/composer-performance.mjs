@@ -6,6 +6,7 @@ export async function testComposerPerformance(app) {
   const original = app.get();
   let sharedRenders = 0;
   let draftRenders = 0;
+  let markdownCommits = 0;
   let sharedSnapshot;
   let draftSnapshot;
   let view;
@@ -28,6 +29,13 @@ export async function testComposerPerformance(app) {
           null,
           React.createElement(SharedView),
           React.createElement(DraftView),
+          React.createElement(
+            React.Profiler,
+            { id: "markdown-links", onRender: () => markdownCommits++ },
+            React.createElement(app.RichText, {
+              text: "[打开说明](./guide.md)",
+            }),
+          ),
         ),
       );
     });
@@ -64,6 +72,25 @@ export async function testComposerPerformance(app) {
     const renders = draftRenders;
     await act(async () => app.set({ notice: "共享状态更新" }));
     assert.equal(draftRenders, renders, "共享状态变化保持草稿订阅稳定");
+    const markdownBefore = markdownCommits;
+    for (const text of ["正", "正在", "正在输出"]) {
+      await act(async () =>
+        app.set({ items: [{ id: "stream", type: "agentMessage", text }] }),
+      );
+    }
+    assert.equal(
+      markdownCommits,
+      markdownBefore,
+      "流式正文变化时旧链接保持稳定",
+    );
+    await act(async () =>
+      app.set({ current: { id: "another-input", cwd: "/another/project" } }),
+    );
+    assert.equal(markdownCommits, markdownBefore + 1);
+    assert.equal(
+      view.root.findByType("a").props.href,
+      "/another/project/guide.md",
+    );
     console.log(
       "PASS 长段草稿独立订阅、共享快照稳定、即时发送和持久化、发送清理及切换同步",
     );

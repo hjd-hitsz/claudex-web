@@ -1,6 +1,6 @@
-import { cliUpdateAvailable } from "../domain/cli-installation.js";
+import { cliUpdateAvailable } from "../../domain/cli-installation.js";
 import React, { useEffect, useRef, useState } from "react";
-import { useStore, saveBackend, rpc } from "../store.js";
+import { useStore, saveBackend, rpc } from "../../store.js";
 import { CodexModelSettings } from "./codex-model-settings.jsx";
 import { ProviderSettings } from "./provider-settings.jsx";
 import { ProxySettings } from "./proxy-settings.jsx";

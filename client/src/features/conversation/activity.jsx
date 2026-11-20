@@ -116,9 +116,12 @@ export function Activity({ item, cwd }) {
                   onClick={() =>
                     set({
                       panel: "files",
-                      panelFile: c.path.startsWith("/")
-                        ? c.path
-                        : (cwd || get().cwd) + "/" + c.path,
+                      panelFile: {
+                        kind: "file",
+                        path: c.path.startsWith("/")
+                          ? c.path
+                          : (cwd || get().cwd) + "/" + c.path,
+                      },
                       contextOpen: true,
                     })
                   }

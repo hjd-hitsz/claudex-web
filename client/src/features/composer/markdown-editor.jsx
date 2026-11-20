@@ -12,6 +12,8 @@ export function MarkdownEditor({
   fill = false,
   file = false,
   configure,
+  referenceSkills,
+  onOpenReference,
   ...inputProps
 }) {
   const label = inputProps["aria-label"] || "消息";
@@ -31,7 +33,7 @@ export function MarkdownEditor({
   const pendingSelection = useRef();
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  latest.current = { value, props };
+  latest.current = { value, props, referenceSkills, onOpenReference };
   useEffect(() => {
     let disposed = false;
     let instance;
@@ -45,6 +47,10 @@ export function MarkdownEditor({
           placeholder: latest.current.props.placeholder,
           file,
           configure,
+          referenceSkills: latest.current.referenceSkills,
+          onOpenReference(reference) {
+            if (!disposed) latest.current.onOpenReference?.(reference);
+          },
           onChange(text) {
             if (disposed || !editor.current) return;
             rendered.current = text;
@@ -109,6 +115,9 @@ export function MarkdownEditor({
       rendered.current = value;
     }
   }, [value, ready]);
+  useEffect(() => {
+    if (referenceSkills) editor.current?.setReferenceSkills(referenceSkills);
+  }, [ready, referenceSkills]);
   useEffect(() => {
     if (!editor.current) return;
     editor.current.setAttributes({

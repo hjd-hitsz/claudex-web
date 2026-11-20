@@ -17,9 +17,17 @@ export function Message({
   editable = false,
   complete = item.status === "completed",
   cwd,
+  focusComposer,
 }) {
   if (item.type === "plan")
-    return <PlanMessage item={item} readOnly={readOnly} cwd={cwd} />;
+    return (
+      <PlanMessage
+        item={item}
+        readOnly={readOnly}
+        cwd={cwd}
+        focusComposer={focusComposer}
+      />
+    );
   if (item.type === "reasoning")
     return <Reasoning item={item} cwd={cwd} complete={complete} />;
   if (item.type === "userInputRequest")

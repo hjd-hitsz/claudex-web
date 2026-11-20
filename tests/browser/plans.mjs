@@ -51,7 +51,7 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const browser = await chromium.launch({
   executablePath: process.env.CHROME_PATH,
   headless: true,
-  args: ["--no-sandbox", "--no-proxy-server"],
+  args: ["--no-sandbox", "--no-proxy-server", "--disable-gpu"],
 });
 const errors = [],
   layouts = [];
@@ -139,6 +139,9 @@ try {
     const composer = page.locator('.composer [role="textbox"]');
     await composer.waitFor();
     await page.getByRole("button", { name: "修改计划", exact: true }).click();
+    assert(
+      await composer.evaluate((editor) => editor === document.activeElement),
+    );
     await composer.fill("请补充浏览器验收");
     await composer.press("Control+Enter");
     await page.getByRole("heading", { name: "修订计划" }).waitFor();

@@ -59,6 +59,15 @@ export function referenceTitle(reference) {
       : null;
 }
 
+export function skillReferenceDisplayName(reference, skills) {
+  if (reference?.kind !== "skill") return undefined;
+  return skills.find(
+    (skill) =>
+      skill.path === reference.path ||
+      (reference.native && skill.name === reference.name),
+  )?.interface?.displayName;
+}
+
 export function referenceMarkdown(reference) {
   const label = (reference.kind === "skill" ? "$" : "") + reference.name;
   const escaped = label.replace(/[\\[\]]/g, "\\$&");

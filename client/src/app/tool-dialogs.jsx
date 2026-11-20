@@ -26,7 +26,7 @@ export function SkillsDialog() {
       <label className="panel-search">
         <Search size={15} />
         <input
-          autoFocus
+          data-dialog-focus
           value={q}
           placeholder="搜索已安装技能"
           onChange={(e) => query(e.target.value)}

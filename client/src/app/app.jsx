@@ -1,9 +1,17 @@
-import { ServiceUpdateNotice } from "./service-maintenance.jsx";
+import { ServiceUpdateNotice } from "../features/settings/service-maintenance.jsx";
 import { ExecutionError } from "../features/conversation/execution-error.jsx";
-import React, { lazy, Suspense, useEffect } from "react";
+import React, {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { Check, LoaderCircle } from "lucide-react";
 import {
-  useStore,
+  useStoreSelector,
   get,
   set,
   setReadingThread,
@@ -23,6 +31,10 @@ const TerminalPanel = lazy(() =>
   })),
 );
 
+function showMaintenance() {
+  set({ modal: { type: "settings", section: "maintenance" } });
+}
+
 export function App() {
   return (
     <BackgroundTaskProvider>
@@ -33,9 +45,54 @@ export function App() {
 
 function AppShell() {
   useEffect(() => startTranslationSettings(), []);
-  const s = useStore();
-  const readingId =
-    !s.loading && s.threadAccess?.status !== "loadError" ? s.current?.id : null;
+  const drawerOpen = useStoreSelector((state) => state.sidebar);
+  const settingsOpen = useStoreSelector(
+    (state) => state.modal?.type === "settings",
+  );
+  const connected = useStoreSelector((state) => state.connected);
+  const terminalOpen = useStoreSelector((state) => state.terminalOpen);
+  const notice = useStoreSelector((state) => state.notice);
+  const theme = useStoreSelector((state) => state.theme);
+  const readingId = useStoreSelector((state) =>
+    !state.loading && state.threadAccess?.status !== "loadError"
+      ? state.current?.id
+      : null,
+  );
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
+  const sidebarOpener = useRef(null);
+  const contextToggle = useRef(null);
+  const composerInput = useRef(null);
+  const focusComposer = useCallback(() => composerInput.current?.focus(), []);
+
+  // 侧栏交互与布局共用容器断点，页面缩放时沿用相同的收放模式。
+  function usesDrawer() {
+    return (
+      getComputedStyle(sidebarOpener.current)
+        .getPropertyValue("--sidebar-mode")
+        .trim() === "drawer"
+    );
+  }
+
+  function closeDrawer() {
+    set({ sidebar: false });
+    sidebarOpener.current?.focus({ preventScroll: true });
+  }
+
+  function closeSidebar() {
+    if (usesDrawer()) closeDrawer();
+    else setDesktopSidebarCollapsed(true);
+  }
+
+  function showSidebar() {
+    if (usesDrawer()) set({ sidebar: !get().sidebar });
+    else setDesktopSidebarCollapsed(false);
+  }
+
+  useLayoutEffect(() => {
+    if (desktopSidebarCollapsed)
+      sidebarOpener.current?.focus({ preventScroll: true });
+  }, [desktopSidebarCollapsed]);
+
   useEffect(() => {
     const read = () =>
       setReadingThread(
@@ -49,23 +106,18 @@ function AppShell() {
     };
   }, [readingId]);
   useEffect(() => {
-    document.documentElement.dataset.theme = s.theme;
-  }, [s.theme]);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
   useEffect(() => {
     const key = (e) => {
       if (e.key === "Escape") {
-        if (
-          !get().modal &&
-          document.querySelector('.context-tools button[aria-expanded="true"]')
-        ) {
+        const state = get();
+        if (e.defaultPrevented || state.modal) return;
+        if (state.sidebar && usesDrawer()) closeDrawer();
+        else if (state.contextOpen) {
           set({ contextOpen: false });
-          document
-            .querySelector(
-              '.context-tools button[aria-controls="conversation-context"]',
-            )
-            ?.focus();
+          contextToggle.current?.focus({ preventScroll: true });
         }
-        set({ modal: null, sidebar: false });
         return;
       }
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -86,12 +138,24 @@ function AppShell() {
     return () => window.removeEventListener("keydown", key);
   }, []);
   return (
-    <div className="app-shell">
-      <Sidebar />
+    <div
+      className={
+        "app-shell" + (desktopSidebarCollapsed ? " sidebar-collapsed" : "")
+      }
+    >
+      <Sidebar
+        drawerOpen={drawerOpen}
+        onClose={closeSidebar}
+        onShowMaintenance={showMaintenance}
+      />
       <main className="main-shell">
-        <Header />
-        <ServiceUpdateNotice />
-        {!s.connected && (
+        <Header
+          sidebarOpener={sidebarOpener}
+          onShowSidebar={showSidebar}
+          onShowMaintenance={showMaintenance}
+        />
+        <ServiceUpdateNotice settingsOpen={settingsOpen} />
+        {!connected && (
           <div className="connection-banner">
             <LoaderCircle size={14} className="spin" />
             正在连接…
@@ -100,28 +164,29 @@ function AppShell() {
         <div className="workspace">
           <section className="chat-pane">
             <Conversation
+              focusComposer={focusComposer}
               footer={
                 <div className="conversation-footer" key="composer">
                   <ExecutionError />
-                  <Composer />
+                  <Composer inputRef={composerInput} />
                 </div>
               }
             >
-              <ContextWorkspace />
+              <ContextWorkspace toggleRef={contextToggle} />
             </Conversation>
           </section>
         </div>
-        {s.terminalOpen && (
+        {terminalOpen && (
           <Suspense fallback={<div className="loading">正在打开终端…</div>}>
             <TerminalPanel />
           </Suspense>
         )}
       </main>
       <Modal />
-      {s.notice && (
+      {notice && (
         <div className="toast" role="status">
           <Check size={15} />
-          {s.notice}
+          {notice}
         </div>
       )}
     </div>

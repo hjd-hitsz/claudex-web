@@ -190,7 +190,10 @@ async function executeCommand(text) {
       if (entries.some((e) => e.fileName === "AGENTS.md")) {
         store.set({
           panel: "files",
-          panelFile: absolutePath("AGENTS.md", thread.cwd),
+          panelFile: {
+            kind: "file",
+            path: absolutePath("AGENTS.md", thread.cwd),
+          },
         });
         store.notice("当前目录已有 AGENTS.md，已保留并打开。");
       } else if (

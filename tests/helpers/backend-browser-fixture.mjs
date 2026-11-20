@@ -1,5 +1,8 @@
 export function backendFixture(data) {
-  localStorage.clear();
+  if (!data.retainStorageOnReload || !sessionStorage.backendFixtureInitialized)
+    localStorage.clear();
+  if (data.retainStorageOnReload)
+    sessionStorage.backendFixtureInitialized = "1";
   localStorage.setItem("cx-current", "legacy");
   localStorage.setItem("cx-theme", JSON.stringify("light"));
   const threads = [

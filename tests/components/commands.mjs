@@ -187,7 +187,10 @@ export async function testCommands(app, requests, setResponse) {
 
     const start = requests.length;
     await act(async () => command("/init"));
-    assert.equal(app.get().panelFile, "/commands/AGENTS.md");
+    assert.deepEqual(app.get().panelFile, {
+      kind: "file",
+      path: "/commands/AGENTS.md",
+    });
     assert.equal(
       requests
         .slice(start)

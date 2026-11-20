@@ -10,7 +10,7 @@ import {
 } from "../../domain/user-message.js";
 import { isCompacting } from "../../domain/compaction.js";
 import { Content } from "./user-content.jsx";
-import { MarkdownEditor } from "../composer/markdown-editor.jsx";
+import { ReferenceEditor } from "../composer/reference-editor.jsx";
 
 function MessageEditor({ item, threadId, onCancel }) {
   const s = useStore();
@@ -84,7 +84,7 @@ function MessageEditor({ item, threadId, onCancel }) {
       }}
     >
       <div inert={pending}>
-        <MarkdownEditor
+        <ReferenceEditor
           fill
           value={text}
           inputRef={input}

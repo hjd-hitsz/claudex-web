@@ -1,19 +1,17 @@
-import productIcon from "../assets/claudex-web.svg";
+import productIcon from "../../assets/claudex-web.svg";
 import { ArrowUpCircle, ChevronRight, RefreshCw } from "lucide-react";
 import React, { useEffect, useRef, useSyncExternalStore } from "react";
-import { serviceMaintenance } from "../application/service-maintenance.js";
-import { set, useStore } from "../store.js";
+import { serviceMaintenance } from "../../application/service-maintenance.js";
 function useMaintenance() {
   return useSyncExternalStore(
     serviceMaintenance.subscribe,
     serviceMaintenance.get,
   );
 }
-export function ServiceUpdateNotice() {
+export function ServiceUpdateNotice({ settingsOpen }) {
   useEffect(() => serviceMaintenance.start(), []);
   const { refreshNeeded } = useMaintenance();
-  const { modal } = useStore();
-  if (refreshNeeded && modal?.type !== "settings")
+  if (refreshNeeded && !settingsOpen)
     return (
       <div className="connection-banner" role="status">
         服务已重启，请刷新网页。
@@ -21,7 +19,7 @@ export function ServiceUpdateNotice() {
     );
   return null;
 }
-export function ServiceUpdateEntry({ compact = false }) {
+export function ServiceUpdateEntry({ onOpen, compact = false }) {
   const { status, refreshNeeded } = useMaintenance();
   if (!status?.updateAvailable || refreshNeeded) return null;
   return (
@@ -32,9 +30,7 @@ export function ServiceUpdateEntry({ compact = false }) {
           : "service-update-entry service-update-sidebar"
       }
       aria-label={`发现新版本 ${status.latest}`}
-      onClick={() =>
-        set({ modal: { type: "settings", section: "maintenance" } })
-      }
+      onClick={onOpen}
     >
       <ArrowUpCircle size={17} aria-hidden="true" />
       <span>{compact ? "有更新" : "发现新版本"}</span>
