@@ -14,6 +14,7 @@ import { once } from "node:events";
 import { createBackgroundJobs } from "./background-jobs.mjs";
 import { privateDirectory, socketPath } from "./client.mjs";
 import { createDelivery } from "./delivery.mjs";
+import { createNativeWatches } from "./native-watches.mjs";
 import { withCodex } from "./codex.mjs";
 
 export async function serve(location, upstream) {
@@ -32,6 +33,7 @@ export async function serve(location, upstream) {
   lock.listen("\0claudex-background-lock-" + key);
   await once(lock, "listening");
   let jobs,
+    nativeWatches,
     closing = false;
   const server = http.createServer(async (req, res) => {
     function reply(status, data) {
@@ -53,8 +55,11 @@ export async function serve(location, upstream) {
       const { method, params } = JSON.parse(Buffer.concat(chunks));
       if (params?.expectedUpstream && params.expectedUpstream !== url.href)
         throw new Error("任务服务绑定的 Codex 后端地址与客户端不同");
-      if (method === "health") return reply(200, { upstream: url.href });
+      if (method === "health")
+        return reply(200, { upstream: url.href, nativeWatch: true });
       if (method === "tool") return reply(200, await jobs.tool(params));
+      if (method === "watchNative")
+        return reply(200, await nativeWatches.watch(params));
       throw new Error("未知操作");
     } catch (error) {
       reply(400, { error: error.message });
@@ -76,6 +81,13 @@ export async function serve(location, upstream) {
     await chmod(path, 0o600);
     jobs = await createBackgroundJobs({
       directory,
+      terminateNative: ({ threadId, native }) =>
+        withCodex(url, (call) =>
+          call("thread/backgroundTerminals/terminate", {
+            threadId,
+            processId: native.processId,
+          }),
+        ),
       readThread: (id) =>
         withCodex(url, async (call) => {
           const { thread } = await call("thread/read", {
@@ -93,12 +105,14 @@ export async function serve(location, upstream) {
           return session.thread;
         }),
     });
+    nativeWatches = createNativeWatches(url, jobs);
     const stopDelivery = createDelivery(directory, url, jobs);
     const stop = async () => {
       if (closing) return;
       closing = true;
       server.close();
       await stopDelivery();
+      await nativeWatches.close();
       await jobs.close();
       lock.close();
     };

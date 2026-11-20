@@ -1,12 +1,12 @@
 # Codex 后台终端 MCP
 
-启用后，Codex 可以把构建、测试等长命令交给后台终端，取得任务 ID 后继续工作或结束当前轮次。独立服务保存输出，命令结束后向原对话投递结果。Claudex Web 默认关闭此扩展。Claude Code 使用自身的后台 Bash、任务输出和完成通知，两端共用网页的 `/stop` 入口。
+启用后，原生 `exec_command` 到达前台等待上限时会返回运行中的会话 ID，同一进程继续运行。模型可以直接结束当前轮次，独立服务会保留仍在运行的原生终端订阅，命令完成后向原对话投递结果并唤醒。模型也可使用 `background_start` 立即启动后台任务。Claudex Web 默认关闭此扩展。Claude Code 使用自身的后台 Bash、任务输出和完成通知，两端共用网页的 `/stop` 入口。
 
 ## 启用
 
 扩展适用于 Linux、Node.js 24.5 或更高版本，以及同机监听 WebSocket 的 Codex app-server。任务服务与 Codex 使用同一系统账户和工作区。命令以该账户执行，服务在启动任务前核对原生会话的完全访问权限。
 
-在网页的「设置 → 其他设置」勾选「为Codex开启后台终端功能」。首次开启会通过用户级 systemd 启动独立任务服务，默认状态目录位于网页配置目录的 `background-terminal` 下。新建对话或重新加载已卸载的对话后生效，工具连接中会显示四项工具。关闭开关后，已提交的任务继续运行，仍可通过 `/stop` 查看和停止。
+在网页的「设置 → 其他设置」勾选「为Codex开启后台终端功能」。首次开启会通过用户级 systemd 启动独立任务服务，默认状态目录位于网页配置目录的 `background-terminal` 下。新建对话或重新加载已卸载的对话后，工具连接中会显示四项工具。原生终端接手与此开关联动，关闭后新命令沿用 Codex 原有生命周期。已接手的原生终端和已提交的 MCP 任务继续运行，仍可通过 `/stop` 查看和停止。
 
 手动运行独立服务时，在本分支源码根目录运行以下示例，地址应与目标 Codex app-server 一致。用户级 systemd 单元持有任务服务及命令的进程组，独立于网页和 MCP stdio 连接。
 
@@ -34,9 +34,9 @@ codex mcp add claudex_background -- "$(command -v node)" "$entry" mcp "$state_di
 - `background_start(command, title, timeout_ms?)` 在当前对话的实际目录执行 shell 命令，返回任务 ID。相同会话的同一工具调用 ID 对应同一任务。
 - `background_list()` 列出当前对话的任务、执行状态与结果投递状态。
 - `background_read(job_id, offset?)` 读取任务状态、退出码及输出。省略字节偏移时取末尾，从零开始按 `nextOffset` 翻页可读取保留的日志。每页最多 32 KiB，每个任务最多保留 64 MiB；超过上限时记录 `logTruncated`。
-- `background_cancel(job_id)` 停止该任务的 Unix 进程组，并抑制尚未提交的续跑。网页 `/stop` 同时列出该对话的 Codex 原生后台终端和 MCP 任务，可一并停止。Claude Code 使用 SDK 的 `stopTask`。
+- `background_cancel(job_id)` 停止 MCP 任务的 Unix 进程组，或调用 Codex 原生终端停止接口，并抑制尚未提交的续跑。网页 `/stop` 可一并停止当前对话的原生终端及 MCP 任务。Claude Code 使用 SDK 的 `stopTask`。
 
-任务服务通过私有目录中的 Unix socket 接受本机同用户请求。目录权限为 0700，socket、任务状态和日志权限为 0600。每个状态目录绑定一个 Codex 后端地址。后台服务可在网页关闭后继续工作，恢复时会将遗留的运行记录标为中断。
+任务服务通过私有目录中的 Unix socket 接受本机同用户请求。目录权限为 0700，socket、任务状态和日志权限为 0600。每个状态目录绑定一个 Codex 后端地址。后台服务可在网页桥接关闭后继续工作。原生终端由 Codex app-server 持有，独立订阅用于防止正常会话卸载。任务服务重启后将遗留的运行记录标为中断。
 
 成功、非零退出及超时都产生终态。服务等待原对话空闲后，通过带有 `toolOutput` 的原生 `turn/start` 投递退出状态与日志摘要。模型已读取的终态和已取消任务会退出待投递队列。提交响应丢失时进入 `uncertain`，服务按通知 ID 核对原对话历史；任务工具仍可主动读取结果。
 

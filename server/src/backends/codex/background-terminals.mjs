@@ -54,10 +54,9 @@ export function backgroundTerminals(
         for (const result of results)
           if (result.status === "rejected") throw result.reason;
       };
-      const [native, extension] = await Promise.allSettled([
-        nativeCall(method, params),
-        cancel(),
-      ]);
+      // Mark tracked tasks as cancelled before Codex emits their terminal events.
+      const [extension] = await Promise.allSettled([cancel()]);
+      const [native] = await Promise.allSettled([nativeCall(method, params)]);
       if (native.status === "rejected") throw native.reason;
       if (extension.status === "rejected") throw extension.reason;
       return native.value;
@@ -71,7 +70,7 @@ export function backgroundTerminals(
     if (native.nextCursor) return native;
     const cursor = extensionPage ? params.cursor.slice(prefix.length) : "";
     const jobs = (await running())
-      .filter((job) => job.id > cursor)
+      .filter((job) => !job.native && job.id > cursor)
       .sort((a, b) => a.id.localeCompare(b.id));
     const room = Math.max(0, (params.limit || 100) - native.data.length);
     const selected = jobs.slice(0, room);

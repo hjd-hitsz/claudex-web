@@ -80,6 +80,7 @@ export function createDelivery(directory, url, jobs) {
             status: job.status,
             exit_code: job.exitCode,
             output_tail: [...output].slice(-3000).join(""),
+            ...(job.native && { native_session_id: job.native.processId }),
           });
         }
         const marked = await jobs.updateBatch({

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+  appendFile,
   mkdir,
   open,
   readFile,
@@ -19,6 +20,7 @@ const terminal = (job) => job.status !== "running";
 export async function createBackgroundJobs({
   directory,
   readThread,
+  terminateNative,
   shell = process.env.SHELL || userInfo().shell || "/bin/sh",
 }) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -82,14 +84,64 @@ export async function createBackgroundJobs({
       .filter((job) => !threadId || job.threadId === threadId)
       .sort((a, b) => b.startedAt - a.startedAt)
       .map(publicJob);
+  const logPath = (job) => join(directory, `output-${job.id}.log`);
   const read = async (threadId, id, offset) => {
     const job = owned(threadId, id);
-    const output = await readTaskLog(
-      join(directory, `output-${job.id}.log`),
-      offset,
-    );
+    const output = await readTaskLog(logPath(job), offset);
     return { job: publicJob(job), ...output };
   };
+  const nativeLogSizes = new Map();
+  async function registerNative(threadId, turnId, item) {
+    const existing = [...jobs.values()].find(
+      (job) =>
+        job.threadId === threadId &&
+        job.native?.turnId === turnId &&
+        job.native.itemId === item.id,
+    );
+    if (existing) return publicJob(existing);
+    const job = {
+      id: randomUUID(),
+      threadId,
+      native: { turnId, itemId: item.id, processId: item.processId },
+      cwd: item.cwd,
+      command: item.command,
+      title: item.command,
+      startedAt: item.startedAtMs ?? Date.now(),
+      completedAt: null,
+      status: "running",
+      exitCode: null,
+      delivery: "pending",
+      logTruncated: false,
+    };
+    await writeFile(logPath(job), "", { mode: 0o600, flag: "wx" });
+    await save("job", job.id, job);
+    jobs.set(job.id, job);
+    return publicJob(job);
+  }
+  async function appendNative(threadId, id, delta) {
+    const job = owned(threadId, id);
+    if (terminal(job)) return;
+    const size = nativeLogSizes.get(id) ?? 0;
+    const bytes = Buffer.from(delta);
+    const remaining = LOG_LIMIT - size;
+    if (bytes.length > remaining) job.logTruncated = true;
+    if (remaining <= 0) return;
+    const output = bytes.subarray(0, remaining);
+    await appendFile(logPath(job), output);
+    nativeLogSizes.set(id, size + output.length);
+  }
+  async function finishNative(threadId, id, item) {
+    const job = owned(threadId, id);
+    if (job.completedAt) return;
+    if (typeof item.aggregatedOutput === "string")
+      await writeFile(logPath(job), item.aggregatedOutput);
+    nativeLogSizes.delete(id);
+    job.completedAt = item.completedAtMs ?? Date.now();
+    job.exitCode = item.exitCode ?? null;
+    if (job.status === "running")
+      job.status = item.status === "completed" ? "succeeded" : item.status;
+    await save("job", id, job);
+  }
   const start = async (threadId, callId, args) => {
     if (closing) throw new Error("后台任务服务正在停止");
     if (!callId || typeof callId !== "string")
@@ -231,6 +283,13 @@ export async function createBackgroundJobs({
   const cancel = async (threadId, id) => {
     const job = owned(threadId, id);
     job.delivery = "suppressed";
+    if (job.native && !terminal(job)) {
+      await save("job", id, job);
+      const result = await terminateNative(job);
+      if (result.terminated) job.status = "cancelled";
+      await save("job", id, job);
+      return { job: publicJob(job) };
+    }
     if (!terminal(job)) {
       job.status = "cancelled";
       stopProcess(id);
@@ -252,6 +311,9 @@ export async function createBackgroundJobs({
   return {
     list,
     read,
+    registerNative,
+    appendNative,
+    finishNative,
     async tool({ name, args, threadId, callId }) {
       validateBackgroundArguments(name, args);
       if (typeof threadId !== "string" || !threadId)

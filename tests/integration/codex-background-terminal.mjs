@@ -47,14 +47,84 @@ const calls = [],
   children = [];
 let phase = "seed",
   jobRequests = 0;
+const nativeRequests = new Map();
 const inference = http.createServer(async (request, response) => {
   try {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks));
     calls.push({ phase, inputTypes: body.input?.map((item) => item.type) });
+    const nativeMode =
+      /native-terminal-fixture-(enabled|disabled|cancelled)/.exec(
+        JSON.stringify(body.input),
+      )?.[1];
     let item;
-    if (phase === "job" && ++jobRequests === 1) {
+    if (nativeMode) {
+      const count = (nativeRequests.get(nativeMode) ?? 0) + 1;
+      nativeRequests.set(nativeMode, count);
+      if (count === 1) {
+        const tool = body.tools
+          .flatMap(
+            (entry) =>
+              entry.tools?.map((child) => ({
+                ...child,
+                namespace: entry.name,
+              })) || [entry],
+          )
+          .find((entry) => entry.name === "exec_command");
+        assert(tool, "模型应保留原生 exec_command");
+        const script = [
+          'const fs = require("node:fs")',
+          `fs.appendFileSync("native-${nativeMode}.pid", process.pid + "\\n")`,
+          'console.log("start",process.pid)',
+          'const timer = setInterval(() => { if (!fs.existsSync("release-fixture")) return',
+          'clearInterval(timer); console.log("end",process.pid); console.error("native stderr"); process.exitCode = 23 }, 30)',
+        ].join(";");
+        item = {
+          type: "function_call",
+          name: tool.name,
+          namespace: tool.namespace,
+          call_id: "native-terminal-" + nativeMode,
+          arguments: JSON.stringify({
+            cmd: `"${process.execPath}" -e '${script}'`,
+            yield_time_ms: 1000,
+            login: false,
+          }),
+        };
+      } else {
+        if (count === 3) {
+          assert.equal(nativeMode, "enabled");
+          const output = body.input.find(
+            (entry) => entry.name === "background_completed",
+          );
+          assert(output, "原生终端结果应触发新轮次");
+          const [result] = JSON.parse(output.output).results;
+          assert.equal(result.exit_code, 23);
+          assert.ok(result.native_session_id);
+          assert.match(
+            result.output_tail,
+            /start (\d+)\nend \1\nnative stderr/,
+          );
+        } else {
+          assert.equal(count, 2);
+          assert(
+            body.input.some(
+              (entry) =>
+                entry.type === "function_call_output" &&
+                JSON.stringify(entry).includes(
+                  "Process running with session ID",
+                ),
+            ),
+          );
+        }
+        item = {
+          type: "message",
+          id: "native-message-" + calls.length,
+          role: "assistant",
+          content: [{ type: "output_text", text: "原生终端验证" }],
+        };
+      }
+    } else if (phase === "job" && ++jobRequests === 1) {
       const tool = body.tools
         .flatMap(
           (entry) =>
@@ -65,6 +135,8 @@ const inference = http.createServer(async (request, response) => {
         )
         .find((entry) => entry.name === "background_start");
       assert(tool, "恢复旧对话后应向模型暴露 MCP 工具");
+      assert.match(tool.description, /原生 exec_command 达到前台等待上限/);
+      assert.match(tool.description, /无需轮询、调用 sleep/);
       const script =
         'const timer=setInterval(()=>{if(require("fs").existsSync("release-fixture"))clearInterval(timer)},50)';
       item = {
@@ -380,6 +452,53 @@ try {
     )?.tools;
   assert.equal(await tools(disabled.thread.id), undefined);
   await browser.rpc("thread/unsubscribe", { threadId: disabled.thread.id });
+  const nativeRun = async (mode) => {
+    const { thread: native } = await browser.rpc("thread/start", {
+      cwd: workspace,
+      sandbox: "danger-full-access",
+      approvalPolicy: "never",
+    });
+    await browser.rpc("thread/name/set", {
+      threadId: native.id,
+      name: "原生后台终端隔离验证",
+    });
+    const { turn } = await browser.rpc("turn/start", {
+      threadId: native.id,
+      input: [{ type: "text", text: "native-terminal-fixture-" + mode }],
+    });
+    await until(
+      () =>
+        events.some(
+          (event) =>
+            event.method === "turn/completed" &&
+            event.params.turn.id === turn.id,
+        ),
+      "原生终端所属轮次正常结束",
+    );
+    const file = join(workspace, `native-${mode}.pid`);
+    const pid = Number((await readFile(file, "utf8")).trim());
+    assert(Number.isInteger(pid) && pid > 1);
+    const jobs = async () =>
+      (
+        await taskRequest(state, "tool", {
+          threadId: native.id,
+          name: "background_list",
+          args: {},
+        })
+      ).jobs;
+    return { threadId: native.id, jobs, pid, file };
+  };
+  const disabledNative = await nativeRun("disabled");
+  await until(() => {
+    try {
+      process.kill(disabledNative.pid, 0);
+      return false;
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+      return true;
+    }
+  }, "关闭 MCP 时原生会话按正常生命周期卸载");
+  assert.deepEqual(await disabledNative.jobs(), []);
   if (process.env.PLAYWRIGHT_MODULE)
     ui = await backgroundTerminalBrowser(
       url,
@@ -445,6 +564,37 @@ try {
       ui = null;
     }
   }
+  const enabledNative = await nativeRun("enabled");
+  const nativeJob = await until(async () => {
+    const jobs = await enabledNative.jobs();
+    return jobs.find((job) => job.status === "running" && job.native);
+  }, "开启 MCP 时独立服务接过订阅");
+  assert.equal(
+    (
+      await terminals("thread/backgroundTasks/list", {
+        threadId: enabledNative.threadId,
+      })
+    ).tasks[0].id,
+    nativeJob.id,
+  );
+  const nativeTerminalPage = await terminals(
+    "thread/backgroundTerminals/list",
+    {
+      threadId: enabledNative.threadId,
+    },
+  );
+  assert.deepEqual(
+    nativeTerminalPage.data.map((terminal) => terminal.processId),
+    [nativeJob.native.processId],
+  );
+  const cancelledNative = await nativeRun("cancelled");
+  await terminals("thread/backgroundTerminals/clean", {
+    threadId: cancelledNative.threadId,
+  });
+  await until(async () => {
+    const [job] = await cancelledNative.jobs();
+    return job?.delivery === "suppressed" && job.completedAt;
+  }, "停止原生终端后不触发续跑");
   if (!liveBrowser) {
     assert.equal((await preference(false)).backgroundTerminalEnabled, false);
     const { thread: other } = await browser.rpc("thread/fork", {
@@ -503,7 +653,17 @@ try {
     bridge.kill("SIGTERM");
     await exit;
   }
+  process.kill(enabledNative.pid, 0);
   await writeFile(join(workspace, "release-fixture"), "done");
+  await until(async () => {
+    const jobs = await enabledNative.jobs();
+    return jobs.find((job) => job.id === nativeJob.id)?.delivery === "accepted";
+  }, "原生终端结束后投递真实结果");
+  assert.equal(
+    (await readFile(enabledNative.file, "utf8")).trim(),
+    String(enabledNative.pid),
+    "后台继续的是前台原进程",
+  );
   const delivered = await until(async () => {
     const snapshot = await list();
     return snapshot.jobs[0].delivery === "accepted" && snapshot;
@@ -526,21 +686,23 @@ try {
   }, "自动续跑轮次完成");
   if (liveBrowser) await ui.inspectCompletion();
   const files = await readdir(state);
-  const batch = JSON.parse(
-    await readFile(
-      join(
-        state,
-        files.find((f) => f.startsWith("batch-")),
+  const batches = await Promise.all(
+    files
+      .filter((file) => file.startsWith("batch-") && file.endsWith(".json"))
+      .map(async (file) =>
+        JSON.parse(await readFile(join(state, file), "utf8")),
       ),
-      "utf8",
-    ),
   );
+  const batch = batches.find((value) => value.threadId === thread.id);
   assert(
     await received(direct.rpc, batch),
     "真实 Codex 历史必须支持完成结果回执核对",
   );
   await delay(1200);
   assert.equal(jobRequests, 3, "启动工具、结束本轮与自动续跑共三次模型请求");
+  assert.equal(nativeRequests.get("enabled"), 3);
+  assert.equal(nativeRequests.get("disabled"), 2);
+  assert.equal(nativeRequests.get("cancelled"), 2);
   const output = join(root, ".cache/background-codex");
   await mkdir(output, { recursive: true });
   await writeFile(
@@ -550,6 +712,7 @@ try {
         version,
         inference: "本机 Responses 模拟服务，未调用远程模型",
         jobRequests,
+        nativeRequests: Object.fromEntries(nativeRequests),
         jobs: delivered.jobs.map(({ status, delivery, exitCode }) => ({
           status,
           delivery,
@@ -562,7 +725,7 @@ try {
     ),
   );
   console.log(
-    `PASS ${version}：${liveBrowser ? "网页实时状态、右侧输出及完成回复" : "关闭页面后自动继续"}，完成结果仅投递一次`,
+    `PASS ${version}：MCP 开关、原生 exec_command 订阅交接与停止，${liveBrowser ? "网页实时状态与续跑" : "关闭桥接后自动继续"}，完成结果仅投递一次`,
   );
 } finally {
   await ui?.close();

@@ -13,6 +13,7 @@ import { createCompactions } from "../../compaction.mjs";
 import { createThreadNaming, generateThreadName } from "../../thread-names.mjs";
 import { createUpstream } from "./upstream.mjs";
 import { createSubscriptions } from "./subscriptions.mjs";
+import { createNativeBackgroundHandoff } from "./native-background-handoff.mjs";
 import { createCompactionRecovery } from "./compaction-recovery.mjs";
 import { createBridgeEvents } from "./events.mjs";
 import { createRequestHandler } from "./requests.mjs";
@@ -35,6 +36,12 @@ export function createCodexAdapter({
   const activeThreads = new Set();
   const terminals = new Map();
   const compactions = createCompactions(broadcast);
+  const handoff = createNativeBackgroundHandoff({
+    background,
+    enabled: () => Boolean(background?.available && backgroundEnabled()),
+    upstream: config.upstreamUrl,
+    onSettled: () => subscriptions.releaseUnusedThreads(),
+  });
   const transport = createUpstream({
     config,
     version,
@@ -45,7 +52,10 @@ export function createCodexAdapter({
         if (entry.status === "reconnecting")
           checkCompaction(threadId).catch(() => {});
     },
-    onEvent: (message) => events.onEvent(message),
+    onEvent(message) {
+      handoff.event(message);
+      events.onEvent(message);
+    },
     onResponse: (request, message) => events.onResponse(request, message),
     onSettled: () => subscriptions.releaseUnusedThreads(),
     onDisconnect() {
@@ -54,6 +64,7 @@ export function createCodexAdapter({
       questions.clear();
       activeTurns.clear();
       activeThreads.clear();
+      handoff.disconnected();
       subscriptions.reset();
       for (const terminal of terminals.values()) terminal.running = false;
       broadcast(state());
@@ -90,6 +101,7 @@ export function createCodexAdapter({
     compactions,
     activeTurns,
     activeThreads,
+    backgroundHandoffPending: handoff.pending,
   });
   const checkCompaction = createCompactionRecovery({
     transport,
@@ -137,6 +149,7 @@ export function createCodexAdapter({
       ...backgroundTaskViews(background, config.upstreamUrl),
     ]),
     includeBackground: () => backgroundEnabled() || background.listening(),
+    waitForBackgroundHandoff: handoff.wait,
     backgroundCall:
       background?.available &&
       backgroundTerminals(
@@ -182,6 +195,7 @@ export function createCodexAdapter({
     releaseClient: subscriptions.releaseClient,
     close() {
       threadNaming.clear();
+      handoff.disconnected();
       transport.close();
       subscriptions.reset();
     },

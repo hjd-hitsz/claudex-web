@@ -14,8 +14,10 @@ export function createRequestHandler({
   subscriptions,
   releasing,
   resumeForWrite,
+  retainThread,
   releaseUnusedThreads,
   backgroundCall,
+  waitForBackgroundHandoff,
   includeBackground,
   offline,
   online,
@@ -96,8 +98,10 @@ export function createRequestHandler({
         terminalMethods.has(message.method) &&
         includeBackground()
       ) {
+        const release = retainThread(threadId);
         try {
           await resumeForWrite(threadId);
+          await waitForBackgroundHandoff(threadId);
           send(client, {
             id: message.id,
             result: await backgroundCall(message.method, message.params),
@@ -107,6 +111,8 @@ export function createRequestHandler({
             id: message.id,
             error: { code: -32000, message: error.message },
           });
+        } finally {
+          release();
         }
         return;
       }

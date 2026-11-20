@@ -1,7 +1,7 @@
 export const BACKGROUND_INSTRUCTIONS =
-  "后台工具用于构建、测试、数据处理等有明确结束条件的长任务。background_start 成功后，命令由独立任务服务托管，跨轮次、刷新和对话卸载继续运行。没有其他可推进工作时可结束当前轮次；成功或失败后，任务服务会向原对话提交 background_completed 工具结果并继续任务。无需周期性轮询或使用 sleep 等待。background_read 按需读取日志；background_cancel 停止任务并取消其自动续跑。";
+  "Claudex Web 开启后台终端功能时，原生 exec_command 达到前台等待上限后会返回运行中的会话 ID，同一进程继续在后台运行。没有其他工作时可以直接结束当前轮次，独立服务会保留仍在运行的终端，并在命令退出后向原对话提交 background_completed 结果以自动唤醒。无需轮询、调用 sleep 或重新执行命令。也可用 background_start 直接提交构建、测试、数据处理等有明确结束条件的长命令。background_list 列出当前对话任务，background_read 按需读取日志，background_cancel 停止任务并取消自动续跑。";
 
-const jobId = { type: "string", description: "background_start 返回的任务 ID" };
+const jobId = { type: "string", description: "后台工具返回的任务 ID" };
 const tool = (name, description, properties, required = []) => ({
   name,
   description,
