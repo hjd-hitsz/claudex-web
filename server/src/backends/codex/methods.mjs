@@ -4,6 +4,7 @@ export const threadMethods = new Set([
   "thread/fork",
 ]);
 export const loadedThreadMethods = new Set([
+  "mcpServerStatus/list",
   "thread/revert",
   "thread/rollback",
   "turn/start",

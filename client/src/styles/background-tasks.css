@@ -1,0 +1,184 @@
+.composer-tools .background-task-count {
+  display: inline-flex;
+  width: auto;
+  flex: none;
+  gap: 4px;
+  padding-inline: 0.461538rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-background-tasks {
+  border-top: 1px solid var(--border);
+  margin-top: 0.461538rem;
+  padding-top: 0.230769rem;
+}
+
+.context-background-tasks ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  max-height: min(20rem, 38vh);
+}
+
+.context-background-tasks li {
+  display: flex;
+  align-items: center;
+  gap: 0.230769rem;
+}
+
+.context-background-tasks .icon-button {
+  flex: none;
+}
+
+.background-task-select {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: 0.615385rem;
+  align-items: center;
+  border: 0;
+  border-radius: 7px;
+  padding: 0.3077rem 0.4615rem;
+  background: transparent;
+  text-align: start;
+  justify-content: flex-start;
+}
+
+.background-task-select:hover {
+  background: var(--hover);
+}
+
+.background-task-select svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.background-task-select > span {
+  display: grid;
+  min-width: 0;
+}
+
+.background-task-select strong,
+.background-task-panel-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-completion-receipt {
+  padding: 0.461538rem 0.769231rem;
+  margin-block-start: 0.307692rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--subtle);
+}
+
+.background-completion-receipt p,
+.background-completion-receipt ul {
+  margin: 0;
+  padding: 0;
+}
+
+.background-completion-receipt li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.153846rem 0.615385rem;
+}
+
+.background-completion-receipt li > span {
+  color: var(--fg);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.background-completion-receipt button {
+  padding: 0.230769rem;
+  color: var(--link);
+}
+
+.background-completion-receipt button:hover {
+  text-decoration: underline;
+}
+
+.background-task-panel-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.background-task-output {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.background-task-output-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.background-task-output-status span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.background-task-output-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.background-task-output-actions a {
+  white-space: nowrap;
+}
+
+.background-task-output-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  position: relative;
+}
+
+.background-task-output pre,
+.background-task-empty {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--subtle);
+  border-radius: 8px;
+}
+
+.background-task-output pre {
+  font: var(--code-font-size) / var(--code-line-height) var(--mono);
+}
+
+.background-task-empty {
+  color: var(--muted);
+}
+
+.background-task-empty p {
+  margin: 0 0 0.307692rem;
+}
+
+.background-task-follow {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}

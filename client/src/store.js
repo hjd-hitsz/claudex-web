@@ -43,6 +43,7 @@ export const {
   openThread,
   refreshThreadAccess,
   loadHistory,
+  refreshBackgroundResults,
   ensureThread,
   sendMessage,
   approvePlan,

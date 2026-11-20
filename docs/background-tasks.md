@@ -1,39 +1,43 @@
-# 后台任务 MCP 独立项目计划
+# Codex 后台终端 MCP
 
-后台终端任务能力规划为独立项目，为后端代理及其他兼容客户端提供 MCP 服务。Claudex Web 负责浏览器交互与已有后端能力的展示；独立项目负责长命令的执行、日志、状态恢复与完成通知。
+启用后，原生 `exec_command` 到达前台等待上限时会返回运行中的会话 ID，同一进程继续运行。模型可以直接结束当前轮次，独立服务会保留仍在运行的原生终端订阅，命令完成后向原对话投递结果并唤醒。模型也可使用 `background_start` 立即启动后台任务。Claudex Web 默认关闭此扩展。Claude Code 使用自身的后台 Bash、任务输出和完成通知，两端共用网页的 `/stop` 入口。
 
-本文用于约束后续开发和功能合并。当前阶段记录拆分方向，独立仓库、包名、配置协议及宿主适配方案待实施时确定。
+## 启用
 
-## 已有原型与处理方向
+扩展适用于 Linux、Node.js 24.5 或更高版本，以及同机监听 WebSocket 的 Codex app-server。任务服务与 Codex 使用同一系统账户和工作区。命令以该账户执行，服务在启动任务前核对原生会话的完全访问权限。
 
-`feat/mcp-background-tasks` 分支保存了后台任务集成原型，包含四个 MCP 工具：`background_start`、`background_read`、`background_list` 和 `background_cancel`，以及任务守护进程、网页管理界面、完成结果投递和对话续跑逻辑。
+在网页的「设置 → 其他设置」勾选「为Codex开启后台终端功能」。首次开启会通过用户级 systemd 启动独立任务服务，默认状态目录位于网页配置目录的 `background-terminal` 下。新建对话或重新加载已卸载的对话后，工具连接中会显示四项工具。原生终端接手与此开关联动，关闭后新命令沿用 Codex 原有生命周期。已接手的原生终端和已提交的 MCP 任务继续运行，仍可通过 `/stop` 查看和停止。
 
-拆分时可参考该分支的 `server/src/background-mcp.mjs`、`background-protocol.mjs`、`background-daemon.mjs`、`background-jobs.mjs` 及对应测试。`background-client.mjs`、`background-rpc.mjs` 与 `background-wake.mjs` 中的网页配置、Codex 对话访问和续跑耦合需要重新划定边界。分支中的 `docs/background-tasks.md` 描述早期集成原型；后续方向以本计划为准。
+手动运行独立服务时，在 Claudex Web 源码根目录运行以下示例，地址应与目标 Codex app-server 一致。用户级 systemd 单元持有任务服务及命令的进程组，独立于网页和 MCP stdio 连接。
 
-该分支保留为拆分参考，后台任务 MCP 及其专用网页功能排除在 Claudex Web 的合并、安装和发行范围之外。原型中的实现与验证记录供迁移时核对，独立项目的可用性以迁移后的实际验证为依据。
-
-## 职责与依赖
-
-```text
-后端代理或其他兼容客户端 → MCP 接口 → 独立后台任务服务 → 命令进程与日志
-                                      ↓
-                                任务状态与完成通知
-                                      ↓
-                              宿主适配 → 结果投递或续跑
+```bash
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/codex-background-terminal"
+entry="$(realpath packages/background-terminal/cli.mjs)"
+upstream="ws://127.0.0.1:8765"
+systemd-run --user --unit=codex-background-terminal --collect \
+  --property=Restart=on-failure \
+  "$(command -v node)" "$entry" serve "$state_dir" "$upstream"
 ```
 
-- 独立项目提供任务启动、状态查询、日志读取和取消能力，持有进程、任务标识、持久化记录及资源清理责任。
-- MCP 接口按兼容客户端设计。客户端身份、任务归属和工作目录采用明确的输入或配置约定；Codex 专用元数据的解释放入宿主适配。
-- 完成通知与宿主相关的对话续跑分开设计。自动续跑所需的身份、权限、投递确认、去重和失败恢复由适配契约明确，并在独立项目中验证。
-- 安装包、服务生命周期、配置和数据目录由独立项目管理，支持使用者独立部署。路径、shell、后端地址和认证从配置或运行环境取得。
-- Claudex Web 保留现有网页交互终端、后端原生后台终端的 `/stop` 清理入口，以及通用 MCP 服务状态和工具结果展示；这些能力沿用现有行为契约。
+已有部署会沿用 `CLAUDEX_BACKGROUND_TASKS_DIR` 指定的任务服务，首次读取时开关自动开启，之后以网页保存的偏好为准。停止独立任务服务使用 `systemctl --user stop codex-background-terminal`，服务会结束仍在运行的命令。示例创建的 transient 单元适用于当前用户管理器的运行期。
 
-## 后续实施与验收
+独立使用时可从 `packages/background-terminal` 打包安装，安装后的命令为 `codex-background-terminal`。同一 app-server 的客户端也可通过 Codex 原生配置注册 stdio 入口。以下命令写入运行该 app-server 的 Codex 配置，工具按原生 MCP 调用元数据确定所属对话。
 
-1. 确定独立仓库与发布边界，审查原型依赖及 GPL-3.0-only 代码的许可证义务。
-2. 提取任务服务与 MCP 接口，将网页桥接依赖和宿主专用逻辑整理为明确的适配接口，编写独立安装与配置文档。
-3. 使用临时目录、模拟宿主和隔离任务，验证启动、成功、失败、超时、取消进程树、日志分页、重复调用、服务重启及状态恢复。
-4. 验证兼容客户端和多种独立配置；在未安装、未启动 Claudex Web 的环境中完成任务执行、查询、读取日志及取消。
-5. 对完成通知和可选续跑验证断线恢复、重复投递、响应丢失、宿主忙碌及任务归属隔离，再确定独立项目的交付范围。
+```bash
+codex mcp add claudex_background -- "$(command -v node)" "$entry" mcp "$state_dir"
+```
 
-独立仓库创建、代码迁移与原分支清理属于后续实施阶段，进度以对应仓库和实际验证记录为依据。
+## 任务与结果
+
+输入区左侧的终端图标显示当前对话正在运行的任务数，点击打开右上角的工作区概览。概览中的「后台终端」列表支持单独停止任务，点击任务在右侧查看终端收到的标准输出与标准错误。命令重定向到文件的内容保存在对应文件中。输出跟随任务刷新，任务结束后保留最后一段。Codex 任务面板显示最后 8 KiB，可从「完整日志」下载已保存的输出。Claude Code 的原生后台 Bash 使用相同入口。
+
+- `background_start(command, title, timeout_ms?)` 在当前对话的实际目录执行 shell 命令，返回任务 ID。相同会话的同一工具调用 ID 对应同一任务。
+- `background_list()` 列出当前对话的任务、执行状态与结果投递状态。
+- `background_read(job_id, offset?)` 读取任务状态、退出码及输出。省略字节偏移时取末尾，从零开始按 `nextOffset` 翻页可读取保留的日志。每页最多 32 KiB，每个任务最多保留 64 MiB；超过上限时记录 `logTruncated`。
+- `background_cancel(job_id)` 停止 MCP 任务的 Unix 进程组，或调用 Codex 原生终端停止接口，并抑制尚未提交的续跑。网页 `/stop` 可一并停止当前对话的原生终端及 MCP 任务。Claude Code 使用 SDK 的 `stopTask`。
+
+任务服务通过私有目录中的 Unix socket 接受本机同用户请求。目录权限为 0700，socket、任务状态和日志权限为 0600。每个状态目录绑定一个 Codex 后端地址。后台服务可在网页桥接关闭后继续工作。原生终端由 Codex app-server 持有，独立订阅用于防止正常会话卸载。任务服务重启后将遗留的运行记录标为中断。
+
+成功、非零退出及超时都产生终态。服务等待原对话空闲后恢复原生会话，用 `turn/start` 投递退出状态、输出文件与日志摘要，并持有订阅直到续跑轮次结束。同次请求用 `additionalContext` 提醒模型向用户汇报。对话按原生轮次顺序显示续跑和模型回复。续跑失败、中断或模型没有输出正文时，对话直接显示任务结果与输出入口。模型已读取的终态和已取消任务会退出待投递队列。提交响应丢失时进入 `uncertain`，服务按通知 ID 核对原对话历史；任务工具仍可主动读取结果。
+
+ZCode 的 Bash 结束后先入队并保存面向模型的任务通知，再由运行时执行对应会话。通知包含任务标识、状态、输出文件和摘要，由独立来源标记区分人工输入。Claudex Web 使用 Codex 原生轮次请求中的结构化工具结果和应用上下文分别承载任务事实与汇报要求。[ZCode 后台调度](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/runtime-command-queue.ts) · [ZCode 通知持久化](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/background-notifications.ts) · [Codex 原生提交](https://github.com/openai/codex/blob/rust-v0.170.0/codex-rs/app-server/src/request_processors/turn_processor.rs)

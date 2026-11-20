@@ -50,22 +50,27 @@
 .settings-group > * {
   padding: 16px 20px;
 }
-.modal-settings .notification-settings,
-.modal-settings .translation-settings {
+.modal-settings .settings-preferences > div {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px 12px;
+  padding: 0;
 }
-.modal-settings .notification-settings label,
-.modal-settings .translation-settings label {
+.modal-settings .settings-preferences label {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 22px;
+  min-height: var(--preference-row-height);
   margin: 0;
   font-size: 14px;
+  line-height: 20px;
+}
+.modal-settings .settings-preferences > div > .secondary {
+  min-height: var(--preference-row-height);
+  padding-block: 3px;
+  line-height: 20px;
 }
 .modal-settings .notification-settings .section-description {
   flex-basis: 100%;
@@ -344,19 +349,10 @@
 }
 
 .modal-settings .settings-preferences {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  --preference-row-height: 28px;
+  display: grid;
+  gap: 8px;
   padding: 16px 20px;
-}
-.modal-settings .settings-preferences > * {
-  padding: 0;
-  min-height: 0;
-  gap: 6px 12px;
-}
-.modal-settings .settings-preferences label {
-  min-height: 24px;
-  line-height: 20px;
 }
 .modal-settings .settings-preferences > * > .section-description,
 .modal-settings .settings-preferences > * > [role="status"],

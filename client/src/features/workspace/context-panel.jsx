@@ -1,6 +1,16 @@
+import { BackgroundTaskOutput } from "../background-tasks/background-task-output.jsx";
+import { BackgroundTaskList } from "../background-tasks/background-task-list.jsx";
+import { BackgroundTasks } from "../background-tasks/background-task-provider.jsx";
 import { GoalEditor } from "../commands/goal-editor.jsx";
 import { useSurfaceResize } from "../../ui/surface-resize.jsx";
-import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
+import React, {
+  lazy,
+  Suspense,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -34,6 +44,7 @@ const FilePanel = lazy(() =>
 
 export function ContextCard() {
   const s = useStore();
+  const backgroundTasks = useContext(BackgroundTasks);
   const agents = subAgents(s.items);
   return (
     <section className="context-card" aria-label="对话功能">
@@ -60,6 +71,15 @@ export function ContextCard() {
           <small>{s.terminalOpen ? "已打开" : "打开"}</small>
         </button>
       </nav>
+      <BackgroundTaskList
+        {...backgroundTasks}
+        onSelect={(task) =>
+          set({
+            panel: "background-task",
+            panelBackgroundTask: { ...task, threadId: s.current.id },
+          })
+        }
+      />
       {agents.length > 0 && (
         <div className="context-agents">
           <div className="context-section-heading">
@@ -321,6 +341,10 @@ export function ContextWorkspace() {
     panel: true,
     active: detailsOpen && Boolean(s.panel),
   });
+  const task =
+    s.panelBackgroundTask?.threadId === s.current?.id
+      ? s.panelBackgroundTask
+      : null;
   const agent = s.panelAgent?.parentId === s.current?.id ? s.panelAgent : null;
   useEffect(() => {
     if (s.panel === "files") keepFiles(true);
@@ -352,6 +376,14 @@ export function ContextWorkspace() {
               {s.panel !== "goal" && "返回概览"}
             </button>
             {s.panel === "goal" && <span>目标</span>}
+            {s.panel === "background-task" && task && (
+              <strong
+                className="background-task-panel-title"
+                title={task.title}
+              >
+                {task.title}
+              </strong>
+            )}
             <IconButton
               icon={X}
               title="收起对话详情"
@@ -372,6 +404,12 @@ export function ContextWorkspace() {
           </div>
         )}
         {s.panel === "goal" && s.current && <GoalEditor key={s.current.id} />}
+        {s.panel === "background-task" && task && detailsOpen && (
+          <BackgroundTaskOutput
+            key={task.threadId + "/" + task.id}
+            task={task}
+          />
+        )}
         {s.panel === "changes" && (
           <div className="context-panel">
             <ChangesPanel />

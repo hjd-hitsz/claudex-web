@@ -38,6 +38,12 @@ export function validateBackend(input, config) {
     ].includes(input.subagentEffort)
   )
     throw new Error("子代理思考强度无效");
+  if (
+    input.backgroundTerminalEnabled !== undefined &&
+    (input.type !== "codex" ||
+      typeof input.backgroundTerminalEnabled !== "boolean")
+  )
+    throw new Error("后台终端 MCP 开关仅接受 Codex 的布尔设置");
   const backend = {
     id: input.id,
     name: input.type === "codex" ? "Codex" : "Claude Code",
@@ -70,6 +76,8 @@ export function validateBackend(input, config) {
     )
       throw new Error("跨主机后端必须使用 WSS");
     backend.url = url.href;
+    backend.backgroundTerminalEnabled =
+      input.backgroundTerminalEnabled ?? Boolean(config.backgroundTaskDir);
     if (
       input.hiddenModels !== undefined &&
       (!Array.isArray(input.hiddenModels) ||

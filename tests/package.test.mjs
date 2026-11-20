@@ -157,6 +157,10 @@ test(
     for (const path of [
       "packages/translation-engine/src/index.mjs",
       "packages/translation-engine/bin/tokenizer-linux-x64",
+      "packages/background-terminal/cli.mjs",
+      "packages/background-terminal/service.mjs",
+      "packages/background-terminal/background-mcp.mjs",
+      "packages/background-terminal/LICENSE",
       "packages/translation-engine/README.md",
       "packages/translation-engine/LICENSE",
       "bin/claudex-web.mjs",

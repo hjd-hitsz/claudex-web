@@ -1,3 +1,4 @@
+import { terminalMethods } from "./background-terminals.mjs";
 import { MAX_RPC_MESSAGE_BYTES } from "../../rpc-transport.mjs";
 import { threadMethods, loadedThreadMethods } from "./methods.mjs";
 import { assertConversationOperation } from "../../bridge/conversation-policy.mjs";
@@ -13,7 +14,11 @@ export function createRequestHandler({
   subscriptions,
   releasing,
   resumeForWrite,
+  retainThread,
   releaseUnusedThreads,
+  backgroundCall,
+  waitForBackgroundHandoff,
+  includeBackground,
   offline,
   online,
   send,
@@ -88,6 +93,29 @@ export function createRequestHandler({
           ...message.params,
           config: { ...message.params?.config, thread_unload_delay_secs: 0 },
         };
+      if (
+        backgroundCall &&
+        terminalMethods.has(message.method) &&
+        includeBackground()
+      ) {
+        const release = retainThread(threadId);
+        try {
+          await resumeForWrite(threadId);
+          await waitForBackgroundHandoff(threadId);
+          send(client, {
+            id: message.id,
+            result: await backgroundCall(message.method, message.params),
+          });
+        } catch (error) {
+          send(client, {
+            id: message.id,
+            error: { code: -32000, message: error.message },
+          });
+        } finally {
+          release();
+        }
+        return;
+      }
       const id = transport.nextId();
       const forwarded = JSON.stringify({ ...message, id });
       if (Buffer.byteLength(forwarded) > MAX_RPC_MESSAGE_BYTES) {
@@ -146,7 +174,12 @@ export function createRequestHandler({
         compactions.start(threadId, id);
       if (threadId && loadedThreadMethods.has(message.method)) {
         try {
-          await resumeForWrite(threadId, { cwd: message.params?.cwd });
+          await resumeForWrite(
+            threadId,
+            message.method === "mcpServerStatus/list"
+              ? { inheritPermissions: true }
+              : { cwd: message.params?.cwd },
+          );
         } catch (error) {
           if (message.method === "thread/compact/start")
             compactions.reject(threadId, id, error.message);

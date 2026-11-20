@@ -3,12 +3,17 @@ export function createSubscriptions({
   compactions,
   activeTurns,
   activeThreads,
+  backgroundHandoffPending = () => false,
 }) {
   const subscriptions = new Map(),
     releasing = new Map(),
-    resuming = new Map();
+    resuming = new Map(),
+    retained = new Map();
   const unwrittenThreads = new Set();
-  async function resumeForWrite(threadId, { cwd } = {}) {
+  async function resumeForWrite(
+    threadId,
+    { cwd, inheritPermissions = false } = {},
+  ) {
     if (subscriptions.has(threadId)) return;
     if (!resuming.has(threadId)) {
       const resume = transport
@@ -16,8 +21,10 @@ export function createSubscriptions({
           threadId,
           ...(cwd && { cwd }),
           excludeTurns: true,
-          approvalPolicy: "never",
-          sandbox: "danger-full-access",
+          ...(!inheritPermissions && {
+            approvalPolicy: "never",
+            sandbox: "danger-full-access",
+          }),
           config: { thread_unload_delay_secs: 0 },
         })
         .then(({ thread }) => {
@@ -38,6 +45,8 @@ export function createSubscriptions({
         (unwrittenThreads.has(threadId) && owners.size) ||
         activeTurns.has(threadId) ||
         activeThreads.has(threadId) ||
+        backgroundHandoffPending(threadId) ||
+        retained.has(threadId) ||
         resuming.has(threadId) ||
         releasing.has(threadId) ||
         [...transport.pending.values()].some(
@@ -77,6 +86,18 @@ export function createSubscriptions({
     unwrittenThreads,
     resumeForWrite,
     releaseUnusedThreads,
+    retainThread(threadId) {
+      if (!retained.has(threadId)) retained.set(threadId, new Set());
+      const leases = retained.get(threadId);
+      const lease = Symbol();
+      leases.add(lease);
+      return () => {
+        leases.delete(lease);
+        if (!leases.size && retained.get(threadId) === leases)
+          retained.delete(threadId);
+        releaseUnusedThreads();
+      };
+    },
     releaseClient(client) {
       for (const owners of subscriptions.values()) owners.delete(client);
       releaseUnusedThreads();
@@ -85,6 +106,7 @@ export function createSubscriptions({
       subscriptions.clear();
       releasing.clear();
       resuming.clear();
+      retained.clear();
       unwrittenThreads.clear();
     },
   };

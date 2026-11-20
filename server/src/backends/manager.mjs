@@ -1,3 +1,4 @@
+import { createBackgroundService } from "./codex/background-service.mjs";
 import { createThreadFolders } from "../thread-folders.mjs";
 import { createTokenUsageStore } from "../token-usage.mjs";
 import { createTokenUsageReconciliation } from "../token-usage-reconciliation.mjs";
@@ -5,6 +6,7 @@ import { createCliInstallation } from "./cli-installation.mjs";
 import { join } from "node:path";
 import { readProjectlessDirectories } from "../thread-projects.mjs";
 import { createWorkspace } from "../workspace/service.mjs";
+import { isCodexPreference } from "../../../shared/codex-preferences.mjs";
 import { hasBackendWork } from "../../../shared/backend-activity.mjs";
 import {
   resourceTarget,
@@ -37,6 +39,7 @@ export function createBackendManager({
   const tokenUsage = createTokenUsageStore(config.configDir);
   const workspace = createWorkspace({ broadcast, configDir: config.configDir });
   const configuration = createBackendConfiguration(config);
+  const background = createBackgroundService(config);
   const providers = createProviders(configuration);
   const instances = new Map();
   const installationJobs = new Map();
@@ -60,6 +63,9 @@ export function createBackendManager({
   const publicBackends = () =>
     [...instances.values()].map(({ backend, adapter, error }) => ({
       ...backend,
+      ...(backend.type === "codex" && {
+        backgroundTerminalAvailable: background.available,
+      }),
       installation: {
         ...cli.state(backend.id),
         installing: installationJobs.has(backend.id),
@@ -122,6 +128,9 @@ export function createBackendManager({
       entry.adapter = factory({
         backend,
         config,
+        background,
+        backgroundEnabled: () =>
+          entry.backend.backgroundTerminalEnabled && background.available,
         version,
         providers,
         readSubagentSettings: () =>
@@ -297,20 +306,13 @@ export function createBackendManager({
     const next = validateBackend({ ...old?.backend, ...params }, config);
     await validateSubagentSettings(next, providers);
     if (
-      params.hiddenModels !== undefined &&
-      Object.keys(params).every((key) =>
-        ["id", "type", "hiddenModels"].includes(key),
-      )
-    ) {
-      if (params.id !== "codex") throw new Error("模型显示配置仅用于 Codex");
-      old.backend = await configuration.save({
-        ...old.backend,
-        hiddenModels: params.hiddenModels,
-      });
-      emitState();
-      return { backends: publicBackends() };
-    }
-    if (!prepare && isSubagentSettings(params)) {
+      params.backgroundTerminalEnabled === true &&
+      !old?.backend.backgroundTerminalEnabled
+    )
+      await background.ensure();
+    if (params.hiddenModels !== undefined && params.id !== "codex")
+      throw new Error("模型显示配置仅用于 Codex");
+    if (!prepare && (isCodexPreference(params) || isSubagentSettings(params))) {
       old.backend = await configuration.save(params);
       emitState();
       return { backends: publicBackends() };

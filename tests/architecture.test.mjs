@@ -61,7 +61,12 @@ test("架构检查识别文件膨胀、逆向依赖、跨端耦合和循环，�
     "client/src/features/local-engine.js",
     "import '@claudex-web/translation-engine';\n",
   );
+  await file(
+    "packages/background-terminal/coupled.mjs",
+    "import '../../server/src/a.mjs';\n",
+  );
   const { errors } = await inspectArchitecture(root);
+  assert(errors.some((error) => error.includes("后台终端扩展只能依赖")));
   assert(errors.some((error) => error.includes("翻译引擎只能依赖")));
   assert(errors.some((error) => error.includes("翻译引擎通过服务端公共入口")));
   assert(errors.some((error) => error.includes("超过 500 行")));

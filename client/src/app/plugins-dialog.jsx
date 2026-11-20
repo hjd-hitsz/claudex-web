@@ -127,7 +127,11 @@ export function PluginsDialog() {
                 <TerminalSquare size={20} />
               </div>
               <div>
-                <strong>{server.name}</strong>
+                <strong>
+                  {backendId === "codex" && server.name === "claudex_background"
+                    ? "后台终端 MCP"
+                    : server.name}
+                </strong>
                 <p>
                   {Object.keys(server.tools || {}).length} 项工具
                   {statusLabels[server.status] &&

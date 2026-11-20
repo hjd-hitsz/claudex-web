@@ -1,3 +1,4 @@
+import { backgroundCompletionJobs } from "../domain/background-results.js";
 import { newDraftKey } from "../infrastructure/backend-storage.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { backendEnabled } from "../domain/backend-visibility.js";
@@ -361,6 +362,56 @@ export function createThreadNavigation({
     });
     apply(loaded);
   }
+  async function refreshBackgroundResults(threadId, taskIds) {
+    if (get().current?.id !== threadId) return [];
+    const epoch = opening;
+    const history = historyRevision;
+    const connection = getConnectionRevision();
+    const current = () =>
+      epoch === opening &&
+      history === historyRevision &&
+      connection === getConnectionRevision() &&
+      get().connected &&
+      get().current?.id === threadId;
+    const state = get();
+    const timings = state.turnTimings[threadId] ?? {};
+    const statuses = new Map(
+      (state.turns[threadId] ?? []).map((turn) => [turn.id, turn.status]),
+    );
+    const present = new Set(
+      state.items
+        .filter((item) =>
+          ["completed", "failed", "interrupted"].includes(
+            timings[item.turnId]?.status ?? statuses.get(item.turnId),
+          ),
+        )
+        .flatMap(backgroundCompletionJobs),
+    );
+    const missing = new Set(taskIds.filter((id) => !present.has(id)));
+    if (!missing.size) return taskIds;
+    const page = await rpc("thread/turns/list", {
+      threadId,
+      itemsView: "full",
+      limit: 10,
+    });
+    if (!current()) return [];
+    const finishedTurns = page.data.filter(
+      (turn) =>
+        turn.status !== "inProgress" &&
+        (turn.items || []).some((item) =>
+          backgroundCompletionJobs(item).some((id) => missing.has(id)),
+        ),
+    );
+    if (finishedTurns.length) {
+      await loadHistory(epoch);
+      if (!current()) return [];
+      records.recordTurnTimings(threadId, finishedTurns);
+    }
+    const finished = finishedTurns.flatMap((turn) =>
+      (turn.items || []).flatMap(backgroundCompletionJobs),
+    );
+    return taskIds.filter((id) => present.has(id) || finished.includes(id));
+  }
   async function ensureThread() {
     if (get().current) return get().current;
     const epoch = opening;
@@ -406,6 +457,7 @@ export function createThreadNavigation({
     openThread,
     refreshThreadAccess,
     loadHistory,
+    refreshBackgroundResults,
     ensureThread,
     getAttachmentDraft,
     updateAttachmentDraft,

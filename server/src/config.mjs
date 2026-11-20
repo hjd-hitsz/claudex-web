@@ -4,6 +4,14 @@ import { fileURLToPath } from "node:url";
 
 import { productDirectories } from "./product-config.mjs";
 
+export function supportsBackgroundTerminal(upstream) {
+  const url = new URL(upstream);
+  return (
+    url.protocol === "ws:" &&
+    ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+  );
+}
+
 export function readConfig(env = process.env) {
   const port = Number(env.PORT || 8766);
   if (!Number.isInteger(port) || port < 0 || port > 65535)
@@ -22,6 +30,8 @@ export function readConfig(env = process.env) {
     !["127.0.0.1", "localhost", "[::1]"].includes(backend.hostname)
   )
     throw new Error("跨主机 CODEX_APP_SERVER_URL 必须使用 wss://");
+  if (env.CLAUDEX_BACKGROUND_TASKS_DIR && !supportsBackgroundTerminal(backend))
+    throw new Error("后台终端 MCP 需要同机回环 WebSocket 地址");
   if (!!env.TLS_CERT !== !!env.TLS_KEY)
     throw new Error("TLS_CERT 与 TLS_KEY 必须同时配置");
   const sessionDays = Number(env.AUTH_SESSION_DAYS || 30);
@@ -31,6 +41,9 @@ export function readConfig(env = process.env) {
   if (!/^[a-zA-Z0-9_-]+$/.test(pamService))
     throw new Error("AUTH_PAM_SERVICE 必须是 PAM 服务名称");
   return {
+    backgroundTaskDir: env.CLAUDEX_BACKGROUND_TASKS_DIR
+      ? resolve(env.CLAUDEX_BACKGROUND_TASKS_DIR)
+      : null,
     backendsFile: env.CLAUDEX_WEB_BACKENDS_FILE
       ? resolve(env.CLAUDEX_WEB_BACKENDS_FILE)
       : join(configDir, "backends.json"),

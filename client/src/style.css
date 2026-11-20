@@ -20,6 +20,7 @@
 @import "./styles/document-editor.css";
 @import "./styles/composer-focus.css";
 @import "./styles/context.css";
+@import "./styles/background-tasks.css";
 @import "./styles/files.css";
 @import "./styles/file-markdown.css";
 @import "./styles/diffs.css";
