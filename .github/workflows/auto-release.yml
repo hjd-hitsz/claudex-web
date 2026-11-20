@@ -1,0 +1,34 @@
+name: Automatic patch releases
+
+on:
+  schedule:
+    - cron: "16 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release-publish
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - name: Check latest release and main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW: ${{ github.event_name == 'workflow_dispatch' }}
+        run: node scripts/auto-release.mjs

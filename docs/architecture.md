@@ -303,6 +303,8 @@ Mermaid 的流程图主方向转换归 `domain/mermaid.js`，原始正文保持�
 
 npm 分发由独立的 `npm-publish.yml` 工作流监听即时及定时 GitHub 发布工作流的成功结果，以 OIDC 身份上传已公开的 Release 附件。`publish-npm.mjs` 持有附件下载、校验、临时安装、注册表完整性核对与同版本重试；发布时间继续由发布计划和 Release 草稿状态约束，稳定版与预发布分别进入 `latest` 与 `next`。
 
+每两天检查 patch 的 `auto-release.yml` 负责选定发布版本、归档 CHANGELOG、验证并原子推送主分支和附注标签。工作流按最新正式 Release 的标签确定基线，并从自动发布提交识别待恢复的批次。正式构建与公开继续由 `release.yml` 及 `npm-publish.yml` 执行。
+
 发行白名单包含 `client/dist`、`server/src`、`shared`、命令入口、运行脚本、许可证和构建信息。增加共享运行模块或动态分块时，验证实际打包清单、生产响应和临时全局安装。生产版本来源由 `server/src/version.mjs` 统一读取，网页在构建时固定，桥接在启动时固定；干净标签构建可交付稳定版本或 alpha、beta、rc 预发布版本；发布工具维护版本顺序和 GitHub 成熟度标记，预发布保留稳定下载入口及 Latest。流程见[版本管理](versioning.md)。
 
 ## 7. 可执行约束与验证

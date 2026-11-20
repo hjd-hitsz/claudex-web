@@ -70,7 +70,15 @@ git push origin main vX.Y.Z
 
 发布准备命令会拒绝倒退版本、新版本的重复标签或空的未发布内容。再次传入当前已准备的明确版本时，命令保留包版本、变更记录和已审阅的发布说明；当前版本尚未创建标签时，继续准备更高版本会报错并提示完成当前版本。`npm run version:check` 已纳入日常检查，校验三个包与锁文件；`npm run release:check` 额外校验干净标签、变更日志、发布说明与当前安装链接。发布流程接收稳定的 `vX.Y.Z` 和 `vX.Y.Z-alpha.N`、`vX.Y.Z-beta.N`、`vX.Y.Z-rc.N`，其中 N 为无前导零的非负整数。预发布必须传入完整版本号，例如 `npm run version:prepare -- 4.0.0-beta.1`；后续按 beta.2、beta.3、rc.1、正式 X.Y.Z 递增，每个版本独立检查、打包与交付。GitHub 预发布标记与版本同步，测试版使用 `--latest=false` 保留稳定版 Latest。README 与部署文档中的预发布下载区域独立更新，稳定版本入口保持可用；转正式版时更新对应入口。构建的 `channel: release` 表示干净标签构建，成熟度由包版本的预发布后缀与 GitHub Pre-release 属性表达。
 
-## 定时发布与正文同步
+## 每两天自动发布 patch
+
+`Automatic patch releases` 由 GitHub Actions 默认分支的计划任务触发，实际检查以 2026 年 11 月 22 日 04:16 UTC（北京时间 12:16）为起点，每两天一次。每次从 GitHub 取得最新公开的稳定版本和标签提交，对照远端 `main`。只有新增提交且 CHANGELOG 未发布段含条目时才准备 patch。手动发布的新稳定版在公开后立即成为基线，计划周期继续沿用原时间。GitHub 计划触发可能延迟或跳过，后续检查仍覆盖最新正式版以来的完整变更。 [GitHub Actions 计划触发说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+
+工作流沿用版本准备和检查命令，按 CHANGELOG 原文生成发布说明与提交链接，创建 `chore(release)` 提交并原子推送 `main` 和附注标签。使用工作流的 `GITHUB_TOKEN` 显式按标签调用 `Publish release`，沿用该工作流的构建、GitHub 附件校验和后续 npm 发布。准备后遇到远端更新时，由下一次检查重新取基线。标签已推送但发布未完成时，工作流识别带 `Claudex-Auto-Release` 标记的发布提交并继续同一版本。
+
+Actions 的 `Run workflow` 运行只读预览，显示当前基线和跳过原因或候选版本，并验证主分支的推送连接。自动发布由 `schedule` 触发。要求指定版本和发布时间时使用单版本定时发布。
+
+## 单版本定时发布与正文同步
 
 在推送版本标签前，将目标版本和含时区的 ISO 8601 时间写入 `.github/release-schedule.json`，并随发布准备提交推送到默认分支。例如：
 
