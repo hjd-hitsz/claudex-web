@@ -40,6 +40,7 @@ export function ReadOnlyConversation({ items, cwd, turns }) {
           (turn) => turn.id === group.turnId && turn.status === "inProgress",
         )}
         timing={turns.find((turn) => turn.id === group.turnId)}
+        status={turns.find((turn) => turn.id === group.turnId)?.status}
         annotations={annotations}
         readOnly
         cwd={cwd}
@@ -89,6 +90,9 @@ export function Conversation({ children, footer }) {
     s.items,
     s.turns[s.current?.id] || [],
     active,
+  );
+  const turnStatuses = new Map(
+    (s.turns[s.current?.id] || []).map((turn) => [turn.id, turn.status]),
   );
   const groups = conversationGroups(
     s.items.filter(
@@ -254,6 +258,8 @@ export function Conversation({ children, footer }) {
                         annotations={annotations}
                         working={!!active && active === group.turnId}
                         timing={s.turnTimings[s.current?.id]?.[group.turnId]}
+                        status={turnStatuses.get(group.turnId)}
+                        threadId={s.current?.id}
                       />
                     ) : group.type === "request" ? (
                       <Question request={group.request} />

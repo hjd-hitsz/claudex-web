@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 
 import { reasoningSummaries } from "../../domain/reasoning-summary.js";
+import { isBackgroundCompletion } from "../../domain/background-results.js";
+import { BackgroundCompletionReceipt } from "./background-completion-receipt.jsx";
 import { turnElapsedMs, formatElapsed } from "../../domain/turn-timing.js";
 import { ReasoningPart } from "./activity.jsx";
 import { userMessageText } from "../../domain/user-message.js";
@@ -37,12 +39,25 @@ export function ProcessDuration({ timing, working }) {
 export function ProcessGroup({
   group,
   working,
+  status,
+  threadId,
   timing,
   annotations,
   readOnly,
   cwd,
 }) {
   const [open, setOpen] = useState(false);
+  const background = group.items.some(isBackgroundCompletion);
+  const turnStatus = working ? "inProgress" : (timing?.status ?? status);
+  const label = background
+    ? {
+        interrupted: "后台终端续跑已中断",
+        failed: "后台终端续跑失败",
+        inProgress: "后台终端正在续跑",
+      }[turnStatus] || "后台终端续跑"
+    : working
+      ? "正在处理"
+      : "工作过程";
   const latest = group.items.findLast(
     (item) =>
       item.type !== "userMessage" &&
@@ -65,7 +80,7 @@ export function ProcessGroup({
           ) : (
             <ListChecks size={15} />
           )}
-          <span>{working ? "正在处理" : "工作过程"}</span>
+          <span>{label}</span>
           <ProcessDuration timing={timing} working={working} />
           <small>{group.items.length + group.questions.length} 项</small>
           <ChevronRight className="process-chevron" size={13} />
@@ -108,6 +123,15 @@ export function ProcessGroup({
           </div>
         )}
       </details>
+      {background &&
+        !group.hasReply &&
+        ["completed", "failed", "interrupted"].includes(turnStatus) && (
+          <BackgroundCompletionReceipt
+            items={group.items}
+            status={turnStatus}
+            threadId={threadId}
+          />
+        )}
       {working && !open && latest && (
         <div className="process-content process-preview">
           {summary ? (

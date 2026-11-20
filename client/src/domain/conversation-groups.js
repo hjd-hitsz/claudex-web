@@ -30,6 +30,7 @@ export function conversationGroups(items, requests = [], turns = []) {
   const groups = [];
   const processes = new Map();
   const userTurns = new Set();
+  const replyTurns = new Set();
   function processFor(item) {
     let process = processes.get(item.turnId);
     // 无轮次信息的历史活动仅合并相邻记录，避免跨任务聚合。
@@ -86,6 +87,7 @@ export function conversationGroups(items, requests = [], turns = []) {
       processFor(item).questions.push({ type: "message", id: item.id, item });
     } else if (item.type === "userMessage" || item.type === "plan" || answer) {
       groups.push({ type: "message", id: item.id, item });
+      if (answer) replyTurns.add(item.turnId);
       const supplemental =
         item.type === "userMessage" &&
         item.turnId &&
@@ -126,6 +128,11 @@ export function conversationGroups(items, requests = [], turns = []) {
     });
   }
   return groups.flatMap((group) =>
-    group.type === "process" ? [group, ...group.questions] : [group],
+    group.type === "process"
+      ? [
+          { ...group, hasReply: replyTurns.has(group.turnId) },
+          ...group.questions,
+        ]
+      : [group],
   );
 }

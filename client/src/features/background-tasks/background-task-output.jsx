@@ -68,20 +68,33 @@ export function BackgroundTaskOutput({ task }) {
         </div>
       </div>
       <div className="background-task-output-body">
-        <pre
-          ref={scroll}
-          tabIndex={0}
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            const bottom =
-              element.scrollHeight - element.clientHeight - element.scrollTop <=
-              8;
-            if (following && !bottom) setFrozen(result?.output || "");
-            setFollowing(bottom);
-          }}
-        >
-          {output || (result ? "暂无输出" : "")}
-        </pre>
+        {result && !output ? (
+          <div className="background-task-empty">
+            <p>
+              {status === "running"
+                ? "等待终端输出…"
+                : "命令未向终端写入内容。"}
+            </p>
+            <small>重定向到文件的内容会保存在对应文件中。</small>
+          </div>
+        ) : (
+          <pre
+            ref={scroll}
+            tabIndex={0}
+            onScroll={(event) => {
+              const element = event.currentTarget;
+              const bottom =
+                element.scrollHeight -
+                  element.clientHeight -
+                  element.scrollTop <=
+                8;
+              if (following && !bottom) setFrozen(result?.output || "");
+              setFollowing(bottom);
+            }}
+          >
+            {output}
+          </pre>
+        )}
         {!following && (
           <button
             type="button"

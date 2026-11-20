@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-export function useBackgroundPoll(enabled, period, refresh) {
+export function useBackgroundPoll(enabled, period, refresh, scope) {
   const latest = useRef(refresh);
   latest.current = refresh;
   useEffect(() => {
@@ -33,5 +33,5 @@ export function useBackgroundPoll(enabled, period, refresh) {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [enabled, period]);
+  }, [enabled, period, scope]);
 }

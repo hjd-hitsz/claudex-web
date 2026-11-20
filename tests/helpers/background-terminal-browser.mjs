@@ -1,19 +1,24 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export async function backgroundTerminalBrowser(url, cookie, output) {
+export async function backgroundTerminalBrowser(url, cookie, output, build) {
   const { chromium } = await import(
     pathToFileURL(process.env.PLAYWRIGHT_MODULE)
   );
-  const browser = await chromium.launch({
-    executablePath: process.env.CHROME_PATH,
-    args: ["--disable-gpu"],
-  });
+  const profile = await mkdtemp(join(tmpdir(), "claudex-background-browser-"));
+  let context;
+  async function cleanup() {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
   try {
     await mkdir(output, { recursive: true });
-    const context = await browser.newContext({
+    context = await chromium.launchPersistentContext(profile, {
+      executablePath: process.env.CHROME_PATH,
+      args: ["--disable-gpu"],
       ignoreHTTPSErrors: true,
       viewport: { width: 1280, height: 900 },
     });
@@ -22,9 +27,29 @@ export async function backgroundTerminalBrowser(url, cookie, output) {
       { name, value, url, secure: true, httpOnly: true },
     ]);
     const page = await context.newPage();
+    if (build)
+      await page.route(/\/(app\.js|style\.css)$/, (route) =>
+        route.fulfill({
+          path: join(build, new URL(route.request().url()).pathname.slice(1)),
+        }),
+      );
     page.setDefaultTimeout(15000);
     await page.goto(url);
     const button = (name) => page.getByRole("button", { name, exact: true });
+    const trigger = (count) => button(`后台终端，${count} 个运行中`);
+    const menu = page.locator(".context-card").getByRole("region", {
+      name: "后台终端",
+      exact: true,
+    });
+    const task = (title) =>
+      menu.getByRole("button", { name: new RegExp("^" + title) });
+    const outputPanel = page.getByRole("region", { name: "后台终端输出" });
+    function waitForSidebarClosed() {
+      return page.waitForFunction(() => {
+        const sidebar = document.querySelector(".sidebar");
+        return !sidebar || sidebar.getBoundingClientRect().right < 1;
+      });
+    }
     const toggle = page.getByRole("checkbox", {
       name: "为Codex开启后台终端功能",
       exact: true,
@@ -149,29 +174,67 @@ export async function backgroundTerminalBrowser(url, cookie, output) {
             });
           });
         await close();
-        const trigger = page.getByRole("button", {
-          name: "后台终端，1 个运行中",
-          exact: true,
-        });
-        await trigger.click();
-        const menu = page.getByRole("region", {
-          name: "后台终端",
-          exact: true,
-        });
+        assert.equal(
+          await trigger(1).locator("..").getAttribute("class"),
+          "composer-tools",
+        );
+        await button("展开对话详情").click();
         await menu
           .getByRole("button", { name: "停止 项目架构检查与测试", exact: true })
           .waitFor();
+        await trigger(1).click();
+        await menu.waitFor({ state: "hidden" });
+        await trigger(1).focus();
+        await page.keyboard.press("Enter");
+        await menu.waitFor();
         await page.screenshot({ path: join(output, "task-menu.png") });
         await page.setViewportSize({ width: 390, height: 780 });
+        await waitForSidebarClosed();
+        await button("显示侧栏").click();
+        await button("收起侧栏").click();
+        await waitForSidebarClosed();
         const menuBounds = await menu.boundingBox();
         assert.ok(menuBounds.x >= 0 && menuBounds.x + menuBounds.width <= 390);
-        await page.screenshot({ path: join(output, "task-menu-mobile.png") });
+        await task("项目架构检查与测试").click({ trial: true });
+        await page.screenshot({
+          path: join(output, "task-menu-mobile.png"),
+          animations: "disabled",
+        });
+        await page.emulateMedia({ colorScheme: "dark" });
+        await page.screenshot({
+          path: join(output, "task-menu-mobile-dark.png"),
+          animations: "disabled",
+        });
+        await page.emulateMedia({ colorScheme: "light" });
         await page.setViewportSize({ width: 1280, height: 900 });
-        await menu
-          .getByRole("button", { name: /项目架构检查与测试/ })
-          .first()
-          .click();
-        const outputPanel = page.getByRole("region", { name: "后台终端输出" });
+        const settings = await context.newPage();
+        await settings.goto("chrome://settings/appearance");
+        const zoom = settings.locator("#zoomLevel");
+        const layouts = [];
+        for (const scale of [0.8, 1, 1.25, 1.5, 2, 1]) {
+          await zoom.selectOption(String(scale));
+          await page.bringToFront();
+          await page.reload();
+          await trigger(1).click();
+          const viewport = await page.evaluate(() => ({
+            dpr: devicePixelRatio,
+            width: innerWidth,
+          }));
+          const bounds = await menu.boundingBox();
+          assert.ok(Math.abs(viewport.dpr - scale) < 0.02);
+          assert.ok(Math.abs(viewport.width - 1280 / scale) <= 1);
+          assert.ok(
+            bounds.x >= 0 && bounds.x + bounds.width <= viewport.width + 1,
+          );
+          await task("项目架构检查与测试").click({ trial: true });
+          layouts.push({ viewport, bounds });
+        }
+        await settings.close();
+        await writeFile(
+          join(output, "task-layouts.json"),
+          JSON.stringify(layouts, null, 2),
+        );
+        await task("项目架构检查与测试").click();
         await outputPanel
           .getByText(/架构检查通过.*Warning: 回归验证标准错误输出/s)
           .waitFor();
@@ -189,15 +252,79 @@ export async function backgroundTerminalBrowser(url, cookie, output) {
         await page.screenshot({ path: join(output, "tasks.png") });
         await close();
       },
-      async inspectCompletion() {
+      async inspectSilentTask() {
+        await trigger(2).click();
+        await task("输出写入文件").click();
+        await outputPanel.getByText("等待终端输出…", { exact: true }).waitFor();
+        await outputPanel
+          .getByText("重定向到文件的内容会保存在对应文件中。", { exact: true })
+          .waitFor();
+        await page.screenshot({ path: join(output, "task-output-empty.png") });
+        await button("返回概览").click();
+        await button("停止 输出写入文件").click();
+        await trigger(1).waitFor();
+        await task("输出写入文件").waitFor({ state: "hidden" });
+        await task("项目架构检查与测试").click();
+      },
+      async inspectCompletion({ emptyReply, before }) {
         const panel = page.getByRole("region", { name: "后台终端输出" });
         await panel.getByText("已完成", { exact: true }).waitFor();
         await panel
           .getByText(/架构检查通过.*Warning: 回归验证标准错误输出.*# pass 2/s)
           .waitFor();
-        await page
-          .getByText("已收到后台结果并继续处理。", { exact: true })
-          .waitFor();
+        const wake = page.getByText("后台终端续跑", { exact: true });
+        await wake.waitFor();
+        const receipt = page.getByRole("region", { name: "后台任务结果" });
+        if (!emptyReply) {
+          const reply = page.getByText("已收到后台结果并继续处理。", {
+            exact: true,
+          });
+          await reply.waitFor();
+          assert.ok(
+            await wake.evaluate(
+              (element, answer) =>
+                Boolean(
+                  element.compareDocumentPosition(answer) &
+                  Node.DOCUMENT_POSITION_FOLLOWING,
+                ),
+              await reply.elementHandle(),
+            ),
+          );
+          assert.equal(await receipt.count(), 0);
+        } else if (before) {
+          assert.equal(await receipt.count(), 0);
+          await button("收起对话详情").click();
+          await wake.click();
+          const result = page.getByText("工具结果 · background_completed", {
+            exact: true,
+          });
+          await result.click();
+          await page.screenshot({ path: join(output, "empty-reply.png") });
+          return;
+        } else {
+          await receipt
+            .getByText("模型本轮未生成回复正文。", {
+              exact: true,
+            })
+            .waitFor();
+          await page.reload();
+          await receipt
+            .getByText("已完成 · 退出码 0", { exact: true })
+            .waitFor();
+          await page.locator(".composer .ProseMirror").waitFor();
+          await page.screenshot({ path: join(output, "empty-reply.png") });
+          await page.setViewportSize({ width: 390, height: 780 });
+          await waitForSidebarClosed();
+          await page.emulateMedia({ colorScheme: "dark" });
+          await page.screenshot({
+            path: join(output, "empty-reply-mobile-dark.png"),
+            animations: "disabled",
+          });
+          await page.emulateMedia({ colorScheme: "light" });
+          await page.setViewportSize({ width: 1280, height: 900 });
+          await receipt.getByRole("button", { name: "查看输出" }).click();
+          await panel.getByText(/# pass 2/).waitFor();
+        }
         await page
           .getByRole("button", { name: "后台终端，1 个运行中", exact: true })
           .waitFor({ state: "hidden" });
@@ -208,10 +335,10 @@ export async function backgroundTerminalBrowser(url, cookie, output) {
         await saved.saveAs(join(output, "actual-task.log"));
         await page.screenshot({ path: join(output, "task-completed.png") });
       },
-      close: () => browser.close(),
+      close: cleanup,
     };
   } catch (error) {
-    await browser.close();
+    await cleanup();
     throw error;
   }
 }

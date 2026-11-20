@@ -73,10 +73,9 @@ export async function connectCodex(url, { event, disconnected } = {}) {
   }
 }
 
-// Short operations release their own subscription when the last request settles.
-export async function withCodex(url, operation) {
+export async function withCodex(url, operation, lifecycle) {
   const deadline = Date.now() + 30000;
-  const connection = await connectCodex(url);
+  const connection = await connectCodex(url, lifecycle);
   try {
     return await operation((method, params) => {
       const remaining = deadline - Date.now();

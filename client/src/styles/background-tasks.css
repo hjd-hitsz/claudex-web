@@ -1,65 +1,46 @@
-.background-task-trigger {
-  position: relative;
-  flex: none;
-}
-
-.background-task-count {
+.composer-tools .background-task-count {
   display: inline-flex;
   width: auto;
+  flex: none;
   gap: 4px;
-  padding-inline: 7px;
+  padding-inline: 0.461538rem;
   font-variant-numeric: tabular-nums;
 }
 
-.background-task-popover {
-  position: absolute;
-  z-index: 12;
-  right: 0;
-  bottom: calc(100% + 8px);
-  width: min(300px, calc(100vw - 42px));
-  padding: 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
+.context-background-tasks {
+  border-top: 1px solid var(--border);
+  margin-top: 0.461538rem;
+  padding-top: 0.230769rem;
 }
 
-.background-task-popover header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 7px 6px;
-}
-
-.background-task-popover small {
-  color: var(--muted);
-  font-size: 0.85em;
-}
-
-.background-task-popover ul {
+.context-background-tasks ul {
   list-style: none;
   margin: 0;
   padding: 0;
   overflow-y: auto;
-  max-height: min(260px, 38vh);
+  scrollbar-width: thin;
+  max-height: min(20rem, 38vh);
 }
 
-.background-task-popover li {
+.context-background-tasks li {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 0.230769rem;
+}
+
+.context-background-tasks .icon-button {
+  flex: none;
 }
 
 .background-task-select {
   display: flex;
   min-width: 0;
   flex: 1;
-  gap: 8px;
+  gap: 0.615385rem;
   align-items: center;
   border: 0;
   border-radius: 7px;
-  padding: 6px 7px;
+  padding: 0.3077rem 0.4615rem;
   background: transparent;
   text-align: start;
   justify-content: flex-start;
@@ -74,7 +55,7 @@
   color: var(--muted);
 }
 
-.background-task-select span {
+.background-task-select > span {
   display: grid;
   min-width: 0;
 }
@@ -84,6 +65,42 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.background-completion-receipt {
+  padding: 0.461538rem 0.769231rem;
+  margin-block-start: 0.307692rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--subtle);
+}
+
+.background-completion-receipt p,
+.background-completion-receipt ul {
+  margin: 0;
+  padding: 0;
+}
+
+.background-completion-receipt li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.153846rem 0.615385rem;
+}
+
+.background-completion-receipt li > span {
+  color: var(--fg);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.background-completion-receipt button {
+  padding: 0.230769rem;
+  color: var(--link);
+}
+
+.background-completion-receipt button:hover {
+  text-decoration: underline;
 }
 
 .background-task-panel-title {
@@ -131,7 +148,8 @@
   position: relative;
 }
 
-.background-task-output pre {
+.background-task-output pre,
+.background-task-empty {
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -141,7 +159,18 @@
   overflow-wrap: anywhere;
   background: var(--subtle);
   border-radius: 8px;
+}
+
+.background-task-output pre {
   font: var(--code-font-size) / var(--code-line-height) var(--mono);
+}
+
+.background-task-empty {
+  color: var(--muted);
+}
+
+.background-task-empty p {
+  margin: 0 0 0.307692rem;
 }
 
 .background-task-follow {
@@ -152,11 +181,4 @@
   background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: 50%;
-}
-
-@media (max-width: 600px) {
-  .background-task-popover {
-    right: -58px;
-    width: min(300px, calc(100vw - 40px));
-  }
 }

@@ -23,6 +23,14 @@ import { taskRequest } from "../../packages/background-terminal/client.mjs";
 // 真实 Codex app-server 与本地 Responses 服务验证 MCP、卸载和自动续跑。
 // 所有会话、任务及模型请求均留在临时目录和本机回环地址。
 const root = fileURLToPath(new URL("../../", import.meta.url));
+const emptyReply = process.env.BACKGROUND_EMPTY_REPLY === "1";
+const before = process.env.BACKGROUND_BEFORE === "1";
+const output = join(
+  root,
+  ".cache",
+  emptyReply ? "background-empty-reply" : "background-codex",
+  ...(before ? ["before"] : []),
+);
 const directory = await mkdtemp(join(tmpdir(), "codex-web-real-background-"));
 const codexHome = join(directory, "codex-home");
 const workspace = join(directory, "workspace");
@@ -48,12 +56,29 @@ const calls = [],
 let phase = "seed",
   jobRequests = 0;
 const nativeRequests = new Map();
+const wakeRequests = [];
 const inference = http.createServer(async (request, response) => {
   try {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks));
     calls.push({ phase, inputTypes: body.input?.map((item) => item.type) });
+    if (body.input.some((item) => item.name === "background_completed")) {
+      const notice = body.input.find(
+        (item) => item.name === "background_completed",
+      );
+      for (const result of JSON.parse(notice.output).results)
+        assert.match(result.output_file, /\/output-[a-f0-9-]+\.log$/);
+      const requestedUpdate = body.input.some(
+        (item) =>
+          item.role === "developer" &&
+          JSON.stringify(item.content).includes(
+            "send a brief, non-empty final update",
+          ),
+      );
+      assert.ok(requestedUpdate, "续跑指令必须到达模型");
+      wakeRequests.push(requestedUpdate);
+    }
     const nativeMode =
       /native-terminal-fixture-(enabled|disabled|cancelled)/.exec(
         JSON.stringify(body.input),
@@ -176,7 +201,9 @@ const inference = http.createServer(async (request, response) => {
                 ? "历史对话已建立。"
                 : jobRequests === 2
                   ? "后台任务已启动，当前轮次结束。"
-                  : "已收到后台结果并继续处理。",
+                  : emptyReply
+                    ? ""
+                    : "已收到后台结果并继续处理。",
           },
         ],
       };
@@ -503,7 +530,8 @@ try {
     ui = await backgroundTerminalBrowser(
       url,
       auth.cookie,
-      join(root, ".cache/background-codex"),
+      output,
+      before ? join(root, ".cache/background-empty-before") : null,
     );
   else assert.equal((await preference(true)).backgroundTerminalEnabled, true);
   assert.equal(
@@ -559,6 +587,20 @@ try {
   );
   if (ui) {
     await ui.inspectTask(running.jobs[0].command);
+    if (liveBrowser) {
+      const redirected = join(workspace, "redirected.log");
+      await taskRequest(state, "tool", {
+        threadId: thread.id,
+        callId: "redirected-output-fixture",
+        name: "background_start",
+        args: {
+          command: "printf '写到文件\\n' > redirected.log && sleep 120",
+          title: "输出写入文件",
+        },
+      });
+      await ui.inspectSilentTask();
+      assert.equal(await readFile(redirected, "utf8"), "写到文件\n");
+    }
     if (!liveBrowser) {
       await ui.close();
       ui = null;
@@ -652,6 +694,11 @@ try {
     const exit = once(bridge, "exit");
     bridge.kill("SIGTERM");
     await exit;
+    await until(async () => {
+      const { data } = await direct.rpc("thread/loaded/list", { limit: 100 });
+      return !data.includes(thread.id);
+    }, "独立任务运行期间原对话已从 app-server 卸载");
+    assert.equal((await list()).jobs[0].status, "running");
   }
   process.kill(enabledNative.pid, 0);
   await writeFile(join(workspace, "release-fixture"), "done");
@@ -666,25 +713,34 @@ try {
   );
   const delivered = await until(async () => {
     const snapshot = await list();
-    return snapshot.jobs[0].delivery === "accepted" && snapshot;
+    return (
+      snapshot.jobs.find((job) => job.id === running.jobs[0].id)?.delivery ===
+        "accepted" && snapshot
+    );
   }, "页面关闭后自动提交后台完成结果");
-  await until(async () => {
+  const wakeTurn = await until(async () => {
     const page = await direct.rpc("thread/turns/list", {
       threadId: thread.id,
       limit: 100,
       itemsView: "full",
     });
-    return page.data.some(
+    return page.data.find(
       (turn) =>
         turn.status === "completed" &&
         turn.items?.some(
           (item) =>
-            item.type === "agentMessage" &&
-            item.text.includes("已收到后台结果"),
+            item.type === "functionCallOutput" &&
+            item.name === "background_completed",
         ),
     );
   }, "自动续跑轮次完成");
-  if (liveBrowser) await ui.inspectCompletion();
+  const replies = wakeTurn.items.filter((item) => item.type === "agentMessage");
+  assert.ok(!wakeTurn.items.some((item) => item.type === "userMessage"));
+  assert.deepEqual(
+    replies.map((item) => item.text),
+    [emptyReply ? "" : "已收到后台结果并继续处理。"],
+  );
+  if (liveBrowser) await ui.inspectCompletion({ emptyReply, before });
   const files = await readdir(state);
   const batches = await Promise.all(
     files
@@ -699,11 +755,15 @@ try {
     "真实 Codex 历史必须支持完成结果回执核对",
   );
   await delay(1200);
-  assert.equal(jobRequests, 3, "启动工具、结束本轮与自动续跑共三次模型请求");
+  assert.equal(
+    jobRequests,
+    3,
+    "启动工具、结束本轮与自动续跑共三次模型请求\n" + diagnostics,
+  );
   assert.equal(nativeRequests.get("enabled"), 3);
   assert.equal(nativeRequests.get("disabled"), 2);
   assert.equal(nativeRequests.get("cancelled"), 2);
-  const output = join(root, ".cache/background-codex");
+  assert.deepEqual(wakeRequests, [true, true]);
   await mkdir(output, { recursive: true });
   await writeFile(
     join(output, "evidence.json"),
@@ -712,6 +772,9 @@ try {
         version,
         inference: "本机 Responses 模拟服务，未调用远程模型",
         jobRequests,
+        threadUnloadedBeforeCompletion: !liveBrowser,
+        wakeTurnStatus: wakeTurn.status,
+        replyLength: replies[0].text.length,
         nativeRequests: Object.fromEntries(nativeRequests),
         jobs: delivered.jobs.map(({ status, delivery, exitCode }) => ({
           status,

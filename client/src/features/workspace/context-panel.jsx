@@ -1,7 +1,16 @@
 import { BackgroundTaskOutput } from "../background-tasks/background-task-output.jsx";
+import { BackgroundTaskList } from "../background-tasks/background-task-list.jsx";
+import { BackgroundTasks } from "../background-tasks/background-task-provider.jsx";
 import { GoalEditor } from "../commands/goal-editor.jsx";
 import { useSurfaceResize } from "../../ui/surface-resize.jsx";
-import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
+import React, {
+  lazy,
+  Suspense,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -35,6 +44,7 @@ const FilePanel = lazy(() =>
 
 export function ContextCard() {
   const s = useStore();
+  const backgroundTasks = useContext(BackgroundTasks);
   const agents = subAgents(s.items);
   return (
     <section className="context-card" aria-label="对话功能">
@@ -61,6 +71,15 @@ export function ContextCard() {
           <small>{s.terminalOpen ? "已打开" : "打开"}</small>
         </button>
       </nav>
+      <BackgroundTaskList
+        {...backgroundTasks}
+        onSelect={(task) =>
+          set({
+            panel: "background-task",
+            panelBackgroundTask: { ...task, threadId: s.current.id },
+          })
+        }
+      />
       {agents.length > 0 && (
         <div className="context-agents">
           <div className="context-section-heading">

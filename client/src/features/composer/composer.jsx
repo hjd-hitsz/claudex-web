@@ -1,9 +1,15 @@
-import { BackgroundTaskMenu } from "../background-tasks/background-task-menu.jsx";
 import { GoalSummary } from "./goal-summary.jsx";
 import { ModelSelect } from "./model-select.jsx";
 import { InputQueue } from "./input-queue.jsx";
 import { backendReady, backendCapability } from "../../domain/backends.js";
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { BackgroundTasks } from "../background-tasks/background-task-provider.jsx";
 
 import {
   ArrowUp,
@@ -19,6 +25,7 @@ import {
   RefreshCw,
   Maximize2,
   Minimize2,
+  TerminalSquare,
 } from "lucide-react";
 import {
   useStore,
@@ -44,6 +51,7 @@ import { MarkdownEditor } from "./markdown-editor.jsx";
 import { AttachmentPreview } from "./attachment-preview.jsx";
 import { ComposerSurface } from "./composer-surface.jsx";
 export function Composer() {
+  const backgroundTaskCount = useContext(BackgroundTasks).tasks.length;
   const [preview, setPreview] = useState(null);
   const [enlarged, setEnlarged] = useState(false);
   const s = useStore(),
@@ -284,12 +292,31 @@ export function Composer() {
                   })
                 }
               />
+              {backgroundTaskCount > 0 && (
+                <button
+                  type="button"
+                  className={
+                    "icon-button background-task-count" +
+                    (s.contextOpen && !s.panel ? " active" : "")
+                  }
+                  aria-label={`后台终端，${backgroundTaskCount} 个运行中`}
+                  title="后台终端"
+                  aria-expanded={s.contextOpen && !s.panel}
+                  aria-controls="conversation-context"
+                  onClick={() => {
+                    setEnlarged(false);
+                    set({
+                      panel: null,
+                      contextOpen: !s.contextOpen || Boolean(s.panel),
+                    });
+                  }}
+                >
+                  <TerminalSquare size={16} />
+                  <span>{backgroundTaskCount}</span>
+                </button>
+              )}
             </div>
             <div className="send-controls">
-              <BackgroundTaskMenu
-                key={s.current?.id}
-                onOpenOutput={() => setEnlarged(false)}
-              />
               <IconButton
                 icon={enlarged ? Minimize2 : Maximize2}
                 title={enlarged ? "收起输入框" : "展开输入框"}

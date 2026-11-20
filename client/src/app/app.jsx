@@ -13,6 +13,7 @@ import {
 import { Conversation } from "../features/conversation/conversation.jsx";
 import { Composer } from "../features/composer/composer.jsx";
 import { ContextWorkspace } from "../features/workspace/context-panel.jsx";
+import { BackgroundTaskProvider } from "../features/background-tasks/background-task-provider.jsx";
 import { Sidebar } from "./sidebar.jsx";
 import { Header } from "./header.jsx";
 import { Modal } from "./modal.jsx";
@@ -23,6 +24,14 @@ const TerminalPanel = lazy(() =>
 );
 
 export function App() {
+  return (
+    <BackgroundTaskProvider>
+      <AppShell />
+    </BackgroundTaskProvider>
+  );
+}
+
+function AppShell() {
   useEffect(() => startTranslationSettings(), []);
   const s = useStore();
   const readingId =
