@@ -18,7 +18,9 @@ import { authenticationFixture, httpsFetch } from "../helpers/auth.mjs";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output = join(root, ".cache/p2p-auth-browser");
 const directory = await mkdtemp(join(tmpdir(), "claudex-p2p-browser-"));
-const { chromium } = await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE));
+const { chromium, devices } = await import(
+  pathToFileURL(process.env.PLAYWRIGHT_MODULE)
+);
 const { tls, cookie, pamtester } = await authenticationFixture(directory);
 let signalingPort;
 const ingress = createServer(tls, (incoming, outgoing) => {
@@ -105,6 +107,9 @@ try {
   )
     await wait(30, undefined, { signal: deadline });
   const { created } = await manage("create", { label: "浏览器回归" });
+  const { created: otherLink } = await manage("create", {
+    label: "单独授权",
+  });
   const note = join(directory, "p2p-auth-fixture.txt");
   await writeFile(note, "登录后才能读取");
   const publicKey = new X509Certificate(tls.cert).publicKey.export({
@@ -114,22 +119,30 @@ try {
   const certificatePin = createHash("sha256")
     .update(publicKey)
     .digest("base64");
-  context = await chromium.launchPersistentContext(join(directory, "profile"), {
-    executablePath: process.env.CHROME_PATH,
-    viewport: { width: 1280, height: 900 },
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--no-proxy-server",
-      "--disable-gpu",
-      "--ignore-certificate-errors-spki-list=" + certificatePin,
-    ],
-  });
-  const page = await context.newPage();
   const publicRequests = [];
-  page.on("request", (item) =>
-    publicRequests.push(new URL(item.url()).pathname),
-  );
+  async function openBrowser(options) {
+    const browser = await chromium.launchPersistentContext(
+      join(directory, "profile"),
+      {
+        executablePath: process.env.CHROME_PATH,
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--no-proxy-server",
+          "--disable-gpu",
+          "--ignore-certificate-errors-spki-list=" + certificatePin,
+        ],
+        ...options,
+      },
+    );
+    browser.on("request", (item) => {
+      if (new URL(item.url()).origin === origin)
+        publicRequests.push({ method: item.method(), url: item.url() });
+    });
+    return browser;
+  }
+  context = await openBrowser({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
   const login = page.getByRole("heading", { name: "登录远程工作空间" });
   const username = page.getByLabel("用户名", { exact: true });
   const password = page.getByLabel("密码", { exact: true });
@@ -141,11 +154,15 @@ try {
   await login.waitFor();
   assert.equal(await composer.count(), 0);
   assert.equal(
+    await page.locator("#login-form").getAttribute("method"),
+    "post",
+  );
+  assert.equal(
     await username.evaluate((el) => el === document.activeElement),
     true,
   );
-  const readNote = () =>
-    page.evaluate(async (path) => {
+  const readNote = (target = page) =>
+    target.evaluate(async (path) => {
       const response = await fetch(
         "/api/files?" + new URLSearchParams({ path }),
       );
@@ -167,12 +184,30 @@ try {
   await submit.click();
   await composer.waitFor();
   assert.deepEqual(await readNote(), { status: 200, body: "登录后才能读取" });
+  await page.evaluate((link) => {
+    const key = Object.keys(localStorage).find((key) =>
+      key.startsWith("cx-p2p-login:"),
+    );
+    const { token } = JSON.parse(localStorage.getItem(key));
+    sessionStorage.setItem("cx-p2p-login", JSON.stringify({ link, token }));
+    localStorage.removeItem(key);
+  }, new URL(created.url).hash.slice(1));
   await page.reload();
   await composer.waitFor();
+  assert.equal(
+    await page.evaluate(() => sessionStorage.getItem("cx-p2p-login")),
+    null,
+  );
   const otherTab = await context.newPage();
-  await otherTab.goto(created.url);
+  await otherTab.goto(otherLink.url);
   await otherTab.getByRole("heading", { name: "登录远程工作空间" }).waitFor();
-  await otherTab.close();
+  assert.deepEqual(await readNote(otherTab), { status: 401, body: "" });
+  await otherTab.goto(created.url);
+  await otherTab.locator(".composer .ProseMirror").waitFor({ timeout: 15000 });
+  assert.deepEqual(await readNote(otherTab), {
+    status: 200,
+    body: "登录后才能读取",
+  });
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByText("连接与登录", { exact: true }).click();
   await page
@@ -180,6 +215,8 @@ try {
     .waitFor();
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
   await login.waitFor();
+  await otherTab.getByRole("heading", { name: "登录远程工作空间" }).waitFor();
+  await otherTab.close();
   assert.deepEqual(await readNote(), { status: 401, body: "" });
   await page.reload();
   await login.waitFor();
@@ -187,18 +224,36 @@ try {
   await password.fill("fixture-password");
   await submit.click();
   await composer.waitFor();
+  await context.close();
+  context = await openBrowser(devices["Pixel 7"]);
+  const reopened = await context.newPage();
+  await reopened.goto(created.url);
+  await reopened.locator(".composer .ProseMirror").waitFor();
+  assert.deepEqual(await readNote(reopened), {
+    status: 200,
+    body: "登录后才能读取",
+  });
+  await reopened.screenshot({ path: join(output, "mobile-reopened.png") });
   await manage("revoke", { id: created.id });
-  await page
+  await reopened
     .getByRole("alert")
     .filter({ hasText: "链接已失效或已被撤销" })
     .waitFor();
-  assert.equal(await composer.count(), 0);
+  assert.equal(await reopened.locator(".composer .ProseMirror").count(), 0);
   assert.equal(
-    publicRequests.some((path) => path.startsWith("/api/auth/")),
+    publicRequests.some(({ method, url }) => {
+      const { pathname } = new URL(url);
+      return (
+        pathname.startsWith("/api/auth/") ||
+        (method === "POST" && pathname !== "/p2p/offer")
+      );
+    }),
     false,
   );
   assert.deepEqual(await context.cookies(origin), []);
-  console.log("P2P 浏览器登录、文件权限、刷新、新标签页、退出和撤销通过。");
+  console.log(
+    "P2P 登录、文件权限、刷新、跨标签页恢复与退出、浏览器重开、链接隔离和撤销通过。",
+  );
 } finally {
   await context?.close();
   await app.close();

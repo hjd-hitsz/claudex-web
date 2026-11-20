@@ -54,29 +54,76 @@ export function forgetP2pToken() {
   }
   try {
     sessionStorage.removeItem(storageKey);
-    sessionStorage.removeItem(loginKey);
   } catch {
     // 浏览器禁用会话存储时，凭据只存在于原链接。
   }
 }
 
-export function readP2pLogin(link) {
+function readLogin(storage, key) {
   try {
-    const login = JSON.parse(sessionStorage.getItem(loginKey));
-    if (login?.link === link && tokenFormat.test(login.token))
-      return login.token;
+    const login = JSON.parse(globalThis[storage].getItem(key));
+    if (
+      login &&
+      typeof login.token === "string" &&
+      tokenFormat.test(login.token)
+    )
+      return login;
   } catch {
-    // 会话存储不可用时，可在当前页面登录。
+    // 站点数据可能已损坏或被浏览器禁用。
   }
-  return "";
 }
 
-export function saveP2pLogin(link, token) {
+function removeLogin(storage, key) {
   try {
-    if (token)
-      sessionStorage.setItem(loginKey, JSON.stringify({ link, token }));
-    else sessionStorage.removeItem(loginKey);
+    globalThis[storage].removeItem(key);
   } catch {
-    // 当前页面在内存中保留会话凭据。
+    // 浏览器可能限制站点存储。
   }
+}
+
+export async function openP2pLoginStorage(link) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(link),
+  );
+  const key =
+    loginKey + ":" + btoa(String.fromCharCode(...new Uint8Array(digest)));
+  const tabLogin = () => {
+    const login = readLogin("sessionStorage", loginKey);
+    if (login?.link === link) return login;
+  };
+  const storedLogin = () => readLogin("localStorage", key);
+  const clearTab = (token) => {
+    const login = tabLogin();
+    if (login && (!token || login.token === token))
+      removeLogin("sessionStorage", loginKey);
+  };
+  return {
+    read() {
+      const login = storedLogin();
+      if (login?.expiresAt > Date.now()) return login.token;
+      if (login) removeLogin("localStorage", key);
+      return tabLogin()?.token || "";
+    },
+    save(token, expiresAt, restoring = false) {
+      try {
+        if (!restoring || !(storedLogin()?.expiresAt > Date.now()))
+          localStorage.setItem(key, JSON.stringify({ token, expiresAt }));
+      } catch {
+        try {
+          sessionStorage.setItem(loginKey, JSON.stringify({ link, token }));
+        } catch {
+          // 浏览器禁用存储时，会话凭据随当前页面保留在内存中。
+        }
+        return;
+      }
+      clearTab();
+    },
+    clear(token) {
+      const login = storedLogin();
+      if (login && (!token || login.token === token))
+        removeLogin("localStorage", key);
+      clearTab(token);
+    },
+  };
 }

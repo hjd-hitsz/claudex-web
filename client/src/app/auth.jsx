@@ -142,8 +142,8 @@ export function AuthenticationGate({ children }) {
           <>
             <form
               id="login-form"
-              action={p2p ? undefined : "/api/auth/login"}
-              method={p2p ? "dialog" : "post"}
+              action={p2p ? "/p2p" : "/api/auth/login"}
+              method="post"
               autoComplete="on"
               onSubmit={submit}
             >

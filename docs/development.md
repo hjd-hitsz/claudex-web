@@ -261,7 +261,7 @@ Mermaid 回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/
 
 构建完成后，使用同样的环境变量运行 `node tests/browser/p2p-settings.mjs`。回归在隔离浏览器和模拟授权服务中检查「连接与登录」的启停、状态读取失败重试、生成失败后的名称保留、剪贴板、撤销确认与刷新恢复。使用实际 80%～200% 页面缩放检查深浅主题与窄屏的操作边界和侧栏焦点，截图和测量结果保存在 `.cache/p2p-settings-browser`。
 
-`server/tests/p2p-*.test.mjs` 覆盖回环命令行、授权持久化、真实 WebRTC 协商与撤销、登录前后的 RPC 与文件权限、跨链接会话隔离，以及文件 Range 和流式读取。构建后用与登录回归相同的浏览器环境变量运行 `node tests/browser/p2p-auth.mjs`，在隔离配置目录和模拟 OpenTunnel 上使用真实 WebRTC，检查登录表单、错误密码、刷新、新标签页、退出和撤销，并验收深浅主题、窄屏及 80%～200% 页面缩放。截图保存在 `.cache/p2p-auth-browser`。公共入口可用性需另行实测。
+`server/tests/p2p-*.test.mjs` 覆盖回环命令行、授权持久化、真实 WebRTC 协商与撤销、登录前后的 RPC 与文件权限、跨链接会话隔离，以及文件 Range 和流式读取。构建后用与登录回归相同的浏览器环境变量运行 `node tests/browser/p2p-auth.mjs`，在隔离配置目录和模拟 OpenTunnel 上使用真实 WebRTC，检查登录表单、错误密码、刷新、跨标签页恢复与退出、浏览器重开、链接隔离和撤销，并验收深浅主题、窄屏及 80%～200% 页面缩放。截图保存在 `.cache/p2p-auth-browser`。公共入口可用性需另行实测。
 
 Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER 到 PEM 转换、系统安装命令及 Chrome / Chromium 和 Firefox 导入说明，保存桌面深浅主题、手机与 80% 至 200% 缩放截图。
 
