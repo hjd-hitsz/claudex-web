@@ -19,11 +19,20 @@ const markdown = [
   "",
   "行内 HTML <strong>保留强调</strong>。",
   "",
+  "## 编辑检查",
+  "",
+  "### 正文和任务",
+  "",
+  "> 预览中的正文可直接编辑。",
+  "",
+  "- 阅读文档",
+  "- 核对格式",
+  "",
   "- [ ] 检查任务",
   "",
-  "| 名称 | 状态 |",
-  "| --- | --- |",
-  "| 预览 | 待编辑 |",
+  "| 名称 | 状态 | 平台 | 主题 | 视口 | 缩放 | 环境 | 浏览器 |",
+  "| --- | --- | --- | --- | --- | --- | --- | --- |",
+  "| 预览 | 待编辑 | 桌面 | 明暗 | 窄屏 | 默认 | 测试 | Chromium |",
   "",
   "$x^2$",
   "",
@@ -201,10 +210,15 @@ try {
   } else {
     const editor = page.locator(".file-markdown-preview .ProseMirror");
     const save = page.getByRole("button", { name: "保存文件", exact: true });
-    const sourceText = async () =>
-      (await page.locator(".code-editor .cm-line").allTextContents()).join(
-        "\n",
-      );
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+      origin: new URL(page.url()).origin,
+    });
+    const sourceText = async () => {
+      await page.locator(".code-editor .cm-content").focus();
+      await page.keyboard.press("Control+a");
+      await page.keyboard.press("Control+c");
+      return page.evaluate(() => navigator.clipboard.readText());
+    };
     assert.equal(await save.isDisabled(), true);
     assert.equal(await editor.getAttribute("contenteditable"), "true");
     await editor.locator("h1").filter({ hasText: "可编辑文件预览" }).waitFor();
@@ -367,10 +381,27 @@ try {
             const rect = document
               .querySelector('[aria-label="保存文件"]')
               .getBoundingClientRect();
+            const preview = document.querySelector(".file-markdown-preview");
+            const editor = preview.querySelector(".milkdown > .ProseMirror");
+            const style = (selector) =>
+              getComputedStyle(editor.querySelector(selector));
+            const table = editor.querySelector(":scope > table");
+            const tableOverflows = table.scrollWidth > table.clientWidth;
+            table.scrollLeft = table.scrollWidth;
+            const tableScrolls = table.scrollLeft > 0;
+            table.scrollLeft = 0;
             return {
               dpr: devicePixelRatio,
               width: innerWidth,
               overflow: document.documentElement.scrollWidth > innerWidth,
+              previewOverflow: preview.scrollWidth > preview.clientWidth,
+              tableOverflows,
+              tableScrolls,
+              tableHeadingLines:
+                table.querySelector("th p").getBoundingClientRect().height /
+                parseFloat(style("th p").lineHeight),
+              chapterGap: parseFloat(style("h2").marginBlockStart),
+              listGap: parseFloat(style("li + li").marginBlockStart),
               saveVisible:
                 rect.left >= 0 &&
                 rect.right <= innerWidth &&
@@ -380,6 +411,12 @@ try {
           });
           assert(Math.abs(result.dpr - zoom) < 0.02);
           assert.equal(result.overflow, false);
+          assert.equal(result.previewOverflow, false);
+          assert.equal(result.tableScrolls, result.tableOverflows);
+          if (width === 390 && zoom === 2) assert(result.tableScrolls);
+          assert(result.tableHeadingLines < 1.05);
+          assert(result.chapterGap >= 20);
+          assert(result.listGap > 0 && result.listGap < result.chapterGap);
           assert.equal(result.saveVisible, true);
           assert.match(await editor.innerText(), /失败后保留/);
           metrics.push({ theme, viewport: width, zoom, ...result });

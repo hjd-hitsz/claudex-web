@@ -420,6 +420,29 @@ try {
           layout.quota.bottom <= layout.height,
         name + " 圆环在视口内",
       );
+    if (name.startsWith("desktop-")) {
+      const documentLayout = await evaluate(`(() => {
+        const editor = document.querySelector(".file-markdown-preview .milkdown > .ProseMirror");
+        const rect = (selector) => editor.querySelector(selector).getBoundingClientRect();
+        const copy = rect(".code-heading button");
+        const edit = rect(".file-document-code > div:first-child button");
+        return {
+          titleGap: rect(":scope > p").top - rect("h1").bottom,
+          chapterGap: rect("h2").top - rect(":scope > p").bottom,
+          headingGap: rect("h2 + p").top - rect("h2").bottom,
+          codeGap: rect(".code-block").top - rect("h2 + p").bottom,
+          editAligned: Math.abs(edit.top - copy.top) < 1 && edit.right <= copy.left,
+          messageMarkdown: !!document.querySelector(".message-column .markdown .code-block"),
+        };
+      })()`);
+      assert(documentLayout.titleGap >= 8, name + " 文档标题与正文分开");
+      assert(documentLayout.chapterGap >= 20, name + " 章节之间保留留白");
+      assert(documentLayout.headingGap >= 8, name + " 章节标题与正文分开");
+      assert(documentLayout.codeGap >= 8, name + " 正文与代码块分开");
+      assert(documentLayout.editAligned, name + " 代码编辑及复制按钮同行");
+      assert(documentLayout.messageMarkdown, name + " 聊天正文正常展示代码块");
+      layout.document = documentLayout;
+    }
     evidence.push({ name, ...layout });
     await page("Input.dispatchMouseEvent", { type: "mouseMoved", x: 0, y: 0 });
     await pause(250);
@@ -469,8 +492,9 @@ try {
     "Web",
   );
   await click(".file-change-source");
-  await waitFor('document.querySelector(".file-markdown-preview")');
-  await pause(300);
+  await waitFor(
+    'document.querySelector(".file-markdown-preview .code-heading")',
+  );
   await inspect("desktop-light", true);
   await inspectDetails("desktop-usage-expanded");
   await page("Emulation.setEmulatedMedia", {

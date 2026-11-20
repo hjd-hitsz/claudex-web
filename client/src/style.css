@@ -21,6 +21,7 @@
 @import "./styles/composer-focus.css";
 @import "./styles/context.css";
 @import "./styles/files.css";
+@import "./styles/file-markdown.css";
 @import "./styles/diffs.css";
 @import "./styles/terminal.css";
 @import "./styles/dialogs.css";
