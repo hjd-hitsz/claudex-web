@@ -34,6 +34,11 @@ async function main() {
   service stop               停止网页服务
   service restart            重启网页服务
   service restart-when-idle   等待任务与上下文整理结束后重启网页服务
+  p2p status                 查看 P2P 接入状态（默认关闭）
+  p2p enable | disable      开启或暂停 P2P 接入
+  p2p create [名称]          生成长期授权链接
+  p2p list                   查看授权链接及其 ID
+  p2p revoke <ID>            撤销授权链接并断开相应连接
   --version                  显示版本与开发构建标识
   version --json             显示完整版本、提交和构建信息
 
@@ -51,6 +56,7 @@ async function main() {
     return;
   }
   if (
+    args[0] !== "p2p" &&
     ![
       "start",
       "backend",
@@ -86,6 +92,11 @@ async function main() {
     loadEnvFile(join(configDir, ".env"));
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
+  }
+  if (args[0] === "p2p") {
+    const { runP2pCommand } = await import("./p2p.mjs");
+    await runP2pCommand(args.slice(1));
+    return;
   }
   switch (command) {
     case "config init":

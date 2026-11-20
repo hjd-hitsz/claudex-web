@@ -9,6 +9,7 @@ Claudex Web 是连接一个 Codex app-server 和一个 Claude Code 运行时的�
 ```mermaid
 flowchart LR
   Browser[浏览器：交互与草稿] <-->|HTTPS / WSS| Web[网页桥接]
+  Browser <-->|可选 WebRTC 直连| Web
   Web --> Host[主机服务：文件、网页终端、配置]
   Web <-->|JSON-RPC| Codex[Codex app-server]
   Web <-->|本机 IPC| Worker[Claude 独立执行服务]
@@ -37,7 +38,7 @@ flowchart LR
 
 请求链为“界面 → 应用用例 → RPC → 桥接 → 所属后端”，通知与历史读取共同更新界面。请求确认、轮次结束和进程退出分别结算。异步结果按资源标识、请求修订和连接代次隔离，实时事件优先于迟到读取；断线保留草稿和可读历史，恢复后核对原生状态。每个异步操作明确取消、清理、失败呈现和恢复依据。
 
-浏览器使用同源 HTTPS/WSS。HTTP 业务请求与 WebSocket 连接校验身份和来源，退出或过期撤销所属连接与传输；凭据留在受保护的 Cookie 或服务器文件中。
+局域网浏览器使用同源 HTTPS/WSS，业务请求校验身份和来源，退出或过期撤销所属连接与传输。可选 P2P 使用独立的链接授权和 HTTPS 信令，经 WebRTC 直连接入同一业务桥接。协议和生命周期见[传输与维护契约](architecture/behavior.md#传输与维护契约)。
 
 ## 构建与验证
 

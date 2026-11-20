@@ -453,15 +453,14 @@ try {
     await page.getByLabel("消息", { exact: true }).waitFor();
     await page.getByRole("button", { name: "文件", exact: true }).click();
     await page.getByRole("button", { name: "README.md", exact: true }).click();
-    await page.locator(".file-markdown-preview").waitFor();
+    const preview = page
+      .locator(".file-markdown-preview")
+      .filter({ hasText: "证书" });
+    await preview.waitFor();
     await page.waitForFunction(() =>
       [...document.querySelectorAll(".file-markdown-preview img")]
         .filter((image) => image.offsetHeight > 0)
         .every((image) => image.complete && image.naturalWidth > 0),
-    );
-    assert.match(
-      await page.locator(".file-markdown-preview").innerText(),
-      /证书/,
     );
     await screenshot("readme-light");
     await page.emulateMedia({ colorScheme: "dark" });

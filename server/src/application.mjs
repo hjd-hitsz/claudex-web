@@ -4,8 +4,15 @@ import { createTranslationService } from "./translation-service.mjs";
 import https from "node:https";
 import { WebSocketServer } from "ws";
 import { createHttpHandler } from "./http/router.mjs";
+import { createBusinessHttpHandler } from "./http/business.mjs";
 import { createBackendManager } from "./backends/manager.mjs";
 import { sendRpcText } from "./rpc-transport.mjs";
+import {
+  createP2pService,
+  createP2pManagementHandler,
+} from "./p2p/service.mjs";
+import { createPeerClient } from "./p2p-peer.mjs";
+
 export function createWebApplication({ config, tls, authentication, version }) {
   let requestsInFlight = 0;
   const maintenance = createServiceMaintenance({
@@ -19,13 +26,17 @@ export function createWebApplication({ config, tls, authentication, version }) {
   const translation = createTranslationService(config);
   const clients = new WebSocketServer({ noServer: true });
   const monitors = new WebSocketServer({ noServer: true });
+  const peers = new Set();
   function send(client, message) {
     if (client.authSessionId && !authentication.valid(client.authSessionId))
       return;
-    sendRpcText(client, JSON.stringify(message));
+    const text = JSON.stringify(message);
+    if (peers.has(client)) client.send(text);
+    else sendRpcText(client, text);
   }
   function broadcast(message) {
     for (const client of clients.clients) send(client, message);
+    for (const peer of peers) send(peer, message);
     if (
       [
         "lan/state",
@@ -39,12 +50,27 @@ export function createWebApplication({ config, tls, authentication, version }) {
   }
   const bridge = createBackendManager({ config, version, send, broadcast });
   const { state, maintenanceState, releaseUnusedThreads } = bridge;
+  const handleBusiness = createBusinessHttpHandler({
+    translation,
+    maintenance,
+  });
+  const p2p = createP2pService({
+    configDirectory: config.configDir,
+    assetsDirectory: config.staticDir,
+    connectPeer(channel) {
+      const peer = createPeerClient(channel, handleBusiness);
+      peers.add(peer);
+      peer.once("close", () => peers.delete(peer));
+      connectClient(peer);
+      return peer.detach;
+    },
+  });
   const server = https.createServer(
     tls,
     createHttpHandler({
       config,
-      translation,
-      maintenance,
+      handleBusiness,
+      handleP2p: createP2pManagementHandler(p2p),
       tls,
       authentication,
       version,
@@ -84,6 +110,10 @@ export function createWebApplication({ config, tls, authentication, version }) {
     client.on("error", (error) =>
       console.error("Browser connection:", error.message),
     );
+    connectClient(client);
+  });
+
+  function connectClient(client) {
     client.on("close", () => {
       bridge.releaseClient(client);
       releaseUnusedThreads();
@@ -91,13 +121,16 @@ export function createWebApplication({ config, tls, authentication, version }) {
     send(client, state());
 
     client.on("message", (bytes) => {
-      if (!authentication.valid(client.authSessionId)) return;
+      if (!peers.has(client) && !authentication.valid(client.authSessionId))
+        return;
       let message;
       try {
         message = JSON.parse(bytes.toString());
       } catch {
         return;
       }
+      if (!message || typeof message !== "object" || Array.isArray(message))
+        return;
       if (maintenance.switching) {
         send(client, {
           id: message.id,
@@ -121,7 +154,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
           }),
         );
     });
-  });
+  }
   const heartbeat = setInterval(() => {
     for (const client of clients.clients) {
       if (!client.alive) client.terminate();
@@ -141,6 +174,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
     async start() {
       maintenance.initialize();
       await translation.initialize();
+      await p2p.start();
       await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(config.port, config.host, () => {
@@ -153,6 +187,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
     async close() {
       clearInterval(heartbeat);
       maintenance.close();
+      await p2p.close();
       await translation.close();
       await bridge.close();
       for (const client of [...clients.clients, ...monitors.clients])

@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import { ArrowDown, LoaderCircle } from "lucide-react";
 import { rpc, useStore } from "../../store.js";
 import { useBackgroundPoll } from "./use-background-poll.js";
+import { workspaceDownloadProps } from "../../infrastructure/workspace-files.js";
 
 const statuses = {
   succeeded: "已完成",
@@ -57,10 +58,10 @@ export function BackgroundTaskOutput({ task }) {
           {result?.exitCode != null && <span>退出码 {result.exitCode}</span>}
           {result?.logPath && (
             <a
-              href={
-                "/api/files?" + new URLSearchParams({ path: result.logPath })
-              }
-              download="background-terminal.log"
+              {...workspaceDownloadProps(
+                result.logPath,
+                "background-terminal.log",
+              )}
             >
               完整日志
             </a>

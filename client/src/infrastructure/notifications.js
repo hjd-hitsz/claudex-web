@@ -1,5 +1,6 @@
 import { saved, persist } from "./storage.js";
 import { claimCompletion } from "./notification-claims.js";
+import { isP2pPage } from "./p2p-access.js";
 
 export const notificationPreference = "cx-completion-notifications";
 
@@ -19,7 +20,7 @@ export function createBrowserNotifications() {
   }
   async function worker() {
     const registration = await navigator.serviceWorker.register(
-      "/notification-worker.js",
+      isP2pPage() ? "/p2p-sw.js" : "/notification-worker.js",
     );
     if (registration.active) return registration.active;
     return new Promise((resolve, reject) => {

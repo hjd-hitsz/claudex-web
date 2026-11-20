@@ -164,9 +164,11 @@ test(
       "packages/translation-engine/README.md",
       "packages/translation-engine/LICENSE",
       "bin/claudex-web.mjs",
+      "bin/p2p.mjs",
       "client/dist/index.html",
       "client/dist/app.js",
       "client/dist/notification-worker.js",
+      "client/dist/p2p-sw.js",
       "client/dist/file-panel.js",
       "client/dist/terminal-panel.js",
       "client/dist/mermaid.core.js",
@@ -182,9 +184,11 @@ test(
       "server/src/bridge/conversation-policy.mjs",
       "shared/backend-activity.mjs",
       "server/src/http/router.mjs",
+      "server/src/p2p/service.mjs",
       "shared/file-types.mjs",
       "shared/compaction-state.mjs",
       "shared/rpc-limits.mjs",
+      "shared/p2p-wire.mjs",
       "CHANGELOG.md",
       ".env.example",
     ])
@@ -336,6 +340,7 @@ test(
       (path) =>
         path === "client/dist/mermaid.core.js" ||
         path === "client/dist/notification-worker.js" ||
+        path === "client/dist/p2p-sw.js" ||
         path === "client/dist/document-editor.js" ||
         /^client\/dist\/(flowDiagram|sequenceDiagram)-.*\.js$/.test(path),
     )) {

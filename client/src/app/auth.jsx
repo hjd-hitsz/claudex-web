@@ -11,9 +11,11 @@ import {
 } from "../store.js";
 import claudexWebIcon from "../assets/claudex-web.svg";
 import { CertificateHelp } from "./certificate-help.jsx";
+import { isP2pPage, p2pDownloadFrame } from "../infrastructure/p2p-access.js";
 
 export function AuthenticationGate({ children }) {
   const { auth, authError, theme } = useStore();
+  const p2p = isP2pPage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => startNotifications(), []);
@@ -28,14 +30,20 @@ export function AuthenticationGate({ children }) {
     const interval = setInterval(refresh, 60000);
     document.addEventListener("visibilitychange", refresh);
     window.addEventListener("pageshow", refresh);
+    if (p2p) {
+      window.addEventListener("hashchange", refresh);
+      window.addEventListener("online", refresh);
+    }
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("pageshow", refresh);
+      window.removeEventListener("hashchange", refresh);
+      window.removeEventListener("online", refresh);
     };
-  }, []);
+  }, [p2p]);
   useEffect(() => {
-    if (!auth?.authenticated) return;
+    if (!auth?.authenticated || !Number.isFinite(auth.expiresAt)) return;
     let timer;
     const expire = () => {
       const remaining = auth.expiresAt - Date.now();
@@ -48,7 +56,42 @@ export function AuthenticationGate({ children }) {
     expire();
     return () => clearTimeout(timer);
   }, [auth]);
-  if (auth?.authenticated) return children;
+  if (auth?.authenticated)
+    return p2p ? (
+      <>
+        {children}
+        <iframe name={p2pDownloadFrame} title="P2P 文件下载" hidden />
+      </>
+    ) : (
+      children
+    );
+  if (p2p) {
+    return (
+      <main className="login-page">
+        <section className="login-card" aria-labelledby="p2p-join-title">
+          <div className="login-brand">
+            <img src={claudexWebIcon} width="40" height="40" alt="" />
+            <span>Claudex Web</span>
+          </div>
+          <h1 id="p2p-join-title">
+            {authError ? "P2P 远程连接" : "正在与电脑建立 P2P 直连"}
+          </h1>
+          {authError ? (
+            <>
+              <p role="alert" className="inline-error">
+                {authError}
+              </p>
+              <button className="primary" onClick={checkSession}>
+                重试连接
+              </button>
+            </>
+          ) : (
+            <LoaderCircle className="spin" aria-label="正在连接" />
+          )}
+        </section>
+      </main>
+    );
+  }
   const waiting = auth === null;
   async function submit(event) {
     event.preventDefault();
@@ -155,9 +198,10 @@ export function AuthenticationGate({ children }) {
 export function LogoutButton() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const p2p = get().auth?.kind === "p2p";
   return (
     <div className="login-settings">
-      <p>已登录：{get().auth?.username}</p>
+      <p>{p2p ? "已通过 P2P 直连" : `已登录：${get().auth?.username}`}</p>
       <button
         className="secondary"
         disabled={busy}
@@ -174,14 +218,14 @@ export function LogoutButton() {
         }}
       >
         <LogOut size={16} />
-        {busy ? "正在退出…" : "退出登录"}
+        {busy ? "正在退出…" : p2p ? "断开连接" : "退出登录"}
       </button>
       {error && (
         <p role="alert" className="inline-error">
           {error}
         </p>
       )}
-      <CertificateHelp />
+      {!p2p && <CertificateHelp />}
     </div>
   );
 }

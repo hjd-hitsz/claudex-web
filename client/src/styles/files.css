@@ -172,7 +172,8 @@
 .file-preview audio {
   width: 100%;
 }
-.file-preview object {
+.file-preview object,
+.file-preview iframe {
   flex: 1;
   width: 100%;
   min-height: 12rem;

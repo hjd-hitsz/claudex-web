@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { File } from "lucide-react";
+import { isP2pPage, p2pFrameUrl } from "../../infrastructure/p2p-access.js";
 
 export function FilePreview({ path, kind }) {
   const media = useRef();
@@ -48,15 +49,24 @@ export function FilePreview({ path, kind }) {
           preload="metadata"
         />
       ) : kind === "pdf" ? (
-        <object
-          key={attempt}
-          data={url}
-          type="application/pdf"
-          aria-label={name}
-          onError={props.onError}
-        >
-          <p>可下载 PDF 后查看。</p>
-        </object>
+        isP2pPage() ? (
+          <iframe
+            key={attempt}
+            src={p2pFrameUrl(url)}
+            title={name}
+            onError={props.onError}
+          />
+        ) : (
+          <object
+            key={attempt}
+            data={url}
+            type="application/pdf"
+            aria-label={name}
+            onError={props.onError}
+          >
+            <p>可下载 PDF 后查看。</p>
+          </object>
+        )
       ) : (
         <div className="file-download-info">
           <File size={32} strokeWidth={1.3} />

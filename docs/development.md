@@ -259,6 +259,10 @@ Mermaid 回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/
 
 浏览器回归使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/auth.mjs`，在生产构建和临时模拟后端上实际填写登录表单，检查刷新、跨标签页退出、草稿恢复、过期、证书下载、设备安装指引、关于页隐藏开发标记、深浅主题及手机布局。截图及构建信息保存在 `.cache/auth-browser`。
 
+构建完成后，使用同样的环境变量运行 `node tests/browser/p2p-settings.mjs`。回归在隔离浏览器和模拟授权服务中检查「连接与登录」的启停、状态读取失败重试、生成失败后的名称保留、剪贴板、撤销确认与刷新恢复。使用实际 80%～200% 页面缩放检查深浅主题与窄屏的操作边界和侧栏焦点，截图和测量结果保存在 `.cache/p2p-settings-browser`。
+
+`server/tests/p2p-*.test.mjs` 覆盖回环命令行、授权持久化、真实 WebRTC 协商与撤销，以及 RPC 分帧、文件 Range 和流式读取。测试使用独立配置目录和模拟 OpenTunnel，公共入口可用性需另行实测。
+
 Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER 到 PEM 转换、系统安装命令及 Chrome / Chromium 和 Firefox 导入说明，保存桌面深浅主题、手机与 80% 至 200% 缩放截图。
 
 ### Markdown 富文本输入回归

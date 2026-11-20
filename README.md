@@ -49,6 +49,8 @@ claudex-web service install
 
 浏览器打开 `https://部署电脑的IP:8766`，使用该电脑上运行服务的系统用户名和密码登录。首次访问的证书配置见[证书安装指引](docs/deployment.md#证书配置)。
 
+跨网络使用时，可在“设置 → 连接与登录”开启默认关闭的 P2P 远程访问，生成长期浏览器连接链接。网页与命令行用法见 [P2P 远程访问](docs/deployment.md#p2p-远程访问)。
+
 需要开机启动并在退出系统登录后继续运行时，执行 `loginctl enable-linger "$USER"`。
 
 ## 配置 Codex

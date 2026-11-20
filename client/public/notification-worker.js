@@ -38,7 +38,8 @@ self.addEventListener("notificationclick", (event) => {
           notificationThread: threadId,
           notificationUser: username,
         });
-        await self.clients.openWindow("/#" + params);
+        const page = self.location?.pathname === "/p2p-sw.js" ? "/p2p" : "/";
+        await self.clients.openWindow(page + "#" + params);
       }
     })(),
   );

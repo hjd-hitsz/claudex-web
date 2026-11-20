@@ -1,5 +1,14 @@
+import { isP2pPage, p2pDownloadFrame, p2pFrameUrl } from "./p2p-access.js";
+
 // Claude Code's native read_file control caps complete files at 10,000,000 bytes.
 const nativeReadBytes = 10_000_000;
+
+export function workspaceDownloadProps(path, filename) {
+  const href = "/api/files?" + new URLSearchParams({ path, download: "1" });
+  return isP2pPage()
+    ? { href: p2pFrameUrl(href), target: p2pDownloadFrame }
+    : { href, download: filename };
+}
 
 export async function readWorkspaceFile({
   path,

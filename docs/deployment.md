@@ -61,7 +61,7 @@ sudo apt-get install pamtester openssl
 openssl x509 -in "${CLAUDEX_WEB_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/claudex-web}/tls/certificate.pem" -noout -fingerprint -sha256
 ```
 
-登录页和“设置 → 网页登录”中的“浏览器证书安装”提供证书下载与 Ubuntu、Windows、macOS、iPhone/iPad、Android 安装步骤。先向管理员核对证书，再下载并安装到用于访问的设备上。安装后重新打开浏览器，确认地址栏的证书警告消失，再输入登录密码。
+登录页和“设置 → 连接与登录”中的“浏览器证书安装”提供证书下载与 Ubuntu、Windows、macOS、iPhone/iPad、Android 安装步骤。先向管理员核对证书，再下载并安装到用于访问的设备上。安装后重新打开浏览器，确认地址栏的证书警告消失，再输入登录密码。
 
 Ubuntu 上，在文件管理器中打开证书下载目录，右键选择“在终端打开”。将下载的 DER 格式证书转换为 PEM 格式并安装到系统信任库，按提示输入本机管理员密码：
 
@@ -103,6 +103,25 @@ AUTH_SESSION_DAYS=30
 - `claudex-web service restart-when-idle`：等待当前任务和上下文整理结束后重启网页，打开的网页终端保持独立。
 
 前台运行时，在两个终端分别执行 `claudex-web backend` 和 `claudex-web`，并保持终端打开。已有可连接的后端时，直接运行 `claudex-web`。
+
+## P2P 远程访问
+
+P2P 默认关闭。通过局域网登录后，在“设置 → 连接与登录”开启「P2P 远程访问」。公网入口就绪后，可生成、复制和删除长期链接。拿到链接的设备可以在浏览器中直接打开，每次进入或断线恢复时会重新协商 WebRTC 直连。持有链接即拥有 Claudex 的远程操作权限，可访问聊天、文件和终端。为每台设备单独生成链接，便于按设备撤销授权。
+
+在运行网页服务的电脑上，也可以通过命令行管理。命令使用网页服务的固定 HTTPS 端口，监听地址需包含本机回环地址，默认配置已满足。`create` 在隧道连接过程中最多等待 90 秒，成功后输出链接。
+
+```bash
+claudex-web p2p enable
+claudex-web p2p status
+claudex-web p2p create "我的手机"
+claudex-web p2p list
+claudex-web p2p revoke 链接ID
+claudex-web p2p disable
+```
+
+删除单个链接会结束使用该链接建立的连接。关闭 P2P 会立即断开所有远程连接，保留已授权的链接供重新开启后使用。授权和隧道身份保存在网页配置目录下的 `p2p/`，随服务重启保留。请按凭据保护配置目录及备份。
+
+开通后，运行服务的电脑使用 OpenTunnel 提供公网 HTTPS 页面与信令，并通过 STUN 发现 WebRTC 候选地址。业务数据经 WebRTC 直连。有些网络会阻止直连，遇到这种情况可换网络并重试。若使用自托管 OpenTunnel，把 `OPENTUNNEL_API` 配置为相应的 HTTPS API 地址，再启用远程访问。保持相同的服务端与隧道身份以继续使用已发出的链接。
 
 ## Claude Code 与模型配置
 

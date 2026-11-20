@@ -1,7 +1,10 @@
 import { completePasswordLogin } from "../infrastructure/password-manager.js";
-export function createSession({ get, set, transport, connection }) {
+import { forgetP2pToken, readP2pToken } from "../infrastructure/p2p-access.js";
+
+export function createSession({ get, set, transport, connection, p2p }) {
   let authRevision = 0;
   let authMutating = false;
+  let p2pToken = "";
   function applySession(session) {
     authRevision++;
     if (session.authenticated && session.expiresAt <= Date.now())
@@ -44,6 +47,21 @@ export function createSession({ get, set, transport, connection }) {
     return result;
   }
   async function checkSession() {
+    if (p2p) {
+      const token = readP2pToken();
+      if (p2pToken !== token) {
+        p2pToken = token;
+        if (transport.connection) applySession({ authenticated: false });
+      }
+      if (!token) {
+        if (!get().authError)
+          set({ authError: "请打开包含授权信息的完整 P2P 链接。" });
+      } else if (!transport.connection || transport.connection.readyState > 1) {
+        set({ authError: "" });
+        transport.connect({ beforeAuthentication: true });
+      }
+      return;
+    }
     if (authMutating) return;
     const revision = ++authRevision;
     try {
@@ -69,6 +87,13 @@ export function createSession({ get, set, transport, connection }) {
     }
   }
   async function logout() {
+    if (p2p) {
+      forgetP2pToken();
+      p2pToken = "";
+      applySession({ authenticated: false });
+      set({ authError: "已断开，请通过 P2P 链接重新连接。" });
+      return;
+    }
     const revision = ++authRevision;
     authMutating = true;
     try {
@@ -78,5 +103,24 @@ export function createSession({ get, set, transport, connection }) {
       authMutating = false;
     }
   }
-  return { applySession, checkSession, login, logout };
+  return {
+    applySession,
+    checkSession,
+    login,
+    logout,
+    get p2pToken() {
+      return p2pToken;
+    },
+    p2pConnected() {
+      applySession({ authenticated: true, kind: "p2p", username: "P2P 链接" });
+    },
+    p2pRejected({ code, reason }) {
+      if (code === 4401) {
+        forgetP2pToken();
+        p2pToken = "";
+        applySession({ authenticated: false });
+      }
+      set({ authError: reason });
+    },
+  };
 }
