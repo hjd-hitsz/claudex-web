@@ -83,6 +83,9 @@ export function connectP2pHttp(serviceWorker, send) {
   }
   serviceWorker.addEventListener("message", onRequest);
 
+  function clear(message) {
+    for (const id of pending.keys()) finish(id, { type: "error", message });
+  }
   return {
     receive(message, bytes) {
       const port = pending.get(message.id);
@@ -93,10 +96,10 @@ export function connectP2pHttp(serviceWorker, send) {
         port.postMessage({ type: "data", bytes }, [bytes.buffer]);
       } else if (message.type === "response") port.postMessage(message);
     },
+    clear,
     close() {
       serviceWorker.removeEventListener("message", onRequest);
-      for (const id of pending.keys())
-        finish(id, { type: "error", message: "P2P 连接已中断，请重试。" });
+      clear("P2P 连接已中断，请重试。");
     },
   };
 }

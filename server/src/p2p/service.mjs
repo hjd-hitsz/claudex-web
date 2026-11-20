@@ -37,6 +37,7 @@ export function createP2pService({
   configDirectory,
   assetsDirectory,
   connectPeer,
+  revokeLink,
   runTunnel = runPublicTunnel,
 }) {
   const directory = join(configDirectory, "p2p");
@@ -217,6 +218,7 @@ export function createP2pService({
             throw fail("P2P 链接不存在", 404);
           await save({ ...settings, links });
           active?.peers?.close(input.id);
+          await revokeLink?.(input.id);
         } else {
           throw fail("P2P 操作不存在", 404);
         }

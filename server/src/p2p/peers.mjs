@@ -53,7 +53,7 @@ export function createPeerRegistry(PeerConnection, connectPeer) {
       if (!peers.has(peer) || detach) return;
       clearTimeout(deadline);
       try {
-        detach = connectPeer(channel);
+        detach = connectPeer(channel, link);
       } catch {
         dispose();
       }

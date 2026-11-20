@@ -13,7 +13,13 @@ import {
 } from "./p2p/service.mjs";
 import { createPeerClient } from "./p2p-peer.mjs";
 
-export function createWebApplication({ config, tls, authentication, version }) {
+export function createWebApplication({
+  config,
+  tls,
+  authentication,
+  version,
+  runP2pTunnel,
+}) {
   let requestsInFlight = 0;
   const maintenance = createServiceMaintenance({
     config,
@@ -28,10 +34,13 @@ export function createWebApplication({ config, tls, authentication, version }) {
   const monitors = new WebSocketServer({ noServer: true });
   const peers = new Set();
   function send(client, message) {
-    if (client.authSessionId && !authentication.valid(client.authSessionId))
+    if (
+      (client.authLinkId || client.authSessionId) &&
+      !authentication.valid(client.authSessionId, client.authLinkId)
+    )
       return;
     const text = JSON.stringify(message);
-    if (peers.has(client)) client.send(text);
+    if (client.authLinkId) client.send(text);
     else sendRpcText(client, text);
   }
   function broadcast(message) {
@@ -57,9 +66,22 @@ export function createWebApplication({ config, tls, authentication, version }) {
   const p2p = createP2pService({
     configDirectory: config.configDir,
     assetsDirectory: config.staticDir,
-    connectPeer(channel) {
-      const peer = createPeerClient(channel, handleBusiness);
-      peers.add(peer);
+    runTunnel: runP2pTunnel,
+    revokeLink: authentication.revokeLink,
+    connectPeer(channel, linkId) {
+      const peer = createPeerClient(channel, handleBusiness, {
+        authentication,
+        linkId,
+        onAuthenticated(client) {
+          peers.add(client);
+          send(client, state());
+        },
+        onLogout(client) {
+          peers.delete(client);
+          bridge.releaseClient(client);
+          releaseUnusedThreads();
+        },
+      });
       peer.once("close", () => peers.delete(peer));
       connectClient(peer);
       return peer.detach;
@@ -118,10 +140,10 @@ export function createWebApplication({ config, tls, authentication, version }) {
       bridge.releaseClient(client);
       releaseUnusedThreads();
     });
-    send(client, state());
+    if (!client.authLinkId) send(client, state());
 
     client.on("message", (bytes) => {
-      if (!peers.has(client) && !authentication.valid(client.authSessionId))
+      if (!authentication.valid(client.authSessionId, client.authLinkId))
         return;
       let message;
       try {

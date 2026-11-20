@@ -43,7 +43,7 @@ export function AuthenticationGate({ children }) {
     };
   }, [p2p]);
   useEffect(() => {
-    if (!auth?.authenticated || !Number.isFinite(auth.expiresAt)) return;
+    if (p2p || !auth?.authenticated || !Number.isFinite(auth.expiresAt)) return;
     let timer;
     const expire = () => {
       const remaining = auth.expiresAt - Date.now();
@@ -55,7 +55,7 @@ export function AuthenticationGate({ children }) {
     };
     expire();
     return () => clearTimeout(timer);
-  }, [auth]);
+  }, [auth, p2p]);
   if (auth?.authenticated)
     return p2p ? (
       <>
@@ -65,7 +65,7 @@ export function AuthenticationGate({ children }) {
     ) : (
       children
     );
-  if (p2p) {
+  if (p2p && auth === null) {
     return (
       <main className="login-page">
         <section className="login-card" aria-labelledby="p2p-join-title">
@@ -117,7 +117,11 @@ export function AuthenticationGate({ children }) {
           <span>Claudex Web</span>
         </div>
         <h1 id="login-title">
-          {waiting ? "正在检查登录状态" : "登录你的工作空间"}
+          {p2p
+            ? "登录远程工作空间"
+            : waiting
+              ? "正在检查登录状态"
+              : "登录你的工作空间"}
         </h1>
         {waiting ? (
           <>
@@ -138,8 +142,8 @@ export function AuthenticationGate({ children }) {
           <>
             <form
               id="login-form"
-              action="/api/auth/login"
-              method="post"
+              action={p2p ? undefined : "/api/auth/login"}
+              method={p2p ? "dialog" : "post"}
               autoComplete="on"
               onSubmit={submit}
             >
@@ -189,7 +193,7 @@ export function AuthenticationGate({ children }) {
             </form>
           </>
         )}
-        <CertificateHelp />
+        {!p2p && <CertificateHelp />}
       </section>
     </main>
   );
@@ -201,7 +205,7 @@ export function LogoutButton() {
   const p2p = get().auth?.kind === "p2p";
   return (
     <div className="login-settings">
-      <p>{p2p ? "已通过 P2P 直连" : `已登录：${get().auth?.username}`}</p>
+      <p>{`已登录：${get().auth?.username}${p2p ? " · P2P 直连" : ""}`}</p>
       <button
         className="secondary"
         disabled={busy}
@@ -218,7 +222,7 @@ export function LogoutButton() {
         }}
       >
         <LogOut size={16} />
-        {busy ? "正在退出…" : p2p ? "断开连接" : "退出登录"}
+        {busy ? "正在退出…" : "退出登录"}
       </button>
       {error && (
         <p role="alert" className="inline-error">

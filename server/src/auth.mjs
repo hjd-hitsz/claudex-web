@@ -7,6 +7,10 @@ import { authenticateSystemUser } from "./system-auth.mjs";
 
 const cookieName = "__Host-claudex-web-session";
 const digest = (value) => createHash("sha256").update(value).digest("hex");
+const tokenId = (token) =>
+  typeof token === "string" && /^[a-zA-Z0-9_-]{43}$/.test(token)
+    ? digest(token)
+    : null;
 const cookie = (value, seconds) =>
   `${cookieName}=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${seconds}`;
 function isLoopback(address) {
@@ -87,7 +91,7 @@ export async function createAuthentication(config) {
     for (const response of responses.get(id) || []) response.destroy();
     responses.delete(id);
   };
-  const valid = (id) => {
+  const lookup = (id) => {
     const session = sessions.get(id);
     if (!session || session.expiresAt <= Date.now()) {
       revoke(id);
@@ -95,26 +99,33 @@ export async function createAuthentication(config) {
     }
     return session;
   };
+  const valid = (id, linkId) => {
+    const session = lookup(id);
+    return session?.linkId === linkId ? session : null;
+  };
   function trackConnection(connections, id, connection, session) {
     if (!connections.has(id)) connections.set(id, new Set());
     const tracked = connections.get(id);
     tracked.add(connection);
     let timer;
     const expire = () => {
-      if (!valid(id)) return;
+      if (!lookup(id)) return;
       timer = setTimeout(
         expire,
         Math.min(session.expiresAt - Date.now(), 2147483647),
       );
       timer.unref();
     };
-    expire();
-    connection.once("close", () => {
+    const untrack = () => {
+      connection.removeListener("close", untrack);
       clearTimeout(timer);
       tracked.delete(connection);
       if (!tracked.size && connections.get(id) === tracked)
         connections.delete(id);
-    });
+    };
+    connection.once("close", untrack);
+    expire();
+    return untrack;
   }
   const sessionId = (request) => {
     const entries = (request.headers.cookie || "")
@@ -125,8 +136,7 @@ export async function createAuthentication(config) {
       : "__Host-codex-web-session";
     const tokens = entries.filter((s) => s.startsWith(name + "="));
     if (tokens.length !== 1) return null;
-    const token = tokens[0].slice(name.length + 1);
-    return /^[a-zA-Z0-9_-]{43}$/.test(token) ? digest(token) : null;
+    return tokenId(tokens[0].slice(name.length + 1));
   };
   const sameOrigin = (request) => {
     const origin = request.headers.origin;
@@ -158,6 +168,62 @@ export async function createAuthentication(config) {
     attempts.set(address, record);
     globalAttempts.push(now);
     return false;
+  }
+  async function login(
+    readInput,
+    attemptKey,
+    { previousId, linkId, signal } = {},
+  ) {
+    if (limited(attemptKey))
+      throw new Error("登录尝试过于频繁，请稍后重试。", { cause: 429 });
+    active++;
+    try {
+      const { username: submitted, password } = (await readInput()) || {};
+      if (
+        typeof submitted !== "string" ||
+        typeof password !== "string" ||
+        !submitted ||
+        !password ||
+        submitted.length > 256 ||
+        password.length > 1024 ||
+        /\0/.test(submitted + password)
+      )
+        throw new Error("请输入有效的系统用户名和密码。", { cause: 400 });
+      if (
+        submitted !== username ||
+        !(await authenticateSystemUser(submitted, password, config))
+      )
+        throw new Error(
+          "用户名或密码错误，或系统账户不可用。请使用运行服务的系统账户。",
+          { cause: 401 },
+        );
+      signal?.throwIfAborted();
+      for (const [key, session] of sessions)
+        if (session.expiresAt <= Date.now()) revoke(key);
+      if (sessions.size >= 64) revoke(sessions.keys().next().value);
+      if (valid(previousId, linkId)) revoke(previousId);
+      const token = randomBytes(32).toString("base64url");
+      const id = digest(token);
+      const session = {
+        username,
+        expiresAt: Date.now() + config.sessionDays * 86400000,
+      };
+      sessions.set(id, linkId ? { ...session, linkId } : session);
+      try {
+        await persist();
+        if (signal?.aborted) {
+          revoke(id);
+          await persist();
+          signal.throwIfAborted();
+        }
+      } catch (error) {
+        revoke(id);
+        throw error;
+      }
+      return { id, token, session: { authenticated: true, ...session } };
+    } finally {
+      active--;
+    }
   }
   return {
     sameOrigin,
@@ -192,14 +258,37 @@ export async function createAuthentication(config) {
         timingSafeEqual(supplied, expected)
       );
     },
-    attach(socket, id) {
-      const session = valid(id);
+    attach(socket, id, linkId) {
+      const session = valid(id, linkId);
       if (!session) {
         socket.close(4401, "登录已失效，请重新登录");
         return;
       }
       socket.authSessionId = id;
-      trackConnection(sockets, id, socket, session);
+      return trackConnection(sockets, id, socket, session);
+    },
+    async loginPeer(linkId, input, signal) {
+      return login(() => input, `p2p:${linkId}`, { linkId, signal });
+    },
+    resumePeer(linkId, token) {
+      const id = tokenId(token);
+      const session = valid(id, linkId);
+      if (!session) return { session: { authenticated: false } };
+      const { username, expiresAt } = session;
+      return { id, session: { authenticated: true, username, expiresAt } };
+    },
+    async logoutPeer(linkId, id) {
+      if (!valid(id, linkId)) return;
+      revoke(id);
+      await persist();
+    },
+    async revokeLink(linkId) {
+      const ids = [...sessions].filter(
+        ([, session]) => session.linkId === linkId,
+      );
+      if (!ids.length) return;
+      for (const [id] of ids) revoke(id);
+      await persist();
     },
     async handle(request, response, route) {
       if (!route.startsWith("/api/auth/")) return false;
@@ -231,7 +320,7 @@ export async function createAuthentication(config) {
           return true;
         }
         if (route === "/api/auth/logout") {
-          revoke(id);
+          if (valid(id)) revoke(id);
           await persist();
           json(
             response,
@@ -241,76 +330,28 @@ export async function createAuthentication(config) {
           );
           return true;
         }
-        if (limited(request.socket.remoteAddress)) {
-          json(
-            response,
-            429,
-            { error: "登录尝试过于频繁，请稍后重试。" },
-            { "Retry-After": "900" },
-          );
-          return true;
-        }
-        active++;
-        try {
-          const input = await credentials(request);
-          const { username: submitted, password } = input || {};
-          if (
-            typeof submitted !== "string" ||
-            typeof password !== "string" ||
-            !submitted ||
-            !password ||
-            submitted.length > 256 ||
-            password.length > 1024 ||
-            /\0/.test(submitted + password)
-          ) {
-            json(response, 400, { error: "请输入有效的系统用户名和密码。" });
-            return true;
-          }
-          if (
-            submitted !== username ||
-            !(await authenticateSystemUser(submitted, password, config))
-          ) {
-            json(response, 401, {
-              error:
-                "用户名或密码错误，或系统账户不可用。请使用运行服务的系统账户。",
-            });
-            return true;
-          }
-          for (const [key, session] of sessions)
-            if (session.expiresAt <= Date.now()) revoke(key);
-          if (sessions.size >= 64) revoke(sessions.keys().next().value);
-          revoke(id);
-          const token = randomBytes(32).toString("base64url");
-          const session = {
-            username,
-            expiresAt: Date.now() + config.sessionDays * 86400000,
-          };
-          const key = digest(token);
-          sessions.set(key, session);
-          try {
-            await persist();
-          } catch (error) {
-            revoke(key);
-            throw error;
-          }
-          json(
-            response,
-            200,
-            { authenticated: true, ...session },
-            { "Set-Cookie": cookie(token, config.sessionDays * 86400) },
-          );
-        } finally {
-          active--;
-        }
+        const { token, session } = await login(
+          () => credentials(request),
+          request.socket.remoteAddress,
+          { previousId: id },
+        );
+        json(response, 200, session, {
+          "Set-Cookie": cookie(token, config.sessionDays * 86400),
+        });
       } catch (error) {
         request.resume();
         if (!response.headersSent && !response.destroyed)
-          json(response, typeof error.cause === "number" ? error.cause : 503, {
-            error:
-              typeof error.cause === "number"
-                ? error.message
-                : "登录暂不可用，请稍后重试或联系管理员。",
-          });
+          json(
+            response,
+            typeof error.cause === "number" ? error.cause : 503,
+            {
+              error:
+                typeof error.cause === "number"
+                  ? error.message
+                  : "登录暂不可用，请稍后重试或联系管理员。",
+            },
+            error.cause === 429 ? { "Retry-After": "900" } : {},
+          );
       }
       return true;
     },

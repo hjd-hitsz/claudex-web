@@ -9,7 +9,13 @@ const maxQueueBytes = 2 * MAX_RPC_MESSAGE_BYTES;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
-export function createP2pWire({ sendFrame, bufferedAmount, receive, close }) {
+export function createP2pWire({
+  sendFrame,
+  bufferedAmount,
+  receive,
+  close,
+  maxInboundBytes,
+}) {
   let closed = false;
   let pending = Promise.resolve();
   let queuedBytes = 0;
@@ -105,7 +111,8 @@ export function createP2pWire({ sendFrame, bufferedAmount, receive, close }) {
         if (
           jsonLength < 2 ||
           jsonLength > maxJsonBytes ||
-          binaryLength > MAX_RPC_MESSAGE_BYTES
+          binaryLength > MAX_RPC_MESSAGE_BYTES ||
+          jsonLength + binaryLength > (maxInboundBytes?.() ?? Infinity)
         )
           throw new Error("无效的直连消息长度");
         incoming = {

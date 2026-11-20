@@ -1,4 +1,5 @@
 const storageKey = "cx-p2p-link";
+const loginKey = "cx-p2p-login";
 const tokenFormat = /^[A-Za-z0-9_-]{43}$/;
 let viewId;
 
@@ -53,7 +54,29 @@ export function forgetP2pToken() {
   }
   try {
     sessionStorage.removeItem(storageKey);
+    sessionStorage.removeItem(loginKey);
   } catch {
     // 浏览器禁用会话存储时，凭据只存在于原链接。
+  }
+}
+
+export function readP2pLogin(link) {
+  try {
+    const login = JSON.parse(sessionStorage.getItem(loginKey));
+    if (login?.link === link && tokenFormat.test(login.token))
+      return login.token;
+  } catch {
+    // 会话存储不可用时，可在当前页面登录。
+  }
+  return "";
+}
+
+export function saveP2pLogin(link, token) {
+  try {
+    if (token)
+      sessionStorage.setItem(loginKey, JSON.stringify({ link, token }));
+    else sessionStorage.removeItem(loginKey);
+  } catch {
+    // 当前页面在内存中保留会话凭据。
   }
 }
