@@ -187,3 +187,43 @@ test("目标与后台终端查询保留新建空对话，实际开始轮次后�
   await waitFor(() => app.unsubscribed().length);
   assert.deepEqual(app.unsubscribed()[0].params, { threadId: thread.id });
 });
+
+test("活动目标在设置确认及轮次之间保留订阅，暂停后释放", async (t) => {
+  const app = await bridge(
+    t,
+    (request) => request.method === "thread/goal/set",
+  );
+  const client = await app.connect();
+  const threadId = "active-goal";
+  const setGoal = app.rpc(client, "thread/goal/set", {
+    threadId,
+    objective: "完成回归",
+    status: "active",
+  });
+  const write = await waitFor(() =>
+    app.requests.find((request) => request.method === "thread/goal/set"),
+  );
+  app.respond(write, { goal: { status: "active" } });
+  await setGoal;
+  await app.rpc(client, "test/barrier");
+  assert.equal(app.unsubscribed().length, 0, "目标通知可以晚于设置响应");
+
+  app.notify("turn/started", {
+    threadId,
+    turn: { id: "first", status: "inProgress" },
+  });
+  app.notify("thread/status/changed", { threadId, status: { type: "idle" } });
+  app.notify("turn/completed", {
+    threadId,
+    turn: { id: "first", status: "completed" },
+  });
+  await app.rpc(client, "test/barrier");
+  assert.equal(app.unsubscribed().length, 0, "目标可跨轮次自动继续");
+
+  app.notify("thread/goal/updated", { threadId, goal: { status: "paused" } });
+  await waitFor(() => app.unsubscribed().length);
+  assert.deepEqual(
+    app.unsubscribed().map((request) => request.params),
+    [{ threadId }],
+  );
+});

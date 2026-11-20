@@ -7,6 +7,7 @@ export function createBridgeEvents({
   terminals,
   subscriptions,
   unwrittenThreads,
+  updateGoal,
   compactions,
   threadNaming,
   send,
@@ -40,6 +41,9 @@ export function createBridgeEvents({
       if (p.status.type === "active") activeThreads.add(p.threadId);
       else activeThreads.delete(p.threadId);
     }
+    if (message.method === "thread/goal/updated")
+      updateGoal(p.threadId, p.goal);
+    if (message.method === "thread/goal/cleared") updateGoal(p.threadId, null);
     if (
       ["thread/closed", "thread/deleted", "thread/archived"].includes(
         message.method,
@@ -47,6 +51,7 @@ export function createBridgeEvents({
     ) {
       subscriptions.delete(p.threadId);
       unwrittenThreads.delete(p.threadId);
+      updateGoal(p.threadId, null);
       activeThreads.delete(p.threadId);
       activeTurns.delete(p.threadId);
       if (message.method !== "thread/closed")
@@ -73,6 +78,12 @@ export function createBridgeEvents({
     return;
   }
   function onResponse(request, message) {
+    if (!message.error && request.threadId) {
+      if (request.method === "thread/goal/set" && message.result?.goal)
+        updateGoal(request.threadId, message.result.goal);
+      if (request.method === "thread/goal/clear")
+        updateGoal(request.threadId, null);
+    }
     if (message.error && request.method === "thread/compact/start")
       compactions.reject(request.threadId, message.id, message.error.message);
     if (

@@ -10,6 +10,11 @@ export function createSubscriptions({
     resuming = new Map(),
     retained = new Map();
   const unwrittenThreads = new Set();
+  const activeGoals = new Set();
+  function updateGoal(threadId, goal) {
+    if (goal?.status === "active") activeGoals.add(threadId);
+    else activeGoals.delete(threadId);
+  }
   async function resumeForWrite(
     threadId,
     { cwd, inheritPermissions = false } = {},
@@ -42,6 +47,7 @@ export function createSubscriptions({
       if (
         !transport.ready ||
         compactions.busy(threadId) ||
+        activeGoals.has(threadId) ||
         (unwrittenThreads.has(threadId) && owners.size) ||
         activeTurns.has(threadId) ||
         activeThreads.has(threadId) ||
@@ -84,6 +90,7 @@ export function createSubscriptions({
     releasing,
     resuming,
     unwrittenThreads,
+    updateGoal,
     resumeForWrite,
     releaseUnusedThreads,
     retainThread(threadId) {
@@ -108,6 +115,7 @@ export function createSubscriptions({
       resuming.clear();
       retained.clear();
       unwrittenThreads.clear();
+      activeGoals.clear();
     },
   };
 }
