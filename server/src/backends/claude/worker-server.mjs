@@ -1,18 +1,12 @@
 import net from "node:net";
-import {
-  mkdir,
-  readFile,
-  writeFile,
-  rename,
-  chmod,
-  lstat,
-  unlink,
-} from "node:fs/promises";
+import { mkdir, readFile, chmod, lstat, unlink } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
+import { writePrivateFile } from "../../private-file.mjs";
 import { createClaudeAdapter } from "./adapter.mjs";
 import { createBackendConfiguration } from "../configuration.mjs";
 import { createProviders } from "../providers.mjs";
 import { workerRevision } from "./worker-revision.mjs";
+import { readWorkerLines } from "./worker-lines.mjs";
 import { hasBackendWork } from "../../../../shared/backend-activity.mjs";
 import {
   prepareWorkerDirectory,
@@ -89,28 +83,17 @@ function broadcast(message) {
     });
 }
 async function initialize(value) {
-  if (initializing) {
-    await initializing;
-  }
-  if (adapter) {
-    if (
-      resolve(value.backend.stateDir) !== resolve(dataDir) ||
-      value.backend.id !== "claude"
-    )
-      throw new Error("Claude 后端目录或标识不匹配");
-    return;
-  }
+  if (initializing) await initializing;
+  if (
+    resolve(value.backend.stateDir) !== resolve(dataDir) ||
+    value.backend.id !== "claude"
+  )
+    throw new Error("Claude 后端目录或标识不匹配");
+  if (adapter) return;
   initializing = (async () => {
-    if (
-      resolve(value.backend.stateDir) !== resolve(dataDir) ||
-      value.backend.id !== "claude"
-    )
-      throw new Error("Claude 后端目录或标识不匹配");
     options = { ...value, revision, preferredEntry: revision.entry };
     Object.assign(process.env, value.runtimeEnv || {});
-    const temporary = `${optionsPath}.${process.pid}.tmp`;
-    await writeFile(temporary, JSON.stringify(options), { mode: 0o600 });
-    await rename(temporary, optionsPath);
+    await writePrivateFile(optionsPath, JSON.stringify(options));
     const configuration = createBackendConfiguration(value.config);
     const providers = createProviders(configuration);
     adapter = createClaudeAdapter({
@@ -131,20 +114,10 @@ async function initialize(value) {
 }
 const server = net.createServer((socket) => {
   clients.add(socket);
-  let input = "";
-  socket.setEncoding("utf8");
-  socket.on("data", (chunk) => {
-    input += chunk;
-    if (Buffer.byteLength(input) > 128 * 1024 * 1024)
-      return socket.destroy(new Error("Claude IPC 请求超过限制"));
-    let index;
-    while ((index = input.indexOf("\n")) >= 0) {
-      const line = input.slice(0, index);
-      input = input.slice(index + 1);
-      handle(socket, line).catch((error) =>
-        send(socket, { kind: "error", error: error.message }),
-      );
-    }
+  readWorkerLines(socket, "Claude IPC 请求超过限制", (line) => {
+    handle(socket, line).catch((error) =>
+      send(socket, { kind: "error", error: error.message }),
+    );
   });
   socket.on("error", () => {});
   socket.on("close", () => clients.delete(socket));
@@ -203,16 +176,13 @@ async function handle(socket, line) {
             resolve(request.replacement.backend.stateDir) !== resolve(dataDir)
           )
             throw new Error("Claude 更新目录不匹配");
-          const temporary = `${optionsPath}.${process.pid}.tmp`;
-          await writeFile(
-            temporary,
+          await writePrivateFile(
+            optionsPath,
             JSON.stringify({
               ...request.replacement,
               preferredEntry: request.replacement.revision.entry,
             }),
-            { mode: 0o600 },
           );
-          await rename(temporary, optionsPath);
         }
       } catch (error) {
         stopping = false;

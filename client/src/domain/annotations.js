@@ -1,3 +1,5 @@
+import { replaceMarkdownMarkers } from "./markdown-markers.js";
+
 export function parseAnnotations(text) {
   const match =
     /^\s*# Response annotations:\r?\n[\s\S]*?\r?\n<response-annotations>\r?\n([\s\S]*?)\r?\n<\/response-annotations>(?:\r?\n|$)/.exec(
@@ -67,49 +69,21 @@ export function annotationContexts(items) {
   return contexts;
 }
 
-// 只转换 Markdown 文本节点，代码、公式和链接地址沿用各自的解析规则。
 export function remarkAnnotations() {
-  return function transform(node) {
-    if (
-      !node.children ||
-      [
-        "code",
-        "inlineCode",
-        "math",
-        "inlineMath",
-        "html",
-        "link",
-        "linkReference",
-        "image",
-      ].includes(node.type)
-    )
-      return;
-    node.children = node.children.flatMap((child) => {
-      if (child.type !== "text") {
-        transform(child);
-        return [child];
-      }
-      const parts = [];
-      let offset = 0;
-      for (const match of child.value.matchAll(
+  return (root) =>
+    replaceMarkdownMarkers(root, function* (value) {
+      for (const match of value.matchAll(
         /:codex-annotation\{index=["']([1-9]\d*)["']\}/g,
       )) {
         if (!Number.isSafeInteger(Number(match[1]))) continue;
-        if (match.index > offset)
-          parts.push({
-            type: "text",
-            value: child.value.slice(offset, match.index),
-          });
-        parts.push({
-          type: "annotationReference",
-          data: { hName: "annotation-ref", hProperties: { index: match[1] } },
-        });
-        offset = match.index + match[0].length;
+        yield {
+          start: match.index,
+          end: match.index + match[0].length,
+          replacement: {
+            type: "annotationReference",
+            data: { hName: "annotation-ref", hProperties: { index: match[1] } },
+          },
+        };
       }
-      if (!offset) return [child];
-      if (offset < child.value.length)
-        parts.push({ type: "text", value: child.value.slice(offset) });
-      return parts;
     });
-  };
 }

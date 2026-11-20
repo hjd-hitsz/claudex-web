@@ -9,7 +9,7 @@ const cookieName = "__Host-claudex-web-session";
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const cookie = (value, seconds) =>
   `${cookieName}=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${seconds}`;
-export function isLoopback(address) {
+function isLoopback(address) {
   return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
 }
 function json(response, status, body, headers = {}) {
@@ -95,6 +95,27 @@ export async function createAuthentication(config) {
     }
     return session;
   };
+  function trackConnection(connections, id, connection, session) {
+    if (!connections.has(id)) connections.set(id, new Set());
+    const tracked = connections.get(id);
+    tracked.add(connection);
+    let timer;
+    const expire = () => {
+      if (!valid(id)) return;
+      timer = setTimeout(
+        expire,
+        Math.min(session.expiresAt - Date.now(), 2147483647),
+      );
+      timer.unref();
+    };
+    expire();
+    connection.once("close", () => {
+      clearTimeout(timer);
+      tracked.delete(connection);
+      if (!tracked.size && connections.get(id) === tracked)
+        connections.delete(id);
+    });
+  }
   const sessionId = (request) => {
     const entries = (request.headers.cookie || "")
       .split(";")
@@ -158,23 +179,7 @@ export async function createAuthentication(config) {
         json(response, 403, { error: "请求来源不匹配。" });
         return false;
       }
-      if (!responses.has(id)) responses.set(id, new Set());
-      responses.get(id).add(response);
-      let timer;
-      const expire = () => {
-        if (!valid(id)) return;
-        timer = setTimeout(
-          expire,
-          Math.min(session.expiresAt - Date.now(), 2147483647),
-        );
-        timer.unref();
-      };
-      expire();
-      response.once("close", () => {
-        clearTimeout(timer);
-        responses.get(id)?.delete(response);
-        if (!responses.get(id)?.size) responses.delete(id);
-      });
+      trackConnection(responses, id, response, session);
       return true;
     },
     maintenance(request) {
@@ -194,22 +199,7 @@ export async function createAuthentication(config) {
         return;
       }
       socket.authSessionId = id;
-      if (!sockets.has(id)) sockets.set(id, new Set());
-      sockets.get(id).add(socket);
-      let timer;
-      const expire = () => {
-        if (!valid(id)) return;
-        timer = setTimeout(
-          expire,
-          Math.min(session.expiresAt - Date.now(), 2147483647),
-        );
-        timer.unref();
-      };
-      expire();
-      socket.once("close", () => {
-        clearTimeout(timer);
-        sockets.get(id)?.delete(socket);
-      });
+      trackConnection(sockets, id, socket, session);
     },
     async handle(request, response, route) {
       if (!route.startsWith("/api/auth/")) return false;

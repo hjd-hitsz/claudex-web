@@ -74,6 +74,9 @@ const fixture = {
     m.method === "thread/list" ? { data: [], nextCursor: null } : {},
 };
 const { requests } = fixture;
+const setResponse = (respond) => (fixture.responseFor = respond);
+const emit = (method, params) => fixture.socket.emit(method, params);
+const getSocket = () => fixture.socket;
 globalThis.WebSocket = class {
   static OPEN = 1;
   readyState = 1;
@@ -116,156 +119,38 @@ await testFolderPicker(app, fixture);
 {
   const previousResponse = fixture.responseFor;
   try {
-    await testAccountUsage(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testCommands(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
+    await testAccountUsage(app, requests, setResponse, emit);
+    await testCommands(app, requests, setResponse, emit);
     await testCompactionDisplay(app);
-    await testCompaction(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testCompactionRecovery(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-      () => fixture.socket,
-    );
-    await testHistory(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testProgressiveHistory(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
+    await testCompaction(app, requests, setResponse, emit);
+    await testCompactionRecovery(app, requests, setResponse, emit, getSocket);
+    await testHistory(app, requests, setResponse, emit);
+    await testProgressiveHistory(app, requests, setResponse, emit);
     await testConversationScroll(app);
     await testComposerPerformance(app);
     await testHistoryTranslations(app);
     await testMessageNavigation(app);
-    await testContextPanel(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testThreadAccess(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
+    await testContextPanel(app, requests, setResponse, emit);
+    await testThreadAccess(app, requests, setResponse, emit);
     await testTokenUsage(app, fixture);
-    await testThreadArchive(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testForkTitles(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-    );
-    await testThreadUnread(
-      app,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testThreadNames(
-      app,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testMessageImages(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-    );
-    await testMarkdownHtml(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-    );
-    await testToolActivities(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testAnnotations(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-    );
-    await testUserMessage(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-    );
-    await testFilePanel(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-    );
-    await testFileChanges(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
+    await testThreadArchive(app, requests, setResponse, emit);
+    await testForkTitles(app, requests, setResponse);
+    await testThreadUnread(app, setResponse, emit);
+    await testThreadNames(app, setResponse, emit);
+    await testMessageImages(app, requests, setResponse);
+    await testMarkdownHtml(app, requests, setResponse);
+    await testToolActivities(app, requests, setResponse, emit);
+    await testAnnotations(app, requests, setResponse);
+    await testUserMessage(app, requests, setResponse);
+    await testFilePanel(app, requests, setResponse);
+    await testFileChanges(app, requests, setResponse, emit);
     await testPlans(app, fixture);
-    await testProcessTiming(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testQuestions(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testConnectionLifecycle(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-      () => fixture.socket,
-    );
-    await testAuthentication(
-      app,
-      (respond) => (fixture.responseFor = respond),
-      () => fixture.socket,
-    );
-    await testConnectionRecovery(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
-    await testProjectModels(
-      app,
-      requests,
-      (respond) => (fixture.responseFor = respond),
-      (method, params) => fixture.socket.emit(method, params),
-    );
+    await testProcessTiming(app, requests, setResponse, emit);
+    await testQuestions(app, requests, setResponse, emit);
+    await testConnectionLifecycle(app, requests, setResponse, emit, getSocket);
+    await testAuthentication(app, setResponse, getSocket);
+    await testConnectionRecovery(app, requests, setResponse, emit);
+    await testProjectModels(app, requests, setResponse, emit);
   } finally {
     fixture.responseFor = previousResponse;
   }

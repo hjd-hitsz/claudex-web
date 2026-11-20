@@ -1,4 +1,4 @@
-export async function readTranslationInput(request) {
+async function readTranslationInput(request) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {

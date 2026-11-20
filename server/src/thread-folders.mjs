@@ -1,6 +1,6 @@
-import { mkdir, readFile, rename, writeFile, rm, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { writePrivateFile } from "./private-file.mjs";
 
 // 网页项目归属与待应用目录由桥接保存；原生会话在下次恢复或开始轮次时应用目录。
 export function createThreadFolders(directory) {
@@ -36,17 +36,7 @@ export function createThreadFolders(directory) {
         folderRevision: (previous?.folderRevision || 0) + 1,
       };
       const next = { ...entries, [thread.id]: entry };
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      const temporary = `${path}.${randomUUID()}.tmp`;
-      try {
-        await writeFile(temporary, JSON.stringify(next, null, 2) + "\n", {
-          mode: 0o600,
-          flag: "wx",
-        });
-        await rename(temporary, path);
-      } finally {
-        await rm(temporary, { force: true });
-      }
+      await writePrivateFile(path, JSON.stringify(next, null, 2) + "\n");
       entries = next;
       return { ...thread, ...entry };
     });

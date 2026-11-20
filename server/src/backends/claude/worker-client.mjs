@@ -7,6 +7,7 @@ import { claudeCapabilities } from "../../../../shared/backend-capabilities.mjs"
 import { hasBackendWork } from "../../../../shared/backend-activity.mjs";
 import { launchWorker, workerLocation } from "./worker-launcher.mjs";
 import { workerRevision } from "./worker-revision.mjs";
+import { readWorkerLines } from "./worker-lines.mjs";
 import { networkProxyEnvironment } from "../network-proxy.mjs";
 import { executionBackend } from "../../../../shared/subagent-settings.mjs";
 import {
@@ -185,26 +186,16 @@ export function createClaudeWorkerAdapter({
       throw workerConnectionError(error);
     }
     socket = connection;
-    let input = "";
     let initializing = true;
     let latestState;
-    connection.setEncoding("utf8");
-    connection.on("data", (chunk) => {
-      input += chunk;
-      if (Buffer.byteLength(input) > 128 * 1024 * 1024)
-        return connection.destroy(new Error("Claude IPC 响应超过限制"));
-      let index;
-      while ((index = input.indexOf("\n")) >= 0) {
-        const line = input.slice(0, index);
-        input = input.slice(index + 1);
-        try {
-          const packet = JSON.parse(line);
-          if (initializing && packet.kind === "state")
-            latestState = packet.message;
-          else accept(packet);
-        } catch (error) {
-          connection.destroy(error);
-        }
+    readWorkerLines(connection, "Claude IPC 响应超过限制", (line) => {
+      try {
+        const packet = JSON.parse(line);
+        if (initializing && packet.kind === "state")
+          latestState = packet.message;
+        else accept(packet);
+      } catch (error) {
+        connection.destroy(error);
       }
     });
     connection.on("error", () => {});

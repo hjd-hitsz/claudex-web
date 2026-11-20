@@ -178,6 +178,15 @@ export function createBackendManager({
       throw new Error(entry?.error || "后端未启用，请在设置中检查配置。");
     return entry;
   }
+  function projectResult(entry, result, method, usageRevision, forkUsage) {
+    return tokenUsage.result(
+      folders.result(mapResult(result, entry.backend.id, method), method),
+      method,
+      usageRevision,
+      forkUsage,
+      entry.adapter.readTokenUsage,
+    );
+  }
   function proxy(entry, client) {
     if (!entry.proxies.has(client)) {
       const methods = new Map();
@@ -199,15 +208,12 @@ export function createBackendManager({
           send(client, {
             ...message,
             ...(message.result && {
-              result: await tokenUsage.result(
-                folders.result(
-                  mapResult(message.result, entry.backend.id, method),
-                  method,
-                ),
+              result: await projectResult(
+                entry,
+                message.result,
                 method,
                 usageRevision,
                 forkUsage,
-                entry.adapter.readTokenUsage,
               ),
             }),
           });
@@ -242,15 +248,11 @@ export function createBackendManager({
             if (message.error) reject(new Error(message.error.message));
             else
               resolve(
-                await tokenUsage.result(
-                  folders.result(
-                    mapResult(message.result, entry.backend.id, method),
-                    method,
-                  ),
+                await projectResult(
+                  entry,
+                  message.result,
                   method,
                   usageRevision,
-                  undefined,
-                  entry.adapter.readTokenUsage,
                 ),
               );
           } catch (error) {
@@ -372,10 +374,10 @@ export function createBackendManager({
           instances.get("codex")?.backend.dataDir || config.codexHome,
         ),
       });
-    if (method === "lan/backends/versions") {
-      if (!instances.has(params.id)) throw new Error("未知后端");
+    if (method === "lan/backends/versions" && !instances.has(params.id))
+      throw new Error("未知后端");
+    if (["lan/backends/list", "lan/backends/versions"].includes(method))
       return reply({ backends: publicBackends() });
-    }
     if (method === "lan/backends/install") {
       const entry = instances.get(params.id);
       if (!entry) throw new Error("未知后端");
@@ -398,8 +400,6 @@ export function createBackendManager({
       }
       return reply({ backends: publicBackends() });
     }
-    if (method === "lan/backends/list")
-      return reply({ backends: publicBackends() });
     if (
       [
         "lan/backends/save",

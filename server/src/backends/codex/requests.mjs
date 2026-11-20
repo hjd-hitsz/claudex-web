@@ -24,6 +24,9 @@ export function createRequestHandler({
   send,
   broadcast,
 }) {
+  function sendError(client, request, message, code = -32000) {
+    send(client, { id: request.id, error: { code, message } });
+  }
   async function dispatchLocal(handlers, client, message) {
     const handle = handlers.get(message.method);
     if (!handle) return false;
@@ -33,10 +36,7 @@ export function createRequestHandler({
         result: await handle(message.params || {}),
       });
     } catch (error) {
-      send(client, {
-        id: message.id,
-        error: { code: -32000, message: error.message },
-      });
+      sendError(client, message, error.message);
     }
     return true;
   }
@@ -44,13 +44,8 @@ export function createRequestHandler({
     if (await dispatchLocal(offline, client, message)) return;
     const threadId = message.params?.threadId;
     if (threadId && releasing.has(threadId)) await releasing.get(threadId);
-    if (!transport.ready) {
-      send(client, {
-        id: message.id,
-        error: { code: -32000, message: "正在连接 Codex，请稍后重试。" },
-      });
-      return;
-    }
+    if (!transport.ready)
+      return sendError(client, message, "正在连接 Codex，请稍后重试。");
     if (await dispatchLocal(online, client, message)) return;
     if (message.method) {
       try {
@@ -65,11 +60,7 @@ export function createRequestHandler({
           ),
         });
       } catch (error) {
-        send(client, {
-          id: message.id,
-          error: { code: -32000, message: error.message },
-        });
-        return;
+        return sendError(client, message, error.message);
       }
 
       if (
@@ -107,10 +98,7 @@ export function createRequestHandler({
             result: await backgroundCall(message.method, message.params),
           });
         } catch (error) {
-          send(client, {
-            id: message.id,
-            error: { code: -32000, message: error.message },
-          });
+          sendError(client, message, error.message);
         } finally {
           release();
         }
@@ -118,16 +106,13 @@ export function createRequestHandler({
       }
       const id = transport.nextId();
       const forwarded = JSON.stringify({ ...message, id });
-      if (Buffer.byteLength(forwarded) > MAX_RPC_MESSAGE_BYTES) {
-        send(client, {
-          id: message.id,
-          error: {
-            code: -32600,
-            message: "单次消息过大（最多 64 MiB），请减少附件后重试。",
-          },
-        });
-        return;
-      }
+      if (Buffer.byteLength(forwarded) > MAX_RPC_MESSAGE_BYTES)
+        return sendError(
+          client,
+          message,
+          "单次消息过大（最多 64 MiB），请减少附件后重试。",
+          -32600,
+        );
       const processId =
         message.method === "command/exec" && message.params?.processId;
       if (processId) {
@@ -144,13 +129,11 @@ export function createRequestHandler({
               transport.pending.delete(id);
               releaseUnusedThreads();
             }
-            send(client, {
-              id: message.id,
-              error: {
-                code: -32000,
-                message: "请求等待超时；任务可能仍在继续，请刷新会话查看。",
-              },
-            });
+            sendError(
+              client,
+              message,
+              "请求等待超时；任务可能仍在继续，请刷新会话查看。",
+            );
           }, 120000);
       transport.pending.set(id, {
         client,
@@ -185,10 +168,7 @@ export function createRequestHandler({
             compactions.reject(threadId, id, error.message);
           clearTimeout(timer);
           if (transport.pending.delete(id))
-            send(client, {
-              id: message.id,
-              error: { code: -32000, message: error.message },
-            });
+            sendError(client, message, error.message);
           releaseUnusedThreads();
           return;
         }

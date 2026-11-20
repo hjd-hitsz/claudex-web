@@ -1,6 +1,5 @@
-import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
-import { dirname } from "node:path";
-import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { writePrivateFile } from "../private-file.mjs";
 
 export function createStorage(path, initial) {
   let writing = Promise.resolve();
@@ -15,17 +14,7 @@ export function createStorage(path, initial) {
   function update(change, readCurrent = true) {
     const operation = writing.then(async () => {
       const next = await change(readCurrent ? await read() : undefined);
-      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-      const temporary = `${path}.${randomUUID()}.tmp`;
-      try {
-        await writeFile(temporary, JSON.stringify(next, null, 2) + "\n", {
-          mode: 0o600,
-          flag: "wx",
-        });
-        await rename(temporary, path);
-      } finally {
-        await rm(temporary, { force: true });
-      }
+      await writePrivateFile(path, JSON.stringify(next, null, 2) + "\n");
       return next;
     });
     writing = operation.catch(() => {});

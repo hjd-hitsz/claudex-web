@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { writePrivateFile } from "./private-file.mjs";
 import {
   createTranslationEngine,
   ModelStore,
@@ -83,12 +83,7 @@ export function createTranslationService(
     setEnabled(enabled) {
       const operation = mutations.then(async () => {
         await initialize();
-        await mkdir(configDir, { recursive: true, mode: 0o700 });
-        const temporary = `${file}.${randomUUID()}.tmp`;
-        await writeFile(temporary, JSON.stringify({ enabled }), {
-          mode: 0o600,
-        });
-        await rename(temporary, file);
+        await writePrivateFile(file, JSON.stringify({ enabled }));
         state = { ...state, enabled, error: "" };
         if (!enabled) {
           state = { ...state, state: "disabled", progress: null };

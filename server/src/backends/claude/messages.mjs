@@ -6,7 +6,7 @@ function imageUrl(block) {
     : block.source?.url;
 }
 
-export function contentBlocks(message) {
+function contentBlocks(message) {
   const content = message.message?.content;
   return typeof content === "string"
     ? [{ type: "text", text: content }]
