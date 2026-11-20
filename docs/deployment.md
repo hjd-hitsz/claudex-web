@@ -207,7 +207,7 @@ claudex-web service restart-when-idle
 
 日志显示实际等待的任务与上下文整理数量；执行重启后继续检查 `/healthz`，连接就绪时报告实际运行版本，重启或健康检查失败时保留失败状态。
 
-升级后刷新网页，在“设置 → 关于”核对产品版本。`claudex-web version --json` 查看当前磁盘安装包，`/healthz` 中的 `version` 查看实际运行的服务，便于确认重启是否生效。
+升级后刷新网页，在“设置 → 更新与重启”核对产品版本。`claudex-web version --json` 查看当前磁盘安装包，`/healthz` 中的 `version` 查看实际运行的服务，便于确认重启是否生效。
 
 需要回退程序时，使用目标旧版本 Release 的 `.tgz` 安装地址重新安装，执行 `claudex-web service install`，再等待空闲后重启。用户配置继续保留；涉及配置或数据迁移的版本，先查看对应发布说明。
 

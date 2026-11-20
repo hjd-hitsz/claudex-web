@@ -39,6 +39,10 @@ flowchart TD
 
 公共写入规则只读取执行方提供的即时状态。整理占用期间暂停开始轮次、补充输入、审查、回退和再次整理；活动任务或待提交输入阻止新整理；单文件撤销占用期间暂停可能写入的相关操作。原生订阅恢复、会话变更锁和队列原子检查继续归所属适配器。两端共用产品规则，同时保留原生状态的唯一所有者。
 
+### Codex 订阅与恢复
+
+取消订阅以原生响应确认释放本连接，其他连接的订阅仍有效。后续请求等待取消订阅确认，写入按原生流程重新订阅。Codex 0.169.0 的取消订阅确认先于异步关闭，`resume-lifecycle.mjs` 仅允许 `thread/resume` 在原生错误码、完整错误文本和目标对话 ID 均匹配关闭中状态时，等待该对话的 `thread/closed` 后重试一次。关闭事件先于恢复错误到达时同样处理。网页恢复和内部写入恢复都沿用原请求期限，超时或断线清理等待，其他错误按原路径结算。调用方在恢复成功后才提交轮次。验证入口见[双后端回归审查](backend-regressions.md#验证入口)。
+
 ## 完整功能范围
 
 以下清单同时约束两个后端。共用界面只实现一次；运行时相关功能分别提供适配及契约回归。
@@ -76,12 +80,13 @@ Claude Code 的附加能力通过后端扩展描述提供，采用显式命令�
 - `claude/sessions.mjs` 管理网页逻辑对话与原生会话的对应关系。`history-actions.mjs` 使用 SDK 原生分支保留消息前缀，依据原生 `forkedFrom.messageUuid` 重新建立轮次、补充输入和自动唤醒消息锚点，截断使用下一轮输入的 `parentUuid` 保留已完成轮次的全部输出附件；网页对话标识保持稳定。`nativeAliases` 将保留的历史分支归入同一逻辑对话，列表和删除后的恢复避免重复导入。
 - `session-worker.mjs` 在独立工作进程中使用同一原生配置目录调用 SDK 会话 API；SDK 选择原生 `parentUuid` 链，`native-records.mjs` 通过 SDK `importSessionToStore` 加载临时内存快照，按 UUID 补回投影省略的时间、系统子类型及错误字段。原生正文和工具结果是事实来源，索引补充已确认的轮次状态、计划类型、错误分类和文件变更。
 - `worker-client.mjs` 与独立 `worker-server.mjs` 通过受限本机 IPC 协作，执行服务持有 Claude 适配器、原生进程和后台任务。systemd 环境使用独立用户 service 及 cgroup，网页桥接关闭或崩溃后仍保留任务。IPC 目录 0700、socket 0600，双方核对用户归属。源码、入口路径或运行配置变化时，忙碌服务先继续执行，完全空闲后确认停止并替换，较旧桥接保持较新执行代际。
+- 执行服务握手就绪后再检查自动替换。停止时先锁定新请求入口，再原子检查在途请求和活动快照。忙时返回 `EWORKERBUSY` 并解除入口限制，自动替换继续等待，只读请求结束时也能继续检查。证书和代理的 Node.js 启动环境通过权限 0600 的环境文件在创建进程前加载，供应商的会话环境覆盖保留代理设置。
 - `runtime.mjs` 管理每个逻辑对话的活动轮次、待提交输入和原生进程；`execution-session.mjs` 持有可持续接收输入的 SDK 会话。普通轮次结束后继续保留原生会话和后台任务，运行中补充进入当前轮次。持续会话空闲满 5 分钟且没有活动轮次、待启动任务、活动目标或原生后台任务时释放，后续发送从原生历史恢复。编辑、分支及删除先结束空闲的原生会话，变更锁与发送入口共用；浏览器和网页桥接连接释放保持模型任务独立运行。正常网页重连恢复同一执行服务的活动快照，独立执行服务故障才进入原生进程核对及未确认输入恢复。
 - `messages.mjs` 将原生用户图片及工具返回的图片统一转换为网页媒体内容，保留 base64 数据和 MIME 类型，实时展示与原生历史恢复采用同一转换。
 - 模型支持能力与用户思考启停分别处理。`providerModelEnvironment` 将明确配置的自适应支持和 effort 档位映射到原生 `CLAUDE_CODE_MODEL_CAPABILITIES` 部分覆盖规则；自适应支持为 false 时由 CLI 选择固定预算思考及其原生预算，自适应支持为 true 时由 CLI 选择 adaptive。未配置字段保持原生判断。旧的 `ANTHROPIC_DEFAULT_*_MODEL_SUPPORTED_CAPABILITIES` 在 firstParty 请求路径被 CLI 忽略，因此采用实际生效的能力覆盖入口。运行时通过原生 `--thinking-display=summarized` 请求可展示的思考正文，省去依赖原生实验性默认展示模式。已有会话每轮同步模型能力、上下文容量及 effort；模型切换清除旧容量覆盖，配置变更按供应商版本重建空闲会话并恢复原生历史。
 - 标准 Messages 供应商的请求转换保留原生思考控制及结构化输出，主请求中的 `adaptive`、`enabled` 和 `disabled` 按原文传递；省略 `thinking` 的原生请求按 Anthropic 的关闭语义显式传递 `{type: "disabled"}`。目标评估的 JSON schema 保持完整。供应商环境保持原生功能开启，避免全局关闭实验功能同时移除结构化输出。
 - 流式 `message_delta.stop_reason` 确定最终正文与计划正文；完整 assistant 消息提前到达时保留过程状态。刷新按原生消息标识恢复已确认的展示类型和阶段，正文仍读取原生内容。API 错误转换为轮次错误，公开提示与诊断详情分别保存。
-- `project-instructions.mjs` 在每次 `UserPromptSubmit` 从根目录到当前目录读取 `AGENTS.override.md` 或 `AGENTS.md`，同目录优先 override，保留路径、作用域和完整正文。每轮完整快照替换此前的 AGENTS 快照，空列表同样提交；原生 `CLAUDE.md` 加载继续由 Claude Code 负责。
+- `project-instructions.mjs` 在每次 `UserPromptSubmit` 从根目录到当前目录读取 `AGENTS.override.md` 或 `AGENTS.md`，同目录优先 override，保留路径、作用域和完整正文。每轮完整快照替换此前的 AGENTS 快照，空列表同样提交。读取失败结束当前提交，原生 `CLAUDE.md` 继续由 Claude Code 加载。
 - `hooks.mjs` 处理提问、子代理及文件操作；`git-tool-changes.mjs` 记录工具实际引起的 Git 文件变化。`agent-history.mjs` 根据原生子代理目录、调用标识和消息恢复任务与接收历史，保留已分支对话中子代理的真实来源。
 - SDK 会话启用原生文件 checkpoint。`Query.rewindFiles` 按用户消息恢复完整 checkpoint，并提供只读预览；原生分支从独立的文件历史开始。网页单文件撤销继续采用路径级补丁与当前文件校验，明确选择目标文件并保护用户并发编辑。
 - `goals.mjs` 使用原生 `/goal` 设置目标，由 CLI 的会话级 Stop 提示钩子评估条件并持续执行；通过 `getHooksListing` 与 SDK 导入的原生 `goal_status` 核对活动、完成及阻塞，保留显式设置和清除的 `sentinel`。网页保存目标面板、暂停和预算状态，使用实际 token 事件核算预算。`native-commands.mjs` 将内部清除指令按 UUID 与普通轮次隔离；刷新及分支保持这一隔离。`background-tasks.mjs` 接收原生任务事件、保留任务所有者并调用 SDK 停止后台终端；后台任务结束后的原生唤醒使用独立轮次和消息锚点保存。
@@ -93,6 +98,8 @@ Claude Code 的附加能力通过后端扩展描述提供，采用显式命令�
 列表与搜索汇总每页后端错误。一个后端读取失败时，保留同一范围内已经显示的该后端对话，其余后端照常更新；侧栏和搜索提供实际错误与重试。搜索查询、归档范围、页面卸载与列表修订共同隔离迟到结果。
 
 外部供应商的主模型及 `ANTHROPIC_DEFAULT_OPUS_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_HAIKU_MODEL` 统一由 `providerModelEnvironment` 根据本轮模型生成。初始化与持续会话每轮提交共用这份映射，通过原生会话级设置同步生效后再提交输入；新启动的子代理按当前映射选择模型，已经运行的任务继续归属其原会话与模型。
+
+未声明协议的旧自定义供应商沿用 Message API 兼容模式。跨供应商子代理按会话专属模型标识分流，请求在目标连接上恢复其实际模型 ID、协议和凭据。同名模型按供应商隔离，修改默认值保留运行中子代理原路由。子代理思考强度只覆盖所属推理请求，主请求和 token 计数请求沿用自身参数。
 
 ## 验证入口
 

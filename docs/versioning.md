@@ -70,6 +70,8 @@ git push origin main vX.Y.Z
 
 发布准备命令会拒绝倒退版本、新版本的重复标签或空的未发布内容。再次传入当前已准备的明确版本时，命令保留包版本、变更记录和已审阅的发布说明；当前版本尚未创建标签时，继续准备更高版本会报错并提示完成当前版本。`npm run version:check` 已纳入日常检查，校验三个包与锁文件；`npm run release:check` 额外校验干净标签、变更日志、发布说明与当前安装链接。发布流程接收稳定的 `vX.Y.Z` 和 `vX.Y.Z-alpha.N`、`vX.Y.Z-beta.N`、`vX.Y.Z-rc.N`，其中 N 为无前导零的非负整数。预发布必须传入完整版本号，例如 `npm run version:prepare -- 4.0.0-beta.1`；后续按 beta.2、beta.3、rc.1、正式 X.Y.Z 递增，每个版本独立检查、打包与交付。GitHub 预发布标记与版本同步，测试版使用 `--latest=false` 保留稳定版 Latest。README 与部署文档中的预发布下载区域独立更新，稳定版本入口保持可用；转正式版时更新对应入口。构建的 `channel: release` 表示干净标签构建，成熟度由包版本的预发布后缀与 GitHub Pre-release 属性表达。
 
+每条用户可见变更在末尾括号内附对应提交及链接，版本标题后直接进入变更列表。发布重试验证覆盖同版本准备、部分附件上传、正式发布后响应中断及已发布附件保护；GitHub 操作使用模拟发布状态，真实附件在临时 npm prefix 验证安装。
+
 ## 每两天自动发布 patch
 
 `Automatic patch releases` 由 GitHub Actions 默认分支的计划任务触发，实际检查以 2026 年 11 月 22 日 04:16 UTC（北京时间 12:16）为起点，每两天一次。每次从 GitHub 取得最新公开的稳定版本和标签提交，对照远端 `main`。只有新增提交且 CHANGELOG 未发布段含条目时才准备 patch。手动发布的新稳定版在公开后立即成为基线，计划周期继续沿用原时间。GitHub 计划触发可能延迟或跳过，后续检查仍覆盖最新正式版以来的完整变更。 [GitHub Actions 计划触发说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
@@ -122,9 +124,9 @@ GitHub cron 补偿 ─┘                                      ↓
 
 ## 查看正在使用的版本
 
-- 网页打开“设置 → 关于”，查看网页构建和桥接进程各自的版本、完整提交与可用的构建时间。网页信息在构建时固定，源码桥接信息在进程启动时读取。
+- 网页的“设置 → 更新与重启”显示产品版本号。`build-info.json` 中的网页来源在构建时固定，桥接来源在进程启动时固定。构建信息被 Git 忽略并列入发行白名单，供无 Git 的全局安装读取。
 - `claudex-web --version` 输出便于阅读的标识；`claudex-web version --json` 输出完整的 `version`、`displayVersion`、`revision`、`dirty`、`channel` 和 `builtAt`。源码目录可用 `node bin/claudex-web.mjs version --json`。
-- `curl http://127.0.0.1:8766/healthz` 返回 `ready` 与桥接进程的 `version` 对象。HTTP 200 / 503 继续表示后端连接就绪 / 未就绪。
+- 网页同源 HTTPS 的 `/healthz` 返回 `ready` 与桥接进程的 `version` 对象。HTTP 200 / 503 继续表示后端连接就绪 / 未就绪。
 
 前端重新构建并刷新后显示新网页标识；桥接版本随进程重启更新。全局命令查看当前磁盘安装包，健康接口查看正在运行的进程。升级排查时同时核对这两个来源。
 
