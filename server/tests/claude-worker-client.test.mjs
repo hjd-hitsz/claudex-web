@@ -41,7 +41,7 @@ test("socket 连接错误提示恢复方式并保留原始错误", async () => {
 });
 
 async function until(predicate) {
-  for (let attempt = 0; attempt < 200; attempt++) {
+  for (let attempt = 0; attempt < 600; attempt++) {
     if (predicate()) return;
     await delay(5);
   }
@@ -64,7 +64,9 @@ test("independent bridge connections preserve active snapshots and close without
   const location = workerLocation(backend);
   const revision = await workerRevision();
   let reportedRevision = revision,
-    workerBusy = false;
+    workerBusy = false,
+    stopAttempts = 0,
+    raceOnUpgrade = false;
   await mkdir(dirname(location.socket), { recursive: true, mode: 0o700 });
   const clients = new Set(),
     packets = [];
@@ -111,7 +113,9 @@ test("independent bridge connections preserve active snapshots and close without
               id: packet.id,
               result: {
                 pid: 2147483647,
-                state,
+                state: raceOnUpgrade
+                  ? { method: "lan/state", params: { ready: true } }
+                  : state,
                 revision: reportedRevision,
                 busy: workerBusy,
                 configuration: {
@@ -126,6 +130,25 @@ test("independent bridge connections preserve active snapshots and close without
               },
             }) + "\n",
           );
+        if (packet.kind === "shutdown" && raceOnUpgrade) {
+          const busy = ++stopAttempts === 1;
+          socket.write(
+            JSON.stringify({
+              kind: "response",
+              id: packet.id,
+              ...(busy
+                ? {
+                    error:
+                      "Claude 后端仍有运行任务、排队输入或待答提问，请结束后再停止。",
+                  }
+                : { result: {} }),
+            }) + "\n",
+          );
+          if (!busy) {
+            reportedRevision = revision;
+            socket.end();
+          }
+        }
         if (packet.kind === "rpc" && packet.message.method === "thread/read")
           socket.write(
             JSON.stringify({
@@ -284,6 +307,37 @@ test("independent bridge connections preserve active snapshots and close without
     await until(() =>
       events.some((event) => event.method === "item/completed"),
     );
+
+    raceOnUpgrade = true;
+    reportedRevision = { ...revision, hash: "older-worker-code" };
+    const upgradeStates = [];
+    const racing = createClaudeWorkerAdapter({
+      ...options,
+      broadcast: (message) => upgradeStates.push(message.params),
+    });
+    try {
+      await racing.connect();
+      await until(() => stopAttempts === 1);
+      await racing.receive(
+        {},
+        { id: 11, method: "thread/read", params: { threadId: "thread" } },
+      );
+      assert.equal(racing.ready, true);
+      assert.equal(racing.state().params.pendingUpdate, true);
+      assert.equal(
+        delivered.find((message) => message.id === 11).result.thread.id,
+        "thread",
+      );
+      await until(
+        () =>
+          stopAttempts === 2 &&
+          racing.ready &&
+          !racing.state().params.pendingUpdate,
+      );
+      assert.ok(upgradeStates.every((params) => params.ready && !params.error));
+    } finally {
+      racing.close();
+    }
   } finally {
     first.close();
     second.close();

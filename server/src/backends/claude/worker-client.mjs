@@ -74,6 +74,7 @@ export function createClaudeWorkerAdapter({
   const pending = new Map();
   let socket,
     reconnect,
+    upgradeRetry,
     connecting,
     closed = false,
     workerPid,
@@ -107,16 +108,34 @@ export function createClaudeWorkerAdapter({
     return hasBackendWork(snapshot.params);
   }
   function upgradeWhenIdle() {
-    if (!outdated || !mayUpgrade || upgrading || busy() || closed) return;
+    if (
+      closed ||
+      !socket ||
+      socket.destroyed ||
+      connecting ||
+      stopping ||
+      !outdated ||
+      !mayUpgrade ||
+      upgrading ||
+      upgradeRetry ||
+      busy()
+    )
+      return;
     upgrading = true;
     shutdownWorker(options)
-      .then(async () => {
-        if (connecting) await connecting.catch(() => {});
-        await connect();
+      .then(() => connect().catch(() => {}))
+      .catch((error) => {
+        if (closed || !socket || socket.destroyed) return;
+        if (error.code !== "EWORKERBUSY")
+          console.error("Claude 执行服务替换暂缓：", error.message);
+        upgradeRetry = setTimeout(() => {
+          upgradeRetry = null;
+          upgradeWhenIdle();
+        }, 1000);
       })
-      .catch(() => {})
       .finally(() => {
         upgrading = false;
+        upgradeWhenIdle();
       });
   }
   function accept(packet) {
@@ -131,7 +150,10 @@ export function createClaudeWorkerAdapter({
       if (!request) return;
       pending.delete(packet.id);
       clearTimeout(request.timer);
-      if (packet.error) request.reject(new Error(packet.error));
+      if (packet.error)
+        request.reject(
+          Object.assign(new Error(packet.error), { code: packet.errorCode }),
+        );
       else request.resolve(packet.result);
     }
   }
@@ -164,6 +186,8 @@ export function createClaudeWorkerAdapter({
     }
     socket = connection;
     let input = "";
+    let initializing = true;
+    let latestState;
     connection.setEncoding("utf8");
     connection.on("data", (chunk) => {
       input += chunk;
@@ -174,7 +198,10 @@ export function createClaudeWorkerAdapter({
         const line = input.slice(0, index);
         input = input.slice(index + 1);
         try {
-          accept(JSON.parse(line));
+          const packet = JSON.parse(line);
+          if (initializing && packet.kind === "state")
+            latestState = packet.message;
+          else accept(packet);
         } catch (error) {
           connection.destroy(error);
         }
@@ -184,6 +211,8 @@ export function createClaudeWorkerAdapter({
     connection.on("close", () => {
       if (socket !== connection) return;
       socket = null;
+      clearTimeout(upgradeRetry);
+      upgradeRetry = null;
       for (const item of pending.values()) {
         clearTimeout(item.timer);
         item.reject(new Error("Claude 后端连接中断，请核对实际任务状态。"));
@@ -212,7 +241,7 @@ export function createClaudeWorkerAdapter({
     }
     workerPid = initialized.pid;
     workerIdentity = (await captureNativeProcesses(workerPid)).owner;
-    snapshot = initialized.state;
+    snapshot = latestState || initialized.state;
     outdated =
       initialized.revision?.entry !== options.revision.entry ||
       initialized.revision?.hash !== options.revision.hash ||
@@ -230,13 +259,8 @@ export function createClaudeWorkerAdapter({
         ));
     mayUpgrade =
       !initialized.generation || options.generation > initialized.generation;
+    initializing = false;
     publish();
-    if (outdated && mayUpgrade && !initialized.busy) {
-      await shutdownWorker(options);
-      const error = new Error("Claude 后端代码更新，正在重新启动。");
-      error.code = "EWORKERUPDATE";
-      throw error;
-    }
   }
   async function connect() {
     options.backend = {
@@ -254,11 +278,7 @@ export function createClaudeWorkerAdapter({
         await open();
         return;
       } catch (error) {
-        if (
-          !["ENOENT", "ECONNREFUSED", "ECONNRESET", "EWORKERUPDATE"].includes(
-            error.code,
-          )
-        )
+        if (!["ENOENT", "ECONNREFUSED", "ECONNRESET"].includes(error.code))
           throw error;
       }
       await launchWorker(backend, options);
@@ -270,8 +290,6 @@ export function createClaudeWorkerAdapter({
           return;
         } catch (error) {
           lastError = error;
-          if (error.code === "EWORKERUPDATE")
-            await launchWorker(backend, options);
         }
         await delay(100);
       }
@@ -291,10 +309,12 @@ export function createClaudeWorkerAdapter({
       throw error;
     } finally {
       connecting = null;
+      upgradeWhenIdle();
     }
   }
   async function shutdownWorker(replacement) {
     if (!socket || socket.destroyed) return;
+    if (stopping) throw new Error("Claude 后端正在停止。");
     const connection = socket;
     let onClose;
     const ended = new Promise((resolve) => {
@@ -354,6 +374,7 @@ export function createClaudeWorkerAdapter({
     close() {
       closed = true;
       clearTimeout(reconnect);
+      clearTimeout(upgradeRetry);
       socket?.destroy();
     },
   };

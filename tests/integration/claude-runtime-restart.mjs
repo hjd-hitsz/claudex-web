@@ -165,7 +165,11 @@ try {
   assert.ok(adapter.state().params.backgroundTasks[id].length > 0);
   const list = await call("thread/backgroundTerminals/list", { threadId: id });
   assert.equal(list.data.length, 1);
-  await assert.rejects(adapter.shutdown(), /仍有运行任务/);
+  await assert.rejects(adapter.shutdown(), {
+    code: "EWORKERBUSY",
+    message: /仍有运行任务/,
+  });
+  assert.equal(adapter.ready, true);
   assert.equal(
     await running(before.nativeProcess),
     true,

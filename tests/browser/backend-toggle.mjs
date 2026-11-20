@@ -110,7 +110,10 @@ try {
     await claudeStatus.getByText("已停用", { exact: true }).waitFor();
   }
   async function expectEnabled() {
-    await claudeStatus.getByText("已连接", { exact: true }).waitFor();
+    const connected = before
+      ? claudeStatus.getByText("已连接", { exact: true })
+      : claudeStatus.getByRole("status", { name: "已连接", exact: true });
+    await connected.waitFor();
   }
 
   await expandGroups();
@@ -175,6 +178,10 @@ try {
 
   await toggleClaude();
   await expectEnabled();
+  if (!before)
+    await page.screenshot({
+      path: join(output, "06-settings-connected-light.png"),
+    });
   await closeSettings.click();
   await expandGroups();
   await claudeThread.waitFor();
@@ -225,7 +232,7 @@ try {
     await page
       .locator(".backend-card")
       .filter({ has: codexToggle })
-      .getByText("已连接", { exact: true })
+      .getByRole("status", { name: "已连接", exact: true })
       .waitFor();
     await closeSettings.click();
     await expandGroup("未分类");

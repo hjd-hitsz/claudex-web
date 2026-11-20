@@ -67,8 +67,7 @@ async function currentState() {
   };
 }
 async function isBusy() {
-  const { params } = await currentState();
-  return Boolean(inflight || hasBackendWork(params));
+  return Boolean(inflight || hasBackendWork((await currentState()).params));
 }
 function send(socket, value) {
   if (!socket.destroyed) socket.write(JSON.stringify(value) + "\n");
@@ -156,15 +155,16 @@ async function handle(socket, line) {
     request = JSON.parse(line);
     if (request.kind === "initialize") {
       await initialize(request.options);
+      const state = await currentState();
       socket.initialized = true;
       send(socket, {
         kind: "response",
         id: request.id,
         result: {
           pid: process.pid,
-          state: await currentState(),
+          state,
           revision,
-          busy: await isBusy(),
+          busy: Boolean(inflight || hasBackendWork(state.params)),
           configuration: {
             backend: options.backend,
             config: options.config,
@@ -189,29 +189,34 @@ async function handle(socket, line) {
     if (request.kind === "shutdown") {
       if (stopping) throw new Error("Claude 后端正在停止。");
       stopping = true;
-      if (await isBusy()) {
-        stopping = false;
-        throw new Error(
-          "Claude 后端仍有运行任务、排队输入或待答提问，请结束后再停止。",
-        );
-      }
-      if (request.replacement) {
-        if (
-          resolve(request.replacement.backend.stateDir) !== resolve(dataDir)
-        ) {
-          stopping = false;
-          throw new Error("Claude 更新目录不匹配");
+      try {
+        if (await isBusy()) {
+          throw Object.assign(
+            new Error(
+              "Claude 后端仍有运行任务、排队输入或待答提问，请结束后再停止。",
+            ),
+            { code: "EWORKERBUSY" },
+          );
         }
-        const temporary = `${optionsPath}.${process.pid}.tmp`;
-        await writeFile(
-          temporary,
-          JSON.stringify({
-            ...request.replacement,
-            preferredEntry: request.replacement.revision.entry,
-          }),
-          { mode: 0o600 },
-        );
-        await rename(temporary, optionsPath);
+        if (request.replacement) {
+          if (
+            resolve(request.replacement.backend.stateDir) !== resolve(dataDir)
+          )
+            throw new Error("Claude 更新目录不匹配");
+          const temporary = `${optionsPath}.${process.pid}.tmp`;
+          await writeFile(
+            temporary,
+            JSON.stringify({
+              ...request.replacement,
+              preferredEntry: request.replacement.revision.entry,
+            }),
+            { mode: 0o600 },
+          );
+          await rename(temporary, optionsPath);
+        }
+      } catch (error) {
+        stopping = false;
+        throw error;
       }
       send(socket, { kind: "response", id: request.id, result: {} });
       return shutdown();
@@ -236,7 +241,12 @@ async function handle(socket, line) {
     if (!replied)
       send(socket, { kind: "response", id: request.id, result: null });
   } catch (error) {
-    send(socket, { kind: "response", id: request?.id, error: error.message });
+    send(socket, {
+      kind: "response",
+      id: request?.id,
+      error: error.message,
+      errorCode: error.code,
+    });
   }
 }
 async function listen() {
