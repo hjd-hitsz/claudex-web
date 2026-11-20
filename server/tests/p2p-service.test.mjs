@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as wait } from "node:timers/promises";
+import { createPeerRegistry } from "../src/p2p/peers.mjs";
 import { createP2pService } from "../src/p2p/service.mjs";
 
 async function waitFor(predicate) {
@@ -168,4 +169,38 @@ test("P2P 持久授权、独立信令入口与撤销已连接的授权", async (
   await waitFor(() => fixture.state === "online");
   assert.deepEqual((await service.manage("status")).links, [tablet]);
   assert.equal((await offer(token, remote.localDescription().sdp)).status, 401);
+});
+
+test("P2P 允许每条链接并发协商 8 条连接，全服务最多 32 条", async (t) => {
+  class TestPeerConnection {
+    onStateChange() {}
+    onDataChannel() {}
+    onGatheringStateChange(callback) {
+      this.onGathering = callback;
+    }
+    setRemoteDescription() {}
+    setLocalDescription() {
+      this.onGathering("complete");
+    }
+    localDescription() {
+      return { type: "answer", sdp: "fixture-answer" };
+    }
+    close() {}
+  }
+
+  const registry = createPeerRegistry(TestPeerConnection, () => {});
+  t.after(() => registry.close());
+  const { signal } = new AbortController();
+  const sdp = "m=application 9 UDP/DTLS/SCTP webrtc-datachannel";
+  const offer = (link) => registry.offer(link, sdp, signal);
+
+  for (let index = 0; index < 8; index++) await offer("first");
+  await assert.rejects(offer("first"), { cause: 429 });
+
+  for (const link of ["second", "third", "fourth"])
+    for (let index = 0; index < 8; index++) await offer(link);
+  await assert.rejects(offer("fifth"), { cause: 429 });
+
+  registry.close("first");
+  assert.deepEqual(await offer("first"), { sdp: "fixture-answer" });
 });

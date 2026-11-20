@@ -22,7 +22,7 @@ export function createPeerRegistry(PeerConnection, connectPeer) {
     if (!directOffer(sdp)) throw fail("无效的 WebRTC 直连请求", 400);
     if (
       peers.size >= 32 ||
-      [...peers].filter((peer) => peer.link === link).length >= 4
+      [...peers].filter((peer) => peer.link === link).length >= 8
     )
       throw fail("P2P 连接数已达上限，请关闭闲置页面后重试", 429);
     signal.throwIfAborted();
