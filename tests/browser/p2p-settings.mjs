@@ -30,7 +30,7 @@ let expireReads = false;
 let reads = 0;
 let serial = 0;
 const server = http.createServer(async (request, response) => {
-  if (serveDemoSession(request, response)) return;
+  if (serveDemoSession(request, response, { totpStatus: "enabled" })) return;
   const { pathname } = new URL(request.url, "http://fixture");
   if (!pathname.startsWith("/api/p2p"))
     return serveStatic(request, response, pathname);
@@ -114,6 +114,12 @@ try {
   const collapseSidebar = page.getByRole("button", { name: "收起侧栏" });
   const closeDialog = page.getByRole("button", { name: "关闭窗口" });
   const section = page.getByRole("region", { name: "连接与登录" });
+  const account = section.getByRole("region", { name: "账号与双重验证" });
+  const certificate = section.getByRole("region", {
+    name: "局域网 HTTPS 证书",
+  });
+  const remote = section.getByRole("region", { name: "P2P 远程访问" });
+  const totpHelp = account.getByText("双重验证使用方法", { exact: true });
   const toggle = section.getByRole("checkbox", { name: "P2P 远程访问" });
   const name = section.getByRole("textbox", { name: "设备名称" });
   const create = section.getByRole("button", { name: "生成链接" });
@@ -129,7 +135,35 @@ try {
   }
 
   await openSettings();
+  const certificateHelp = certificate.getByText("浏览器证书安装", {
+    exact: true,
+  });
+  await certificateHelp.waitFor();
+  assert.equal(await account.locator(".certificate-help").count(), 0);
+  assert.equal(
+    await remote.getByRole("button", { name: "退出登录" }).count(),
+    0,
+  );
+  assert.equal(await certificate.locator("details").getAttribute("open"), null);
   await section.getByText("已关闭", { exact: true }).waitFor();
+  await section.getByText("双重验证（2FA）已启用", { exact: true }).waitFor();
+  assert.equal(
+    await section.locator(".totp-settings details").getAttribute("open"),
+    null,
+  );
+  await totpHelp.click();
+  assert.equal(await certificate.locator("details").getAttribute("open"), null);
+  await section.getByRole("button", { name: "复制绑定命令" }).click();
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    "claudex-web auth setup",
+  );
+  await section.getByRole("button", { name: "复制关闭命令" }).click();
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    "claudex-web auth disable",
+  );
+  await totpHelp.click();
   assert.equal(await toggle.isChecked(), false);
   assert.equal(await create.count(), 0);
   assert.equal(await section.locator(".p2p-settings > p").count(), 0);
@@ -152,6 +186,18 @@ try {
   await name.fill("备用平板");
   await create.click();
   await link("备用平板").waitFor();
+  await section.screenshot({
+    path: join(output, "connection-cards-light.png"),
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 390, height: 960 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await section.screenshot({
+    path: join(output, "connection-cards-mobile-dark.png"),
+    animations: "disabled",
+  });
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.setViewportSize({ width: 1280, height: 960 });
 
   await link("我的手机").getByRole("button", { name: "复制链接" }).click();
   await link("我的手机").getByRole("button", { name: "已复制" }).waitFor();
@@ -215,9 +261,20 @@ try {
         await page.bringToFront();
         await openSettings();
         await link("备用平板").waitFor();
+        await totpHelp.click();
+        await section.getByRole("button", { name: "复制关闭命令" }).waitFor();
         const measurements = await section.evaluate((card) => ({
           dpr: devicePixelRatio,
           innerWidth,
+          helpTypography: [
+            ...card.querySelectorAll(
+              ".totp-help > summary, .certificate-help > summary",
+            ),
+          ].map((summary) => {
+            const { fontFamily, fontSize, fontWeight, lineHeight, color } =
+              getComputedStyle(summary);
+            return { fontFamily, fontSize, fontWeight, lineHeight, color };
+          }),
           targets: [...card.querySelectorAll("button, input")]
             .filter((element) => element.offsetWidth > 0)
             .map((element) => {
@@ -230,6 +287,8 @@ try {
         layout.push(result);
         assert.ok(Math.abs(result.dpr - scale) < 0.02, JSON.stringify(result));
         assert.ok(Math.abs(result.innerWidth - width / scale) <= 1);
+        assert.equal(result.helpTypography.length, 2);
+        assert.deepEqual(result.helpTypography[0], result.helpTypography[1]);
         for (const target of result.targets) {
           assert.ok(target.left >= 0 && target.right <= result.innerWidth + 1);
           assert.ok(target.height >= 15 && target.width >= 15);

@@ -66,7 +66,10 @@ export function createP2pSocket(token) {
       const { resolve, reject, timeout, action } = authRequest;
       authRequest = undefined;
       clearTimeout(timeout);
-      if (message.error) reject(new Error(message.error));
+      if (message.error)
+        reject(
+          Object.assign(new Error(message.error), { status: message.status }),
+        );
       else {
         if (action === "logout") http.clear("登录已结束，请重新登录。");
         resolve(message);

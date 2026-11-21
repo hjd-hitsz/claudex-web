@@ -152,7 +152,8 @@
   font-size: 0.923077rem;
   color: var(--muted);
 }
-.field-label input {
+.field-label input,
+.field-input {
   border: 1px solid var(--border);
   background: var(--bg);
   border-radius: 8px;

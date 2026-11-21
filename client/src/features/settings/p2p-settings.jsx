@@ -153,18 +153,20 @@ export function P2pSettings() {
   return (
     <div className="p2p-settings">
       <div className="p2p-settings-row">
-        <label className="p2p-settings-toggle">
-          <input
-            ref={toggle}
-            type="checkbox"
-            checked={Boolean(status?.enabled)}
-            disabled={busy || !status || Boolean(loadError)}
-            onChange={(event) =>
-              void change(event.target.checked ? "enable" : "disable")
-            }
-          />
-          P2P 远程访问
-        </label>
+        <h4 className="connection-heading" id="p2p-settings-title">
+          <label className="p2p-settings-toggle">
+            <input
+              ref={toggle}
+              type="checkbox"
+              checked={Boolean(status?.enabled)}
+              disabled={busy || !status || Boolean(loadError)}
+              onChange={(event) =>
+                void change(event.target.checked ? "enable" : "disable")
+              }
+            />
+            P2P 远程访问
+          </label>
+        </h4>
         <span
           className="backend-connection"
           data-ready={status?.state === "online" && !loadError}

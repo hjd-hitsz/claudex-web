@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 const { version } = JSON.parse(
   readFileSync(new URL("../../package.json", import.meta.url)),
 );
-export function serveDemoSession(request, response) {
+export function serveDemoSession(request, response, session = {}) {
   if (
     request.url === "/api/maintenance" ||
     request.url === "/api/maintenance/check"
@@ -37,6 +37,7 @@ export function serveDemoSession(request, response) {
         authenticated: true,
         username: "demo",
         expiresAt: Date.now() + 86400000,
+        ...session,
       }),
     );
   return true;

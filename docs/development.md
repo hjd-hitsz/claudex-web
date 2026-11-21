@@ -255,9 +255,9 @@ Mermaid 回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/
 
 ### 登录与证书
 
-`server/tests/auth.test.mjs` 通过临时 CLAUDEX_WEB_CONFIG_DIR、实际 TLS/WSS 服务及模拟 PAM 验证程序覆盖未登录访问、跨站请求、会话持久化、退出与过期、限流、维护连接及后台任务保护。测试凭据只用于隔离验证，不操作系统账户或真实 Codex 对话。`server/tests/tls.test.mjs` 检查证书并发生成、重复启动、权限与自定义证书；`server/tests/dev-https.test.mjs` 验证域名证书在本机 HTTPS/WSS 代理中的证书校验、Cookie 与来源转发。
+`server/tests/auth.test.mjs` 通过临时 `CLAUDEX_WEB_CONFIG_DIR`、实际 TLS/WSS 服务及模拟 PAM 验证程序覆盖未登录访问、跨站请求、旧会话与退出、限流、维护连接及后台任务保护。双重验证回归覆盖 CLI 在线绑定和关闭、待验证权限、动态码重放及重启。测试凭据来自隔离夹具。`server/tests/tls.test.mjs` 检查证书并发生成、重复启动、权限与自定义证书；`server/tests/dev-https.test.mjs` 验证域名证书在本机 HTTPS/WSS 代理中的证书校验、Cookie 与来源转发。
 
-浏览器回归使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/auth.mjs`，在生产构建和临时模拟后端上实际填写登录表单，检查刷新、跨标签页退出、草稿恢复、过期、证书下载、设备安装指引、关于页隐藏开发标记、深浅主题及手机布局。截图及构建信息保存在 `.cache/auth-browser`。
+浏览器回归使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/auth.mjs`，在生产构建和临时模拟后端上实际填写密码和动态码，检查首次绑定步骤、设置中的状态和折叠帮助，以及刷新、跨标签页退出、草稿恢复、过期、证书下载、设备安装指引、关于页隐藏开发标记、深浅主题及手机布局。截图及构建信息保存在 `.cache/auth-browser`。
 
 构建完成后，使用同样的环境变量运行 `node tests/browser/p2p-settings.mjs`。回归在隔离浏览器和模拟授权服务中检查「连接与登录」的启停、状态读取失败重试、生成失败后的名称保留、剪贴板、撤销确认与刷新恢复。使用实际 80%～200% 页面缩放检查深浅主题与窄屏的操作边界和侧栏焦点，截图和测量结果保存在 `.cache/p2p-settings-browser`。
 

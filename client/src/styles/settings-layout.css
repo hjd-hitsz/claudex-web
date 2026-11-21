@@ -304,6 +304,17 @@
   background: transparent;
   color: var(--link);
 }
+.connection-cards {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.connection-heading {
+  margin: 0 0 0.5rem;
+  font: inherit;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
 .modal-settings .login-settings {
   gap: 12px;
 }
@@ -315,7 +326,9 @@
 .p2p-settings {
   display: grid;
   gap: 8px;
-  border-top: 1px solid var(--border);
+}
+.p2p-settings .connection-heading {
+  margin: 0;
 }
 .p2p-settings-row,
 .p2p-link-actions {
@@ -384,13 +397,18 @@
   color: var(--red);
 }
 .modal-settings .certificate-help {
-  margin-top: 8px;
-  padding-top: 12px;
+  margin: 0;
   font-size: 13px;
 }
-.modal-settings .certificate-help summary {
+.modal-settings .certificate-help summary,
+.modal-settings .totp-help > summary {
   min-height: 28px;
   color: var(--muted);
+}
+.modal-settings :is(.totp-help, .certificate-help) > summary {
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
 }
 .modal-settings .inline-error {
   margin: 12px 0 0;

@@ -28,6 +28,8 @@ async function main() {
   start                      前台启动网页服务（默认命令）
   backend                    前台启动 Codex app-server
   config init                创建用户配置，保留已有配置
+  auth setup                 显示双重验证绑定二维码
+  auth disable               关闭双重验证并清除绑定
   service install            安装并启动 Linux systemd 用户服务
   service status             查看网页与后端服务状态
   service start              启动网页服务及其 Codex 后端
@@ -61,6 +63,8 @@ async function main() {
       "start",
       "backend",
       "config init",
+      "auth setup",
+      "auth disable",
       "service install",
       "service status",
       "service start",
@@ -96,6 +100,11 @@ async function main() {
   if (args[0] === "p2p") {
     const { runP2pCommand } = await import("./p2p.mjs");
     await runP2pCommand(args.slice(1));
+    return;
+  }
+  if (args[0] === "auth") {
+    const { runAuthCommand } = await import("./auth.mjs");
+    await runAuthCommand(args[1], readConfig());
     return;
   }
   switch (command) {

@@ -36,7 +36,11 @@ export function createWebApplication({
   function send(client, message) {
     if (
       (client.authLinkId || client.authSessionId) &&
-      !authentication.valid(client.authSessionId, client.authLinkId)
+      !authentication.valid(
+        client.authSessionId,
+        client.authLinkId,
+        client.authLocal,
+      )
     )
       return;
     const text = JSON.stringify(message);
@@ -114,12 +118,16 @@ export function createWebApplication({
       return;
     }
     const id = authentication.sessionId(request);
-    if (!authentication.sameOrigin(request) || !authentication.valid(id)) {
+    const local = authentication.isDirectLocalRequest(request);
+    if (
+      !authentication.sameOrigin(request) ||
+      !authentication.valid(id, undefined, local)
+    ) {
       socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       return;
     }
     clients.handleUpgrade(request, socket, head, (client) => {
-      authentication.attach(client, id);
+      authentication.attach(client, id, undefined, local);
       clients.emit("connection", client);
     });
   });
@@ -143,7 +151,13 @@ export function createWebApplication({
     if (!client.authLinkId) send(client, state());
 
     client.on("message", (bytes) => {
-      if (!authentication.valid(client.authSessionId, client.authLinkId))
+      if (
+        !authentication.valid(
+          client.authSessionId,
+          client.authLinkId,
+          client.authLocal,
+        )
+      )
         return;
       let message;
       try {
@@ -220,6 +234,7 @@ export function createWebApplication({
         await new Promise((resolve, reject) =>
           server.close((error) => (error ? reject(error) : resolve())),
         );
+      authentication.close();
     },
   };
 }

@@ -43,6 +43,7 @@
     "prepack": "npm run build",
     "start": "node --env-file-if-exists=.env server/src/server.mjs",
     "start:backend": "node --env-file-if-exists=.env scripts/start-backend.mjs",
+    "auth": "node --env-file-if-exists=.env bin/claudex-web.mjs auth",
     "test": "npm run test:unit && npm run test:components",
     "test:unit": "node --import ./tests/helpers/test-console.mjs --test client/tests/*.test.js server/tests/*.test.mjs tests/architecture.test.mjs tests/version.test.mjs tests/release.test.mjs tests/auto-release.test.mjs tests/npm-release.test.mjs tests/test-console.test.mjs packages/translation-engine/tests/*.test.mjs",
     "test:components": "node scripts/test-components.mjs",
@@ -76,6 +77,7 @@
     "fuzzysort": "4.0.2",
     "ignore": "7.0.16",
     "node-pty": "1.1.0",
+    "qrcode": "1.5.4",
     "ws": "8.22.0"
   },
   "repository": {

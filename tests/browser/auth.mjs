@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import { X509Certificate } from "node:crypto";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { WebSocketServer } from "ws";
-import { authenticationFixture } from "../helpers/auth.mjs";
+import {
+  authenticationFixture,
+  fixtureTotpCode,
+  resetFixtureTotpReplay,
+} from "../helpers/auth.mjs";
 
 assert(process.env.CHROME_PATH, "通过 CHROME_PATH 指定 Chromium");
 assert(
@@ -19,7 +23,7 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 const output = join(root, ".cache/auth-browser");
 await mkdir(output, { recursive: true });
 const directory = await mkdtemp(join(tmpdir(), "claudex-web-auth-browser-"));
-const auth = await authenticationFixture(directory);
+const auth = await authenticationFixture(directory, { legacy: true });
 const backend = new WebSocketServer({ host: "127.0.0.1", port: 0 });
 await once(backend, "listening");
 const thread = {
@@ -207,7 +211,11 @@ try {
   browser = await chromium.launch({
     executablePath: process.env.CHROME_PATH,
     headless: true,
-    args: ["--no-sandbox", "--no-proxy-server"],
+    args: [
+      "--no-sandbox",
+      "--no-proxy-server",
+      "--host-resolver-rules=MAP claudex-auth.test 127.0.0.1",
+    ],
   });
   if (process.env.BROWSER_BEFORE === "1") {
     await start(true);
@@ -225,6 +233,30 @@ try {
     console.log("PASS main 对照：未验证时直接展示工作区");
   } else {
     await start();
+    const localContext = await browser.newContext({ ignoreHTTPSErrors: true });
+    try {
+      const local = await localContext.newPage();
+      await local.goto(url);
+      await local
+        .getByLabel("用户名", { exact: true })
+        .fill(userInfo().username);
+      await local.getByLabel("密码", { exact: true }).fill("fixture-password");
+      await local.getByRole("button", { name: "登录", exact: true }).click();
+      await local.locator(".app-shell").waitFor();
+      await local.getByRole("button", { name: "设置", exact: true }).click();
+      const account = local.getByRole("region", { name: "账号与双重验证" });
+      await account.getByText(/本机直连/).waitFor();
+      await account
+        .getByText("双重验证（2FA）未绑定", { exact: true })
+        .waitFor();
+      await account.screenshot({
+        path: join(output, "local-login-unbound.png"),
+        animations: "disabled",
+      });
+    } finally {
+      await localContext.close();
+    }
+    url = url.replace("127.0.0.1", "claudex-auth.test");
     const context = await browser.newContext({
       ignoreHTTPSErrors: true,
       viewport: { width: 1280, height: 800 },
@@ -240,6 +272,8 @@ try {
         return store.call(this, credential);
       };
     });
+    const [name, value] = auth.cookie.split("=");
+    await context.addCookies([{ name, value, url, httpOnly: true }]);
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(url);
@@ -255,6 +289,7 @@ try {
       await page.screenshot({
         path: join(output, name + ".png"),
         fullPage: name.startsWith("certificate"),
+        animations: "disabled",
       });
       evidence.push({
         name,
@@ -372,21 +407,81 @@ try {
       [],
     );
     await screenshot("login-error");
-    const signIn = async (target = page) => {
+    const signIn = async (target = page, first = false) => {
+      if (!first) resetFixtureTotpReplay(directory);
       await target
         .getByLabel("用户名", { exact: true })
         .fill(userInfo().username);
       await target.getByLabel("密码", { exact: true }).fill("fixture-password");
       await target.getByRole("button", { name: "登录", exact: true }).click();
+      const code = target.getByLabel("六位动态码", { exact: true });
+      const verify = target.getByRole("button", { name: "验证并登录" });
+      await code.waitFor();
+      if (first) {
+        assert.deepEqual(
+          await target.evaluate(() => window.passwordSaveRequests),
+          [{ id: userInfo().username, type: "password" }],
+        );
+        assert.equal(await target.locator(".app-shell").count(), 0);
+        assert.equal(
+          await code.evaluate((input) => input === document.activeElement),
+          true,
+        );
+        assert.equal(await code.getAttribute("autocomplete"), "one-time-code");
+        assert.equal(await code.getAttribute("placeholder"), "输入六位动态码");
+        assert.equal(
+          await code.evaluate((input) => getComputedStyle(input).letterSpacing),
+          "normal",
+        );
+        assert.equal(await target.locator("#totp-form button").count(), 1);
+        assert.equal(
+          await target.locator(".login-card .certificate-help").count(),
+          0,
+        );
+        assert.equal(await target.locator(".totp-steps li").count(), 3);
+        await screenshot("totp-first-use-light");
+        await code.fill("123456");
+        await screenshot("totp-typed-light");
+        await target.emulateMedia({ colorScheme: "dark" });
+        await target.setViewportSize({ width: 390, height: 844 });
+        await screenshot("totp-typed-mobile-dark");
+        await target.emulateMedia({ colorScheme: "light" });
+        await target.setViewportSize({ width: 1280, height: 800 });
+        await code.fill("000000");
+        await verify.click();
+        await target
+          .getByRole("alert")
+          .filter({ hasText: "请先按下方步骤绑定验证器" })
+          .waitFor();
+        await target.reload();
+        await code.waitFor();
+        const qr = execFileSync(
+          process.execPath,
+          [join(root, "bin/claudex-web.mjs"), "auth", "setup"],
+          {
+            env: {
+              ...process.env,
+              CLAUDEX_WEB_CONFIG_DIR: directory,
+              CODEX_HOME: directory,
+            },
+            encoding: "utf8",
+            stdio: "pipe",
+          },
+        );
+        assert.match(qr, /扫描二维码/);
+      }
+      await code.fill(fixtureTotpCode(directory));
+      await verify.click();
       await target.locator(".app-shell").waitFor();
       await target.waitForFunction(
         () => !document.querySelector(".connection-banner"),
       );
     };
-    await signIn();
-    assert.deepEqual(await page.evaluate(() => window.passwordSaveRequests), [
-      { id: userInfo().username, type: "password" },
-    ]);
+    await signIn(page, true);
+    assert.deepEqual(
+      await page.evaluate(() => window.passwordSaveRequests),
+      [],
+    );
     for (const mode of ["unsupported", "rejected"]) {
       const fallback = await browser.newContext({ ignoreHTTPSErrors: true });
       try {
@@ -523,6 +618,40 @@ try {
     ])
       assert(!settingsText.includes(marker));
     await screenshot("settings-clean");
+    await page.getByText("双重验证（2FA）已启用", { exact: true }).waitFor();
+    const totpSettings = page.locator(".totp-settings");
+    const totpHelp = page.getByText("双重验证使用方法", { exact: true });
+    assert.equal(
+      await totpSettings.locator("details").getAttribute("open"),
+      null,
+    );
+    await totpSettings.evaluate((element) =>
+      element.scrollIntoView({ block: "center" }),
+    );
+    await screenshot("totp-settings-collapsed-light");
+    await totpHelp.click();
+    assert.equal(
+      await page.locator(".totp-settings details").getAttribute("open"),
+      "",
+    );
+    await page.getByText("claudex-web auth disable", { exact: true }).waitFor();
+    await totpSettings.evaluate((element) =>
+      element.scrollIntoView({ block: "center" }),
+    );
+    await screenshot("totp-settings-light");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await totpSettings.evaluate((element) =>
+      element.scrollIntoView({ block: "center" }),
+    );
+    await screenshot("totp-settings-mobile-dark");
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await totpHelp.click();
+    assert.equal(
+      await page.locator(".totp-settings details").getAttribute("open"),
+      null,
+    );
     await page.getByRole("button", { name: "退出登录", exact: true }).click();
     await page.locator(".login-card form").waitFor();
     await second.locator(".login-card form").waitFor();
@@ -555,7 +684,12 @@ try {
     );
     await restored.getByLabel("消息", { exact: true }).fill("过期后保留的草稿");
     await restored.route("**/api/auth/session", async (route) => {
-      const response = await route.fetch();
+      const endpoint = new URL(route.request().url());
+      endpoint.hostname = "127.0.0.1";
+      const response = await route.fetch({
+        url: endpoint.href,
+        headers: await route.request().allHeaders(),
+      });
       const data = await response.json();
       await route.fulfill({
         response,

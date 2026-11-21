@@ -13,7 +13,11 @@ import native from "node-datachannel";
 import { createWebApplication } from "../../server/src/application.mjs";
 import { createAuthentication } from "../../server/src/auth.mjs";
 import { readConfig } from "../../server/src/config.mjs";
-import { authenticationFixture, httpsFetch } from "../helpers/auth.mjs";
+import {
+  authenticationFixture,
+  fixtureTotpCode,
+  httpsFetch,
+} from "../helpers/auth.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output = join(root, ".cache/p2p-auth-browser");
@@ -182,6 +186,17 @@ try {
   await page.screenshot({ path: join(output, "incorrect-password.png") });
   await password.fill("fixture-password");
   await submit.click();
+  const code = page.getByLabel("六位动态码", { exact: true });
+  const verify = page.getByRole("button", { name: "验证并登录" });
+  await code.waitFor();
+  assert.equal(
+    await code.evaluate((input) => input === document.activeElement),
+    true,
+  );
+  assert.deepEqual(await readNote(), { status: 401, body: "" });
+  await captureTotp(context, page, code, verify);
+  await code.fill(fixtureTotpCode(directory));
+  await verify.click();
   await composer.waitFor();
   assert.deepEqual(await readNote(), { status: 200, body: "登录后才能读取" });
   await page.evaluate((link) => {
@@ -213,6 +228,18 @@ try {
   await page
     .getByText("已登录：" + userInfo().username + " · P2P 直连")
     .waitFor();
+  await page.getByText("双重验证（2FA）已启用", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByRole("region", { name: "局域网 HTTPS 证书" }).count(),
+    0,
+  );
+  assert.equal(
+    await page.getByRole("region", { name: "P2P 远程访问" }).count(),
+    0,
+  );
+  await page.getByText("双重验证使用方法", { exact: true }).click();
+  await page.getByText("claudex-web auth disable", { exact: true }).waitFor();
+  await page.screenshot({ path: join(output, "totp-settings-p2p.png") });
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
   await login.waitFor();
   await otherTab.getByRole("heading", { name: "登录远程工作空间" }).waitFor();
@@ -223,6 +250,8 @@ try {
   await username.fill(userInfo().username);
   await password.fill("fixture-password");
   await submit.click();
+  await code.fill(fixtureTotpCode(directory, 1));
+  await verify.click();
   await composer.waitFor();
   await context.close();
   context = await openBrowser(devices["Pixel 7"]);
@@ -304,5 +333,71 @@ async function captureLogin(context, page, login, username, submit) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.reload();
     await login.waitFor();
+  }
+}
+
+async function captureTotp(context, page, code, verify) {
+  const settings = await context.newPage();
+  await settings.goto("chrome://settings/appearance");
+  const zoom = settings.locator("#zoomLevel");
+  try {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const theme of ["light", "dark"]) {
+        await page.emulateMedia({ colorScheme: theme });
+        for (const scale of [0.8, 1, 1.25, 1.5, 2]) {
+          await zoom.selectOption(String(scale));
+          await page.waitForFunction(
+            ({ scale, width }) =>
+              Math.abs(devicePixelRatio - scale) < 0.02 &&
+              Math.abs(innerWidth - width / scale) <= 1,
+            { scale, width },
+          );
+          await code.scrollIntoViewIfNeeded();
+          assert.ok(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= innerWidth,
+            ),
+          );
+          const box = await verify.evaluate((button) => {
+            const { left, right, height } = button.getBoundingClientRect();
+            return { left, right, height };
+          });
+          assert.ok(
+            box.left >= 0 &&
+              box.right <= width / scale + 1 &&
+              Math.round(box.height) >= 40,
+            `动态码提交按钮越出可用空间或高度不足：${width}px ${scale} ${theme} ${JSON.stringify(box)}`,
+          );
+          if (width === 390 && scale === 2) {
+            const login = page.locator(".login-page");
+            await login.evaluate((element) => element.scrollTo(0, 0));
+            await page.mouse.move(95, 170);
+            await page.mouse.wheel(0, 1600);
+            await page.waitForFunction(
+              () => document.querySelector(".login-page").scrollTop > 0,
+            );
+            await page.getByRole("button", { name: "复制绑定命令" }).focus();
+            assert.equal(
+              await page.evaluate(() =>
+                document.activeElement.getAttribute("aria-label"),
+              ),
+              "复制绑定命令",
+            );
+          }
+          if (scale === 1)
+            await page.screenshot({
+              path: join(output, `totp-${width}-${theme}.png`),
+              fullPage: true,
+              animations: "disabled",
+            });
+        }
+      }
+    }
+  } finally {
+    await zoom.selectOption("1");
+    await settings.close();
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.setViewportSize({ width: 1280, height: 900 });
   }
 }

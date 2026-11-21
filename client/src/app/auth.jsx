@@ -4,18 +4,21 @@ import {
   useStore,
   checkSession,
   login,
+  verifyTotp,
   logout,
   applySession,
-  get,
   startNotifications,
+  useStoreSelector,
 } from "../store.js";
 import claudexWebIcon from "../assets/claudex-web.svg";
 import { CertificateHelp } from "./certificate-help.jsx";
+import { TotpSettings, TotpSetupSteps } from "./totp-help.jsx";
 import { isP2pPage, p2pDownloadFrame } from "../infrastructure/p2p-access.js";
 
 export function AuthenticationGate({ children }) {
   const { auth, authError, theme } = useStore();
   const p2p = isP2pPage();
+  const verifying = auth?.requiresTotp === true;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => startNotifications(), []);
@@ -43,19 +46,24 @@ export function AuthenticationGate({ children }) {
     };
   }, [p2p]);
   useEffect(() => {
-    if (p2p || !auth?.authenticated || !Number.isFinite(auth.expiresAt)) return;
+    if (
+      (!verifying && (p2p || !auth?.authenticated)) ||
+      !Number.isFinite(auth?.expiresAt)
+    )
+      return;
     let timer;
     const expire = () => {
       const remaining = auth.expiresAt - Date.now();
       if (remaining <= 0) {
         applySession({ authenticated: false });
+        if (verifying) setError("本次验证已超时，请重新输入系统密码。");
         return;
       }
       timer = setTimeout(expire, Math.min(remaining, 2147483647));
     };
     expire();
     return () => clearTimeout(timer);
-  }, [auth, p2p]);
+  }, [auth, p2p, verifying]);
   if (auth?.authenticated)
     return p2p ? (
       <>
@@ -101,9 +109,12 @@ export function AuthenticationGate({ children }) {
     setBusy(true);
     setError("");
     try {
-      await login(fields.get("username"), fields.get("password"));
+      if (verifying) await verifyTotp(fields.get("code"));
+      else await login(fields.get("username"), fields.get("password"));
     } catch (failure) {
-      form.elements.namedItem("password").value = "";
+      const input = form.elements.namedItem(verifying ? "code" : "password");
+      input.value = "";
+      input.focus();
       setError(failure.message);
     } finally {
       setBusy(false);
@@ -111,17 +122,22 @@ export function AuthenticationGate({ children }) {
   }
   return (
     <main className="login-page">
-      <section className="login-card" aria-labelledby="login-title">
+      <section
+        className={"login-card" + (verifying ? " login-card--totp" : "")}
+        aria-labelledby="login-title"
+      >
         <div className="login-brand">
           <img src={claudexWebIcon} width="40" height="40" alt="" />
           <span>Claudex Web</span>
         </div>
         <h1 id="login-title">
-          {p2p
-            ? "登录远程工作空间"
-            : waiting
-              ? "正在检查登录状态"
-              : "登录你的工作空间"}
+          {verifying
+            ? "双重验证"
+            : p2p
+              ? "登录远程工作空间"
+              : waiting
+                ? "正在检查登录状态"
+                : "登录你的工作空间"}
         </h1>
         {waiting ? (
           <>
@@ -137,6 +153,53 @@ export function AuthenticationGate({ children }) {
             ) : (
               <LoaderCircle className="spin" aria-label="正在检查" />
             )}
+          </>
+        ) : verifying ? (
+          <>
+            <form
+              id="totp-form"
+              action={p2p ? "/p2p" : "/api/auth/totp"}
+              method="post"
+              onSubmit={submit}
+            >
+              <input
+                className="field-input"
+                name="code"
+                type="text"
+                aria-label="六位动态码"
+                placeholder="输入六位动态码"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                required
+                pattern="[0-9]{6}"
+                maxLength={6}
+                readOnly={busy}
+              />
+              {(error || authError) && (
+                <p className="inline-error" role="alert">
+                  {error || authError}
+                </p>
+              )}
+              <button
+                type="submit"
+                className="primary login-submit"
+                disabled={busy}
+              >
+                {busy ? "正在验证…" : "验证并登录"}
+              </button>
+            </form>
+            <section
+              className="totp-help totp-first-use"
+              aria-labelledby="totp-setup-title"
+            >
+              <h2 id="totp-setup-title">
+                {auth.totpStatus === "enabled"
+                  ? "如何绑定验证器"
+                  : "首次使用请绑定验证器"}
+              </h2>
+              <TotpSetupSteps duringLogin />
+            </section>
           </>
         ) : (
           <>
@@ -193,7 +256,7 @@ export function AuthenticationGate({ children }) {
             </form>
           </>
         )}
-        {!p2p && <CertificateHelp />}
+        {!p2p && !verifying && <CertificateHelp />}
       </section>
     </main>
   );
@@ -202,10 +265,15 @@ export function AuthenticationGate({ children }) {
 export function LogoutButton() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const p2p = get().auth?.kind === "p2p";
+  const auth = useStoreSelector((state) => state.auth);
+  const p2p = auth?.kind === "p2p";
+  const local = auth?.kind === "local";
+  useEffect(() => {
+    void checkSession();
+  }, []);
   return (
     <div className="login-settings">
-      <p>{`已登录：${get().auth?.username}${p2p ? " · P2P 直连" : ""}`}</p>
+      <p>{`已登录：${auth?.username}${p2p ? " · P2P 直连" : local ? " · 本机直连" : ""}`}</p>
       <button
         className="secondary"
         disabled={busy}
@@ -229,7 +297,7 @@ export function LogoutButton() {
           {error}
         </p>
       )}
-      {!p2p && <CertificateHelp />}
+      {auth?.totpStatus && <TotpSettings status={auth.totpStatus} />}
     </div>
   );
 }

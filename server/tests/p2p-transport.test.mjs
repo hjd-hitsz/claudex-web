@@ -4,7 +4,11 @@ import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createP2pWire } from "../../shared/p2p-wire.mjs";
-import { authenticationFixture } from "../../tests/helpers/auth.mjs";
+import {
+  authenticationFixture,
+  enrollFixtureTotp,
+  fixtureTotpCode,
+} from "../../tests/helpers/auth.mjs";
 import { createAuthentication } from "../src/auth.mjs";
 import { createBusinessHttpHandler } from "../src/http/business.mjs";
 import { createPeerClient } from "../src/p2p-peer.mjs";
@@ -19,7 +23,16 @@ test("直连保留 RPC 文本和文件 Range，并将管理入口留在 LAN", as
     translation: {},
     maintenance: {},
   });
-  const { pamtester, cookie } = await authenticationFixture(directory);
+  const {
+    pamtester,
+    cookie,
+    id,
+    session: legacy,
+  } = await authenticationFixture(directory, { legacy: true });
+  await writeFile(
+    join(directory, "auth/sessions.json"),
+    JSON.stringify([[id, { ...legacy, linkId: "fixture-link" }]]),
+  );
   const config = {
     configDir: directory,
     pamtesterPath: pamtester,
@@ -99,14 +112,24 @@ test("直连保留 RPC 文本和文件 Range，并将管理入口留在 LAN", as
     /用户名或密码错误/,
   );
   assert.equal(authorized, 0);
-  const { session, token } = await authenticate("login", {
+  assert.equal((await authenticate("totp", { code: "123456" })).status, 410);
+  const pending = await authenticate("login", {
     username,
     password: "fixture-password",
   });
+  assert.equal(pending.session.requiresTotp, true);
+  assert.equal(pending.token, undefined);
+  assert.equal(await status(6, fileUrl), 401);
+  await enrollFixtureTotp(directory);
+  const { session, token } = await authenticate("totp", {
+    code: fixtureTotpCode(directory),
+  });
   assert.equal(session.authenticated, true);
   assert.equal(session.username, username);
+  assert.equal((await authenticate("status")).session.totpStatus, "enabled");
   await until(() => authorized === 1);
   const stored = await createAuthentication(config);
+  t.after(stored.close);
   assert.equal(
     stored.resumePeer("fixture-link", token).session.authenticated,
     true,
@@ -166,9 +189,13 @@ test("直连保留 RPC 文本和文件 Range，并将管理入口留在 LAN", as
     (await authenticate("resume", { token })).session.authenticated,
     false,
   );
-  const relogin = await authenticate("login", {
+  const reloginPending = await authenticate("login", {
     username,
     password: "fixture-password",
+  });
+  assert.equal(reloginPending.session.requiresTotp, true);
+  const relogin = await authenticate("totp", {
+    code: fixtureTotpCode(directory, 1),
   });
   assert.equal(relogin.session.authenticated, true);
   await until(() => authorized === 2);

@@ -164,6 +164,7 @@ test(
       "packages/translation-engine/README.md",
       "packages/translation-engine/LICENSE",
       "bin/claudex-web.mjs",
+      "bin/auth.mjs",
       "bin/p2p.mjs",
       "client/dist/index.html",
       "client/dist/app.js",
@@ -179,6 +180,9 @@ test(
       "client/dist/apple-touch-icon.png",
       "build-info.json",
       "server/src/version.mjs",
+      "server/src/auth-http.mjs",
+      "server/src/auth-login.mjs",
+      "server/src/auth-totp.mjs",
       "server/src/backends/codex/adapter.mjs",
       "server/src/bridge/product-methods.mjs",
       "server/src/bridge/conversation-policy.mjs",
@@ -274,8 +278,10 @@ test(
     await writeFile(join(dir, ".env"), "PORT=invalid\n");
     run("config", "init");
     assert.equal(await readFile(join(configDir, ".env"), "utf8"), config);
-    const auth = await authenticationFixture(configDir);
+    const auth = await authenticationFixture(configDir, { legacy: true });
     env.CODEX_HOME = join(dir, "codex-home");
+    assert.match(run("--help"), /auth setup/);
+    assert.match(run("auth", "setup"), /[▄▀█]/);
     const fetch = httpsFetch(auth.tls.cert);
     const child = spawn(cli, [], {
       cwd: dir,
@@ -308,6 +314,11 @@ test(
       await delay(20);
     }
     assert.deepEqual(initialized, { ready: true, version });
+    const legacySession = await httpsFetch(
+      auth.tls.cert,
+      auth.cookie,
+    )(url + "/api/auth/session");
+    assert.equal((await legacySession.json()).authenticated, false);
     const html = await (await fetch(url)).text();
     assert.match(html, /<html/);
     for (const [name, type, size] of [

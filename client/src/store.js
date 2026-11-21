@@ -67,6 +67,7 @@ export const {
   applySession,
   checkSession,
   login,
+  verifyTotp,
   logout,
 } = application;
 export const { get, set } = application.store;

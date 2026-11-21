@@ -11,7 +11,7 @@ export function createPeerClient(
   const lifetime = new AbortController();
   const authorized = () =>
     peer.authSessionId && authentication.valid(peer.authSessionId, linkId);
-  let untrack;
+  let untrack, pendingToken;
   let authenticating = false;
   peer.authLinkId = linkId;
   peer.readyState = 1;
@@ -19,6 +19,7 @@ export function createPeerClient(
     if (peer.readyState === 3) return;
     peer.readyState = 3;
     lifetime.abort();
+    authentication.cancelPeer(pendingToken, peer);
     wire.close();
     http.close();
     peer.emit("close");
@@ -36,6 +37,8 @@ export function createPeerClient(
     authenticating = true;
     try {
       if (message.action === "logout") {
+        authentication.cancelPeer(pendingToken, peer);
+        pendingToken = undefined;
         const id = peer.authSessionId;
         untrack?.();
         untrack = undefined;
@@ -50,12 +53,29 @@ export function createPeerClient(
         return;
       }
       const current = authorized();
-      if (current || !["login", "resume"].includes(message.action))
+      if (current && message.action === "status") {
+        await wire.send({
+          type: "auth-result",
+          session: authentication.describe(current),
+        });
+        return;
+      }
+      if (current || !["login", "resume", "totp"].includes(message.action))
         throw new Error("当前连接无法执行此登录操作。", { cause: 400 });
-      const { id, token, session } =
-        message.action === "login"
-          ? await authentication.loginPeer(linkId, message, lifetime.signal)
+      const options = { scope: peer, pendingToken, signal: lifetime.signal };
+      const {
+        id,
+        token,
+        session,
+        pendingToken: nextPending,
+      } = message.action === "login"
+        ? await authentication.loginPeer(linkId, message, options)
+        : message.action === "totp"
+          ? await authentication.verifyPeer(linkId, message, options)
           : authentication.resumePeer(linkId, message.token);
+      if (message.action === "resume")
+        authentication.cancelPeer(pendingToken, peer);
+      pendingToken = nextPending;
       lifetime.signal.throwIfAborted();
       if (id) untrack = authentication.attach(peer, id, linkId);
       await wire.send({
@@ -65,10 +85,12 @@ export function createPeerClient(
       });
       if (id && authorized()) onAuthenticated(peer);
     } catch (error) {
+      if (error.cause === 410) pendingToken = undefined;
       if (!lifetime.signal.aborted)
         await wire
           .send({
             type: "auth-result",
+            status: typeof error.cause === "number" ? error.cause : 503,
             error:
               typeof error.cause === "number"
                 ? error.message

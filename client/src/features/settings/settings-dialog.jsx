@@ -6,7 +6,11 @@ import { useStoreSelector } from "../../store.js";
 import { TranslationSettings } from "./translation-settings.jsx";
 import { NotificationSettings } from "./notification-settings.jsx";
 import { P2pSettings } from "./p2p-settings.jsx";
-export function SettingsDialog({ focusMaintenance, accountActions }) {
+export function SettingsDialog({
+  focusMaintenance,
+  accountActions,
+  certificateHelp,
+}) {
   const codex = useStoreSelector((state) =>
     state.backends.find((backend) => backend.id === "codex"),
   );
@@ -31,9 +35,42 @@ export function SettingsDialog({ focusMaintenance, accountActions }) {
         aria-labelledby="login-settings-title"
       >
         <h3 id="login-settings-title">连接与登录</h3>
-        <div className="settings-group">
-          {accountActions}
-          {!remote && <P2pSettings />}
+        <div className="connection-cards">
+          <section
+            className="settings-group"
+            aria-labelledby="account-settings-title"
+          >
+            <div>
+              <h4 className="connection-heading" id="account-settings-title">
+                账号与双重验证
+              </h4>
+              {accountActions}
+            </div>
+          </section>
+          {!remote && (
+            <>
+              <section
+                className="settings-group"
+                aria-labelledby="certificate-settings-title"
+              >
+                <div>
+                  <h4
+                    className="connection-heading"
+                    id="certificate-settings-title"
+                  >
+                    局域网 HTTPS 证书
+                  </h4>
+                  {certificateHelp}
+                </div>
+              </section>
+              <section
+                className="settings-group"
+                aria-labelledby="p2p-settings-title"
+              >
+                <P2pSettings />
+              </section>
+            </>
+          )}
         </div>
       </section>
     </div>
