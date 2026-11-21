@@ -2,6 +2,7 @@ import {
   mcpConfig,
   taskRequest,
 } from "../../../../packages/background-terminal/client.mjs";
+import { BACKGROUND_TURN_CONTEXT } from "../../../../packages/background-terminal/background-protocol.mjs";
 import { threadMethods } from "./methods.mjs";
 
 const prefix = "claudex-background:";
@@ -15,6 +16,17 @@ export function backgroundParams(method, params, directory, upstream) {
   return {
     ...params,
     config: { ...params.config, ...mcpConfig(directory, upstream) },
+  };
+}
+
+export function backgroundTurnParams(method, params) {
+  if (method !== "turn/start" && method !== "turn/steer") return params;
+  return {
+    ...params,
+    additionalContext: {
+      ...params.additionalContext,
+      ...BACKGROUND_TURN_CONTEXT,
+    },
   };
 }
 

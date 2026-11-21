@@ -1,6 +1,6 @@
 # Codex 后台终端 MCP
 
-启用后，原生 `exec_command` 到达前台等待上限时会返回运行中的会话 ID，同一进程继续运行。模型可以直接结束当前轮次，独立服务会保留仍在运行的原生终端订阅，命令完成后向原对话投递结果并唤醒。模型也可使用 `background_start` 立即启动后台任务。Claudex Web 默认关闭此扩展。Claude Code 使用自身的后台 Bash、任务输出和完成通知，两端共用网页的 `/stop` 入口。
+启用后，预计耗时数分钟的大文件下载、构建或测试由模型直接用 `background_start` 启动。后续步骤依赖任务结果时，模型简短汇报后结束本轮，任务服务在命令退出后自动续跑原对话。短命令继续使用前台执行。原生 `exec_command` 意外超出前台等待上限时，同一进程可在后台继续，独立服务保留原生终端订阅并投递结果。Claudex Web 默认关闭此扩展。Claude Code 使用自身的后台 Bash、任务输出和完成通知，两端共用网页的 `/stop` 入口。
 
 ## 启用
 
@@ -38,6 +38,8 @@ codex mcp add claudex_background -- "$(command -v node)" "$entry" mcp "$state_di
 
 任务服务通过私有目录中的 Unix socket 接受本机同用户请求。目录权限为 0700，socket、任务状态和日志权限为 0600。每个状态目录绑定一个 Codex 后端地址。后台服务可在网页桥接关闭后继续工作。原生终端由 Codex app-server 持有，独立订阅用于防止正常会话卸载。任务服务重启后将遗留的运行记录标为中断。
 
-成功、非零退出及超时都产生终态。服务等待原对话空闲后恢复原生会话，用 `turn/start` 投递退出状态、输出文件与日志摘要，并持有订阅直到续跑轮次结束。同次请求用 `additionalContext` 提醒模型向用户汇报。对话按原生轮次顺序显示续跑和模型回复。续跑失败、中断或模型没有输出正文时，对话直接显示任务结果与输出入口。模型已读取的终态和已取消任务会退出待投递队列。提交响应丢失时进入 `uncertain`，服务按通知 ID 核对原对话历史；任务工具仍可主动读取结果。
+启用时，网页通过原生轮次的 `additionalContext` 提供前后台选择和交还轮次的应用指令。等待后台任务靠完成通知触发，`sleep` 仍可用于其他需要定时等待的场景。
+
+成功、非零退出及超时都产生终态。服务等待原对话空闲后恢复原生会话，用 `turn/start` 投递退出状态、输出文件与日志摘要，并持有订阅直到续跑轮次结束。同次请求用 `additionalContext` 提醒模型继续用户已要求且结果允许的后续步骤，并汇报结果。对话按原生轮次顺序显示续跑和模型回复。续跑失败、中断或模型没有输出正文时，对话直接显示任务结果与输出入口。模型已读取的终态和已取消任务会退出待投递队列。提交响应丢失时进入 `uncertain`，服务按通知 ID 核对原对话历史；任务工具仍可主动读取结果。
 
 ZCode 的 Bash 结束后先入队并保存面向模型的任务通知，再由运行时执行对应会话。通知包含任务标识、状态、输出文件和摘要，由独立来源标记区分人工输入。Claudex Web 使用 Codex 原生轮次请求中的结构化工具结果和应用上下文分别承载任务事实与汇报要求。[ZCode 后台调度](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/runtime-command-queue.ts) · [ZCode 通知持久化](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/background-notifications.ts) · [Codex 原生提交](https://github.com/openai/codex/blob/rust-v0.170.0/codex-rs/app-server/src/request_processors/turn_processor.rs)

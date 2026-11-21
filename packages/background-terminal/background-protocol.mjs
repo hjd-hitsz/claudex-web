@@ -1,5 +1,15 @@
-export const BACKGROUND_INSTRUCTIONS =
-  "Claudex Web 开启后台终端功能时，原生 exec_command 达到前台等待上限后会返回运行中的会话 ID，同一进程继续在后台运行。没有其他工作时可以直接结束当前轮次，独立服务会保留仍在运行的终端，并在命令退出后向原对话提交 background_completed 结果以自动唤醒。无需轮询、调用 sleep 或重新执行命令。也可用 background_start 直接提交构建、测试、数据处理等有明确结束条件的长命令。background_list 列出当前对话任务，background_read 按需读取日志，background_cancel 停止任务并取消自动续跑。";
+export const BACKGROUND_INSTRUCTIONS = [
+  "When background_start is available, use it as the initial execution call for a command you expect to take minutes, such as a large download or a lengthy build or test. Use foreground execution for quick commands.",
+  "If a foreground exec_command unexpectedly returns a running session ID, the same process can continue in the background. Do not restart it just to move it to the background.",
+  "Once the job is running, do only requested work that can actually proceed independently. If the next step depends on the result, give a brief status update in your final response and end this turn. Do not wait with sleep, poll the job or terminal, or fill the wait with unrelated work. The task service will automatically start a new turn with background_completed so you can continue.",
+].join("\n");
+
+export const BACKGROUND_TURN_CONTEXT = {
+  claudex_background_execution: {
+    kind: "application",
+    value: BACKGROUND_INSTRUCTIONS,
+  },
+};
 
 const jobId = { type: "string", description: "后台工具返回的任务 ID" };
 const tool = (name, description, properties, required = []) => ({
@@ -15,7 +25,7 @@ const tool = (name, description, properties, required = []) => ({
 export const BACKGROUND_TOOLS = [
   tool(
     "background_start",
-    BACKGROUND_INSTRUCTIONS,
+    "Start an expected minutes-long command directly in the background. Use this for large downloads and lengthy builds or tests. Returns immediately with a job ID. When subsequent work depends on the result, finish the turn after a brief status update. The job's completion automatically resumes the conversation.",
     {
       command: {
         type: "string",

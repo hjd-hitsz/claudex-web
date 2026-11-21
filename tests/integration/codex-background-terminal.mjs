@@ -63,6 +63,15 @@ const inference = http.createServer(async (request, response) => {
     for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks));
     calls.push({ phase, inputTypes: body.input?.map((item) => item.type) });
+    const executionPolicy = body.input.some(
+      (item) =>
+        item.role === "developer" &&
+        item.content.some(
+          (part) =>
+            part.text?.includes("<claudex_background_execution>") &&
+            part.text.includes("use it as the initial execution call"),
+        ),
+    );
     if (body.input.some((item) => item.name === "background_completed")) {
       const notice = body.input.find(
         (item) => item.name === "background_completed",
@@ -72,11 +81,15 @@ const inference = http.createServer(async (request, response) => {
       const requestedUpdate = body.input.some(
         (item) =>
           item.role === "developer" &&
-          JSON.stringify(item.content).includes(
-            "send a brief, non-empty final update",
+          item.content.some(
+            (part) =>
+              part.text?.includes("<claudex_background_update>") &&
+              part.text.includes("carry out the remaining requested steps") &&
+              part.text.includes("Send a brief, non-empty final update"),
           ),
       );
       assert.ok(requestedUpdate, "续跑指令必须到达模型");
+      assert.ok(executionPolicy, "续跑可以直接启动下一项长任务");
       wakeRequests.push(requestedUpdate);
     }
     const nativeMode =
@@ -85,6 +98,7 @@ const inference = http.createServer(async (request, response) => {
       )?.[1];
     let item;
     if (nativeMode) {
+      assert.equal(executionPolicy, nativeMode !== "disabled");
       const count = (nativeRequests.get(nativeMode) ?? 0) + 1;
       nativeRequests.set(nativeMode, count);
       if (count === 1) {
@@ -160,8 +174,8 @@ const inference = http.createServer(async (request, response) => {
         )
         .find((entry) => entry.name === "background_start");
       assert(tool, "恢复旧对话后应向模型暴露 MCP 工具");
-      assert.match(tool.description, /原生 exec_command 达到前台等待上限/);
-      assert.match(tool.description, /无需轮询、调用 sleep/);
+      assert.match(tool.description, /directly in the background/);
+      assert.ok(executionPolicy, "首个模型请求应包含后台选择规则");
       const script =
         'const timer=setInterval(()=>{if(require("fs").existsSync("release-fixture"))clearInterval(timer)},50)';
       item = {

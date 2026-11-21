@@ -2,6 +2,7 @@ import { backgroundTaskViews } from "./background-task-views.mjs";
 import {
   backgroundParams,
   backgroundTerminals,
+  backgroundTurnParams,
 } from "./background-terminals.mjs";
 import { threadMethods } from "./methods.mjs";
 import { referenceToolParams } from "./reference-tools.mjs";
@@ -71,19 +72,21 @@ export function createCodexAdapter({
     },
   });
   const nativeCall = transport.call;
-  const sessionParams = async (method, params) =>
-    subagentModelParams(
+  const sessionParams = async (method, params) => {
+    const enabled = backgroundEnabled();
+    if (!threadMethods.has(method))
+      return enabled ? backgroundTurnParams(method, params) : params;
+    return subagentModelParams(
       method,
       backgroundParams(
         method,
         referenceToolParams(method, params, config),
-        threadMethods.has(method) && backgroundEnabled()
-          ? await background.ensure()
-          : null,
+        enabled ? await background.ensure() : null,
         config.upstreamUrl,
       ),
-      threadMethods.has(method) ? await readSubagentSettings() : backend,
+      await readSubagentSettings(),
     );
+  };
   transport.call = async (method, params, options) =>
     nativeCall(method, await sessionParams(method, params), options);
   const threadNaming = createThreadNaming({
