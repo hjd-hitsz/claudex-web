@@ -256,7 +256,7 @@ test("发布计划要求明确版本和含时区时间，缺少配置时沿用�
   assert.throws(() => readReleaseSchedule(dir));
 });
 
-test("Release 正文直接从列表开始，独立文档的标题和变更链接保持完整", () => {
+test("Release 正文保留变更链接，仅去掉独立文档的版本标题", () => {
   const list =
     "- 新增消息目录（[abc1234](https://example.test/commit/abc1234)）。\n";
   const document = `# Claudex Web ${tag}\n\n${list}`;
@@ -273,7 +273,8 @@ test("同步历史 Release 仅更新正文，保留标题、标签和附件，�
   const dir = mkdtempSync(join(tmpdir(), "claudex-web-notes-test-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, "docs/releases"), { recursive: true });
-  const document = `# Claudex Web ${tag}\n\n- 查看文件变更。\n`;
+  const body = "## 新增重要功能\n\n- 查看文件变更。\n";
+  const document = `# Claudex Web ${tag}\n\n${body}`;
   writeFileSync(join(dir, `docs/releases/${tag}.md`), document);
   const release = {
     tag_name: tag,
@@ -299,7 +300,7 @@ test("同步历史 Release 仅更新正文，保留标题、标签和附件，�
     writes++;
   };
   syncReleaseNotes(repo, run, dir);
-  assert.equal(release.body, "- 查看文件变更。\n");
+  assert.equal(release.body, body);
   assert.deepEqual({ ...release, body: original.body }, original);
   assert.equal(
     readFileSync(join(dir, `docs/releases/${tag}.md`), "utf8"),

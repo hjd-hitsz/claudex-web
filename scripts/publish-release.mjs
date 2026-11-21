@@ -47,7 +47,11 @@ export function releaseNotesBody(markdown, tag) {
     : `# Claudex Web ${tag}\n`;
   assert.ok(markdown.startsWith(heading), `${tag} 发布说明标题需要匹配版本`);
   const body = markdown.slice(heading.length).trim();
-  assert.match(body, /^- \S/, `${tag} Release 正文需要直接以变更列表开始`);
+  assert.match(
+    body,
+    /^(?:## \S[^\n]*\n\n)?- \S/,
+    `${tag} Release 正文需要以变更列表或带标题的变更列表开始`,
+  );
   return `${body}\n`;
 }
 
@@ -67,7 +71,7 @@ export function syncReleaseNotes(repo, run = gh, dir = root) {
       const notes = join(temporary, `${tag}.md`);
       writeFileSync(notes, body);
       run("release", "edit", tag, "--repo", repo, "--notes-file", notes);
-      console.log(`${tag} Release 正文已同步，直接显示变更列表`);
+      console.log(`${tag} Release 正文已同步`);
     }
   } finally {
     rmSync(temporary, { recursive: true, force: true });
