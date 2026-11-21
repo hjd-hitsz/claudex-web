@@ -3,7 +3,7 @@ import { MessageSquare } from "lucide-react";
 import { openThread, titleOf } from "../store.js";
 import { sidebarProjectGroups } from "../domain/thread-order.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
-import { BackendBadge } from "./backend-badge.jsx";
+import { BackendBadge } from "../features/backends/backend-badge.jsx";
 import { HeaderSwitcher } from "./header-switcher.jsx";
 import { ThreadRunningIcon } from "./thread-running-icon.jsx";
 

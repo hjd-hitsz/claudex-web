@@ -311,7 +311,13 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 
 ### 后端归属图标
 
-对话顶部和侧栏通过后端资源标识选择图标，保持纯图标展示。Codex 使用 `client/src/assets/openai.svg`，取自 [OpenAI 官方品牌资源](https://cdn.openai.com/brand/OpenAI-Logos-2025.zip)的黑色 Blossom SVG；标识归 OpenAI 所有，使用说明见[品牌指南](https://openai.com/brand/)。CSS 蒙版保持原有形状，以主题正文颜色显示。Claude Code 使用 `client/src/assets/claude.svg`，提取自 [Claude 官方网站](https://claude.com/)页首 Claude 标志中的独立图形路径，保留原始轮廓；标识归 Anthropic 所有。后端身份图标使用对应产品的官方标识。项目品牌图标仍由 `claudex-web.svg` 提供。
+后端设置、对话顶部、侧栏和对话切换器共用后端标识组件。CSS 蒙版以主题正文颜色呈现原始图形。同一界面的标识以相同视觉大小居中显示，验收以图案实际绘制范围为准。
+
+Codex 使用 `client/src/assets/openai.svg` 中的黑色 Blossom 图形，保留原始轮廓，将 `viewBox` 收紧至图形外围，以匹配 Claude Code 标识的绘制范围。图形取自 OpenAI 官方品牌素材，标识归 OpenAI 所有。[OpenAI 品牌素材](https://cdn.openai.com/brand/OpenAI-Logos-2025.zip) · [OpenAI 品牌指南](https://openai.com/brand/)
+
+Claude Code 使用 `client/src/assets/claude.svg` 中取自官方网站页首标志的独立图形路径，标识归 Anthropic 所有。Claudex Web 产品图标使用 `claudex-web.svg`。[Claude 官方网站](https://claude.com/)
+
+生产构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/settings-navigation.mjs`。隔离浏览器验证五个设置入口、更新直达、焦点返回、跨页草稿与在途保存、P2P 轮询暂停，以及真实侧栏中的标识绘制范围。桌面和窄屏分别覆盖深浅主题与 80% 至 200% 实际页面缩放，截图保存在 `.cache/settings-navigation/`。
 
 双后端回退对照记录见[双后端回归审查](architecture/backend-regressions.md)。`tests/browser/backend-regressions.mjs` 使用生产构建、独立浏览器和隔离传输验证旧未分类目录、用户消息 Markdown、引用键盘打开、Claude 内部消息来源、主题、缩放与窄屏；通过 `CHROME_PATH`、`PLAYWRIGHT_MODULE` 配置浏览器工具。`tests/integration/claude-message-provenance.mjs` 通过真实 SDK 读取临时原生 JSONL，核对来源字段保留与用户轮次归属。
 

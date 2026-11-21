@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 
 async function focused(locator) {
   await locator.and(locator.page().locator(":focus")).waitFor();
@@ -8,9 +9,10 @@ export async function verifyShellInteractions(page, capture) {
   const settings = page.getByRole("button", { name: "设置", exact: true });
   const dialog = page.getByRole("dialog", { name: "设置", exact: true });
   const close = dialog.getByRole("button", { name: "关闭窗口" });
+  const general = settingsPage(page, "通用");
   await settings.focus();
   await page.keyboard.press("Enter");
-  await focused(close);
+  await focused(general);
   assert.ok(await dialog.evaluate((element) => element.matches(":modal")));
 
   await page.keyboard.press("Shift+Tab");
@@ -46,7 +48,7 @@ export async function verifyShellInteractions(page, capture) {
   await focused(settings);
 
   await settings.click();
-  await focused(close);
+  await focused(general);
   assert.ok(Math.abs((await dialog.boundingBox()).width - resizedWidth) < 1);
   await resizeHandle.press("Home");
   assert.ok(Math.abs((await dialog.boundingBox()).width - initialWidth) < 1);
@@ -91,7 +93,7 @@ export async function verifyShellInteractions(page, capture) {
   await hide.waitFor();
   await capture("mobile-drawer-open");
   await settings.click();
-  await focused(close);
+  await focused(general);
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden" });
   await focused(settings);

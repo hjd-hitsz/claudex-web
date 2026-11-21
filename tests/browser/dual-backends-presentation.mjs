@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 export async function testDualPresentation({
   page,
   input,
@@ -126,7 +127,11 @@ export async function testDualPresentation({
   });
   await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.getByRole("button", { name: "显示侧栏", exact: true }).click();
+  const showSidebar = page.getByRole("button", {
+    name: "显示侧栏",
+    exact: true,
+  });
+  if (await showSidebar.isVisible()) await showSidebar.click();
   await page
     .getByRole("button", { name: "在当前目录新建对话", exact: true })
     .click();
@@ -186,19 +191,18 @@ export async function testDualPresentation({
       0,
     );
   await page.getByRole("button", { name: "设置", exact: true }).click();
+  await settingsPage(page, "后端").click();
   await page.locator(".backend-settings").waitFor();
   assert.equal(
     await page.getByRole("button", { name: "添加后端", exact: true }).count(),
     0,
   );
   assert.equal(await page.locator(".backend-card").count(), 2);
-  const codexCard = page
-    .locator(".backend-card")
-    .filter({ has: page.locator("strong", { hasText: /^Codex$/ }) });
   assert.equal(
-    await codexCard.getByText("供应商与模型", { exact: true }).count(),
+    await page.locator(".backend-card .provider-settings").count(),
     0,
   );
+  await settingsPage(page, "模型服务商").click();
   await page.locator(".provider-settings").waitFor();
   await page.getByRole("button", { name: "添加供应商", exact: true }).click();
   await page.getByLabel("名称", { exact: true }).fill("第三供应商");
@@ -208,9 +212,10 @@ export async function testDualPresentation({
     .fill("fixture-model");
   await page.getByRole("button", { name: "保存供应商", exact: true }).click();
   await page
-    .locator(".backend-settings")
+    .locator(".provider-settings")
     .getByText("第三供应商", { exact: true })
     .waitFor();
+  await settingsPage(page, "后端").click();
   assert.equal(await page.locator(".backend-card").count(), 2);
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });

@@ -1,8 +1,8 @@
 import { cliUpdateAvailable } from "../../domain/cli-installation.js";
 import React, { useEffect, useRef, useState } from "react";
 import { useStore, saveBackend, rpc } from "../../store.js";
+import { BackendBadge } from "../backends/backend-badge.jsx";
 import { CodexModelSettings } from "./codex-model-settings.jsx";
-import { ProviderSettings } from "./provider-settings.jsx";
 import { ProxySettings } from "./proxy-settings.jsx";
 import { SubagentModelSettings } from "./subagent-model-settings.jsx";
 
@@ -59,9 +59,8 @@ export function BackendSettings() {
   return (
     <section
       className="backend-settings"
-      aria-labelledby="backend-settings-title"
+      aria-labelledby="settings-backends-title"
     >
-      <h3 id="backend-settings-title">模型与服务配置</h3>
       {s.backends.map((backend) => {
         const cli = backend.installation || {};
         const working = busy || cli.installing;
@@ -83,67 +82,73 @@ export function BackendSettings() {
         return (
           <section className="backend-card" key={backend.id}>
             <div className="backend-heading">
-              <input
-                type="checkbox"
-                aria-label={"启用 " + backend.name}
-                checked={backend.enabled}
-                disabled={working}
-                onChange={(event) => {
-                  const enabled = event.target.checked;
-                  action(() =>
-                    saveBackend({
-                      id: backend.id,
-                      type: backend.type,
-                      enabled,
-                    }),
-                  );
-                }}
-              />
-              <strong>{backend.name}</strong>
-              {cli.currentVersion && (
+              <div className="backend-identity">
+                <BackendBadge backendId={backend.id} />
+                <strong>{backend.name}</strong>
+                {cli.currentVersion && (
+                  <span
+                    className="backend-version"
+                    title={`当前版本 ${cli.currentVersion}`}
+                  >
+                    {cli.currentVersion}
+                  </span>
+                )}
                 <span
-                  className="backend-version"
-                  title={`当前版本 ${cli.currentVersion}`}
+                  className="backend-connection"
+                  data-ready={connected}
+                  role="status"
+                  aria-label={connection}
+                  title={connection}
                 >
-                  {cli.currentVersion}
+                  {connected ? null : connection}
                 </span>
-              )}
-              <span
-                className="backend-connection"
-                data-ready={connected}
-                role="status"
-                aria-label={connection}
-                title={connection}
-              >
-                {connected ? null : connection}
-              </span>
-              <button
-                data-update={updateAvailable}
-                data-current={cli.installed === true && !updateAvailable}
-                title={
-                  cli.latestVersion
-                    ? `最新版本 ${cli.latestVersion}`
-                    : undefined
-                }
-                disabled={
-                  working || (cli.installed !== false && !updateAvailable)
-                }
-                onClick={() =>
-                  action(async () => {
-                    await rpc("lan/backends/install", { id: backend.id });
-                  }, backend.id)
-                }
-              >
-                {cli.installing
-                  ? "正在安装…"
-                  : cli.installed === false
-                    ? "一键安装"
-                    : updateAvailable
-                      ? `更新至 ${cli.latestVersion}`
-                      : cli.latestVersion && cli.currentVersion
-                        ? "无需更新"
-                        : "待检查"}
-              </button>
+              </div>
+              <div className="backend-actions">
+                <button
+                  data-update={updateAvailable}
+                  data-current={cli.installed === true && !updateAvailable}
+                  title={
+                    cli.latestVersion
+                      ? `最新版本 ${cli.latestVersion}`
+                      : undefined
+                  }
+                  disabled={
+                    working || (cli.installed !== false && !updateAvailable)
+                  }
+                  onClick={() =>
+                    action(async () => {
+                      await rpc("lan/backends/install", { id: backend.id });
+                    }, backend.id)
+                  }
+                >
+                  {cli.installing
+                    ? "正在安装…"
+                    : cli.installed === false
+                      ? "一键安装"
+                      : updateAvailable
+                        ? `更新至 ${cli.latestVersion}`
+                        : cli.latestVersion && cli.currentVersion
+                          ? "无需更新"
+                          : "待检查"}
+                </button>
+                <input
+                  className="settings-switch"
+                  type="checkbox"
+                  aria-label={"启用 " + backend.name}
+                  checked={backend.enabled}
+                  disabled={working}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    action(() =>
+                      saveBackend({
+                        id: backend.id,
+                        type: backend.type,
+                        enabled,
+                      }),
+                    );
+                  }}
+                />
+              </div>
             </div>
             {notice?.id === backend.id && (
               <p className="inline-error" role="alert">
@@ -166,10 +171,7 @@ export function BackendSettings() {
               <CodexModelSettings backend={backend} />
             )}
             {backend.type === "claude" && (
-              <>
-                <ProxySettings backend={backend} disabled={working} />
-                <ProviderSettings backend={backend} />
-              </>
+              <ProxySettings backend={backend} disabled={working} />
             )}
           </section>
         );

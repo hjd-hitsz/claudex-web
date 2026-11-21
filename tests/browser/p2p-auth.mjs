@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 import { createHash, X509Certificate } from "node:crypto";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -231,7 +232,7 @@ try {
     body: "登录后才能读取",
   });
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByText("连接与登录", { exact: true }).click();
+  await settingsPage(page, "连接与登录").click();
   await page
     .getByText("已登录：" + userInfo().username + " · P2P 直连")
     .waitFor();

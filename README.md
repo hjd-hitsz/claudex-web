@@ -56,7 +56,7 @@ claudex-web service install
 
 ## 配置 Codex
 
-在网页“设置 → 模型与服务配置”中为 Codex 点击“一键安装”。
+在网页「设置 → 后端」中为 Codex 点击「一键安装」。
 
 ### 使用 ChatGPT 账户
 
@@ -81,7 +81,7 @@ requires_openai_auth = true
 
 ## 配置 Claude Code
 
-在网页“设置 → 模型与服务配置”中为 Claude Code 点击“一键安装”，然后启用该后端。
+在网页「设置 → 后端」中为 Claude Code 点击「一键安装」，然后启用该后端。
 
 ### 使用 Claude 账户
 
@@ -93,7 +93,7 @@ claude auth login
 
 ### 使用自定义供应商和模型
 
-在网页“设置 → Claude Code”的供应商列表中添加服务。
+在网页「设置 → 模型服务商」中点击「添加供应商」。
 
 DeepSeek 等预置供应商直接填写 API Key。
 

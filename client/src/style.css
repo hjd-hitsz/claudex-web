@@ -36,9 +36,11 @@
 
 @import "./styles/backends.css";
 @import "./styles/settings-layout.css";
+@import "./styles/settings-provider.css";
 @import "./styles/service-maintenance.css";
 
 @import "./styles/surface-resize.css";
+@import "./styles/settings-shell.css";
 @import "./styles/resize-handles.css";
 
 @import "./styles/goals.css";

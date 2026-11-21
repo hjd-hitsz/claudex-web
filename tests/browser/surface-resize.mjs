@@ -7,6 +7,7 @@ import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const before = process.env.BROWSER_BEFORE === "1";
@@ -256,6 +257,8 @@ try {
       await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
     }
     await openSettings();
+    if (process.env.RESIZE_STYLE_BEFORE !== "1")
+      await settingsPage(page, "模型服务商").click();
     await page.getByRole("button", { name: "添加供应商", exact: true }).click();
     const modelField = page.locator('textarea[name="models"]');
     await modelField.fill("demo-model");

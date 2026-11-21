@@ -89,7 +89,7 @@ function P2pLinkRow({ link, busy, confirming, onConfirm, onCancel, onRevoke }) {
   );
 }
 
-export function P2pSettings() {
+export function P2pSettings({ active }) {
   const [status, setStatus] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [operationError, setOperationError] = useState("");
@@ -101,7 +101,7 @@ export function P2pSettings() {
   const toggle = useRef(null);
 
   useEffect(() => {
-    if (busy) return;
+    if (!active || busy) return;
     const controller = new AbortController();
     let timer;
     async function load() {
@@ -121,7 +121,7 @@ export function P2pSettings() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [busy, retry]);
+  }, [active, busy, retry]);
   useEffect(() => () => mutation.current?.abort(), []);
 
   async function change(action, data = {}) {
@@ -154,28 +154,30 @@ export function P2pSettings() {
     <div className="p2p-settings">
       <div className="p2p-settings-row">
         <h4 className="connection-heading" id="p2p-settings-title">
-          <label className="p2p-settings-toggle">
-            <input
-              ref={toggle}
-              type="checkbox"
-              checked={Boolean(status?.enabled)}
-              disabled={busy || !status || Boolean(loadError)}
-              onChange={(event) =>
-                void change(event.target.checked ? "enable" : "disable")
-              }
-            />
-            P2P 远程访问
-          </label>
+          <label htmlFor="settings-p2p">P2P 远程访问</label>
         </h4>
-        <span
-          className="backend-connection"
-          data-ready={status?.state === "online" && !loadError}
-          role="status"
-        >
-          {loadError
-            ? "状态暂不可用"
-            : (stateLabels[status?.state] ?? "正在读取…")}
-        </span>
+        <div className="p2p-link-actions">
+          <input
+            id="settings-p2p"
+            className="settings-switch"
+            ref={toggle}
+            type="checkbox"
+            checked={Boolean(status?.enabled)}
+            disabled={busy || !status || Boolean(loadError)}
+            onChange={(event) =>
+              void change(event.target.checked ? "enable" : "disable")
+            }
+          />
+          <span
+            className="backend-connection"
+            data-ready={status?.state === "online" && !loadError}
+            role="status"
+          >
+            {loadError
+              ? "状态暂不可用"
+              : (stateLabels[status?.state] ?? "正在读取…")}
+          </span>
+        </div>
       </div>
       {(operationError || loadError || status?.error) && (
         <div className="p2p-settings-row p2p-settings-feedback">

@@ -5,7 +5,7 @@ import { PanelLeft, Plus, MoreHorizontal } from "lucide-react";
 import { useStore, newChat } from "../store.js";
 import { IconButton } from "../ui/primitives.jsx";
 import { useDismissibleMenu } from "../ui/dismissible-menu.js";
-import { BackendBadge } from "./backend-badge.jsx";
+import { BackendBadge } from "../features/backends/backend-badge.jsx";
 import { currentBackendId } from "../domain/backends.js";
 import { ThreadMenu } from "./thread-row.jsx";
 import { ProjectSwitcher } from "./project-switcher.jsx";

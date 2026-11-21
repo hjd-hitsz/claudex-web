@@ -1,33 +1,3 @@
-.modal-settings {
-  width: 680px;
-  max-height: min(88dvh, 920px);
-  border-radius: 16px;
-  box-shadow:
-    0 24px 80px #0002,
-    0 4px 16px #0001;
-}
-.modal-settings .modal-heading {
-  padding: 24px 28px 20px;
-}
-.modal-settings .modal-heading h2 {
-  font-size: 22px;
-  letter-spacing: -0.03em;
-}
-.modal-settings .settings-body {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding: 0 28px 28px;
-  font-size: 14px;
-  line-height: 20px;
-  scrollbar-gutter: stable;
-}
-.modal-settings .settings-body h3 {
-  margin: 0 0 12px;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.5;
-}
 .modal-settings .settings-body .primary,
 .modal-settings .settings-body .secondary {
   min-height: 34px;
@@ -35,62 +5,116 @@
   border-radius: 8px;
   font-size: 13px;
 }
-.modal-settings .settings-body input[type="checkbox"] {
+.modal-settings .settings-body input[type="checkbox"]:not(.settings-switch) {
   width: 16px;
   height: 16px;
   flex: none;
   margin: 0;
 }
+.modal-settings .settings-switch {
+  position: relative;
+  appearance: none;
+  width: 2.615385rem;
+  height: 1.538462rem;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 1em;
+  background: var(--hover);
+  cursor: pointer;
+}
+.modal-settings .settings-switch::before {
+  position: absolute;
+  inset-block: 2px;
+  inset-inline-start: 2px;
+  aspect-ratio: 1;
+  border: 1px solid #0002;
+  border-radius: 50%;
+  background: #fff;
+  content: "";
+}
+.modal-settings .settings-switch:checked {
+  border-color: var(--check-color);
+  background: var(--check-color);
+}
+.modal-settings .settings-switch:checked::before {
+  inset-inline: auto 2px;
+}
+.modal-settings .settings-switch:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+.modal-settings .settings-switch:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  .modal-settings .settings-switch {
+    appearance: auto;
+  }
+  .modal-settings .settings-switch::before {
+    content: none;
+  }
+}
 .settings-group {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  background: var(--sidebar);
+  background: var(--settings-card);
 }
 .settings-group > * {
   padding: 16px 20px;
 }
-.modal-settings .settings-preferences > div {
-  display: flex;
-  flex-wrap: wrap;
+.settings-preferences > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 6px 12px;
-  padding: 0;
+  min-height: 3.692308rem;
+  padding: 0.615385rem 1.538462rem;
 }
-.modal-settings .settings-preferences label {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: var(--preference-row-height);
-  margin: 0;
-  font-size: 14px;
-  line-height: 20px;
+.settings-preferences > div + div {
+  border-block-start: 1px solid var(--border);
+}
+.settings-preferences label {
+  display: block;
+  grid-column: 1;
+  min-height: 0;
+  font: inherit;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.settings-preferences .settings-switch {
+  grid-column: 3;
+  grid-row: 1;
 }
 .modal-settings .settings-preferences > div > .secondary {
-  min-height: var(--preference-row-height);
+  grid-column: 2;
+  min-height: 28px;
   padding-block: 3px;
-  line-height: 20px;
 }
-.modal-settings .notification-settings .section-description {
-  flex-basis: 100%;
+.modal-settings
+  .settings-preferences
+  > *
+  > :is(.section-description, [role="status"], .inline-error) {
+  grid-column: 1 / -1;
+  margin: 0;
   font-size: 13px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 .modal-settings .backend-settings {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-.modal-settings .backend-settings > h3 {
-  margin-bottom: 0;
-}
 .modal-settings .backend-card {
   min-width: 0;
   padding: 16px 20px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--sidebar);
+  background: var(--settings-card);
 }
 .modal-settings .cli-error-details {
   margin-top: 8px;
@@ -115,6 +139,20 @@
   font-size: 14px;
   font-weight: 600;
 }
+.backend-identity,
+.backend-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.backend-identity > .backend-badge {
+  font-size: 1.230769rem;
+}
+.backend-actions {
+  margin-inline-start: auto;
+}
 .modal-settings .backend-connection {
   display: inline-flex;
   align-items: center;
@@ -132,9 +170,6 @@
 .modal-settings .backend-connection[data-ready="true"]::before {
   background: var(--green);
 }
-.modal-settings .backend-heading > button {
-  margin-left: auto;
-}
 .modal-settings .backend-settings button,
 .modal-settings .proxy-row select,
 .modal-settings .proxy-row input {
@@ -145,36 +180,17 @@
   background: var(--bg);
   font-size: 13px;
 }
-.modal-settings .backend-heading > button[data-update="true"] {
+.modal-settings .backend-actions > button[data-update="true"] {
   color: var(--link);
   border-color: color-mix(in srgb, var(--link) 35%, var(--border));
 }
-.modal-settings .backend-heading > button[data-current="true"] {
+.modal-settings .backend-actions > button[data-current="true"] {
   color: var(--muted);
   background: var(--hover);
   opacity: 1;
 }
 .modal-settings .backend-settings button:hover {
   background: var(--hover);
-}
-.modal-settings .backend-settings button.provider-context-unit {
-  flex: none;
-  inline-size: var(--provider-context-unit-width, 1.8em);
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  border-color: var(--border);
-  border-inline-start: 0;
-  border-radius: 0 0.4em 0.4em 0;
-  color: var(--muted);
-  background: var(--subtle);
-}
-.modal-settings
-  .backend-settings
-  button.provider-context-unit[aria-pressed="true"] {
-  color: var(--link);
-  background: color-mix(in srgb, var(--link) 12%, var(--bg));
-  font-weight: 600;
 }
 .modal-settings .backend-version {
   margin: 0;
@@ -253,57 +269,6 @@
 .modal-settings .proxy-protocol {
   gap: 10px;
 }
-.modal-settings .provider-settings {
-  width: 100%;
-  gap: 6px;
-  margin-top: 12px;
-}
-.modal-settings .provider-settings .provider-editor {
-  min-width: 0;
-  margin: 6px 0 4px;
-  padding: 12px;
-  gap: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-}
-.modal-settings .provider-settings > button {
-  justify-self: start;
-}
-.provider-editor [role="alert"] {
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: var(--red);
-}
-.provider-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-block-start: 8px;
-  border-block-start: 1px solid var(--border);
-}
-.backend-form .provider-editor-actions button {
-  margin: 0;
-}
-.modal-settings .backend-settings .provider-editor-actions .primary {
-  color: var(--accent-fg);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-@container (max-width: 355px) {
-  .modal-settings .provider-settings .provider-editor {
-    padding: 10px 0;
-    border-inline: 0;
-    border-radius: 0;
-    background: transparent;
-  }
-}
-.modal-settings .provider-settings > button {
-  border-color: transparent;
-  background: transparent;
-  color: var(--link);
-}
 .connection-cards {
   display: grid;
   gap: 0.75rem;
@@ -340,11 +305,8 @@
 .p2p-settings-row {
   justify-content: space-between;
 }
-.p2p-settings-toggle {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 28px;
+.p2p-settings .connection-heading label {
+  cursor: pointer;
 }
 .p2p-settings .section-description,
 .modal-settings .p2p-settings .inline-error {
@@ -415,13 +377,6 @@
   font-size: 13px;
 }
 @media (max-width: 560px) {
-  .modal-settings .modal-heading {
-    padding: 20px;
-  }
-  .modal-settings .settings-body {
-    gap: 24px;
-    padding: 0 20px 20px;
-  }
   .modal-settings .backend-card,
   .settings-group > * {
     padding: 16px;
@@ -429,34 +384,21 @@
   .modal-settings .proxy-row {
     align-items: stretch;
   }
+  .modal-settings .backend-actions > button {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
 }
 @media (max-width: 300px) {
-  .modal-settings .settings-body,
   .modal-settings .backend-card {
     padding-inline: 8px;
   }
-}
-
-.modal-settings .settings-preferences {
-  --preference-row-height: 28px;
-  display: grid;
-  gap: 8px;
-  padding: 16px 20px;
-}
-.modal-settings .settings-preferences > * > .section-description,
-.modal-settings .settings-preferences > * > [role="status"],
-.modal-settings .settings-preferences > * > .inline-error {
-  flex-basis: 100%;
-  min-width: 0;
-  margin: 0 0 0 28px;
-  overflow-wrap: anywhere;
-}
-@media (max-width: 560px) {
-  .modal-settings .settings-preferences {
-    padding: 16px;
+  .settings-preferences > div {
+    gap: 6px;
+    padding-inline: 10px;
   }
-  .modal-settings .backend-heading > button {
-    padding-inline: 8px;
-    font-size: 12px;
+  .modal-settings .settings-preferences > div > .secondary {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }

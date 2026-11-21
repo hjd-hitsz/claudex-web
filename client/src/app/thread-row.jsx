@@ -1,4 +1,4 @@
-import { BackendBadge } from "./backend-badge.jsx";
+import { BackendBadge } from "../features/backends/backend-badge.jsx";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import React, { useState, useEffect, useId } from "react";
 

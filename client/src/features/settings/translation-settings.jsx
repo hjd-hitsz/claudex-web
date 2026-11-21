@@ -14,15 +14,15 @@ export function TranslationSettings() {
   const progress = translation.progress;
   return (
     <div className="translation-settings">
-      <label>
-        <input
-          type="checkbox"
-          checked={translation.enabled}
-          disabled={saving}
-          onChange={(event) => update(event.target.checked)}
-        />
-        思考内容翻译
-      </label>
+      <label htmlFor="settings-translation">思考内容翻译</label>
+      <input
+        id="settings-translation"
+        className="settings-switch"
+        type="checkbox"
+        checked={translation.enabled}
+        disabled={saving}
+        onChange={(event) => update(event.target.checked)}
+      />
       {translation.enabled &&
         ["preparing", "downloading"].includes(translation.state) && (
           <div role="status">

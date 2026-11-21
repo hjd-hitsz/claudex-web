@@ -4,7 +4,6 @@
 }
 .provider-settings {
   display: grid;
-  margin-top: 0.65em;
   min-width: 0;
   container-type: inline-size;
 }
@@ -77,9 +76,6 @@
 .modal .proxy-settings {
   padding: 0;
   margin-block: 0.5em;
-}
-.proxy-settings + .provider-settings {
-  margin-top: 0.5em;
 }
 .proxy-row,
 .backend-form .proxy-protocol {
@@ -383,13 +379,6 @@
   font-size: 0.923077rem;
   margin-block: 0.5em;
   overflow-wrap: anywhere;
-}
-.backend-heading > input[type="checkbox"] {
-  margin: 0;
-  width: 1em;
-  height: 1em;
-  flex: none;
-  cursor: pointer;
 }
 
 .codex-model-options {

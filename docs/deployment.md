@@ -10,7 +10,7 @@
 npm install -g @hjd-hitsz/claudex-web
 ```
 
-准备 Node.js 24.5+、npm、OpenSSL、Linux PAM、`pamtester` 和 systemd，完成上方安装后，以运行服务的普通用户启动服务。进入网页后，在设置中安装并启用所需的 Codex 或 Claude Code。
+准备 Node.js 24.5+、npm、OpenSSL、Linux PAM、`pamtester` 和 systemd，完成上方安装后，以运行服务的普通用户启动服务。进入网页后，在「设置 → 后端」安装并启用所需的 Codex 或 Claude Code。
 
 ```bash
 claudex-web service install
@@ -143,9 +143,9 @@ claudex-web p2p disable
 
 ## Claude Code 与模型配置
 
-在设置的“模型与服务配置”中，点击 Codex 或 Claude Code 标题前的复选框即可启用或停用。程序自动检测当前服务账户的 CLI 安装，显示安装状态、当前 CLI 版本和 npm 官方包的最新版本；打开设置时自动检测，设置保持打开时每五分钟刷新，也可点击“重新检测”。
+在「设置 → 后端」使用 Codex 或 Claude Code 卡片上的开关启用或停用后端。网页服务启动时及此后每小时检测服务账户的 CLI 安装和 npm 官方包的最新版本，页面展示检测结果。
 
-未安装时点击“一键安装”，已安装时点击“一键更新”。安装任务由服务器执行，使用当前服务账户的 npm 全局安装 `@openai/codex@latest` 或 `@anthropic-ai/claude-code@latest`，关闭设置后继续执行，完成后自动刷新安装和版本状态。安装或更新前需等待所属后端任务结束；安装失败会显示错误，可重试。npm 全局目录需允许当前账户写入。也可在服务电脑执行：
+未安装时点击「一键安装」，有可用更新时点击「更新至」对应版本。安装由服务器使用当前服务账户执行，在关闭设置后继续，完成后自动刷新安装和版本状态。安装或更新前需等待所属后端任务结束。安装失败会显示错误，可重试。npm 全局目录需允许当前账户写入。也可在服务电脑执行以下命令。
 
 ```bash
 npm install -g @openai/codex
@@ -154,7 +154,7 @@ npm install -g @anthropic-ai/claude-code
 
 CLI 自动从当前 Node.js 的安装目录、服务 PATH 和用户 `~/.local/bin` 查找。systemd 服务安装时记录当前 Node.js 和 PATH；更换 Node.js 安装后重新执行 `claudex-web service install` 并在空闲时重启网页服务。Claude Code 复用 `CLAUDE_CONFIG_DIR`（默认 `~/.claude`）中的认证、技能、插件和历史；Codex 沿用 `CODEX_HOME`（默认 `~/.codex`）及既有 app-server 连接。使用原生账户时，先在服务电脑以同一账户完成 CLI 登录。
 
-在设置页 Claude Code 的供应商列表中添加服务名称、API 地址、凭据和模型标识。多个供应商共用此 Claude Code 后端。在输入框的模型菜单选择“供应商 · 模型”，新对话会使用对应后端；已有 Claude 对话可在任务结束后更换供应商或模型并继续。
+在「设置 → 模型服务商」点击「添加供应商」，填写名称、API 地址、凭据和模型标识。可在 Claude Code 停用时配置供应商。启用 Claude Code 后，在输入框的模型菜单选择「供应商 · 模型」以新建对话。已有 Claude 对话可在任务结束后更换供应商或模型并继续。
 
 API 地址需支持 Messages 请求及工具调用，填写服务基地址，例如 `https://model.example`，请求路径会追加 `/v1/messages`；服务有统一路径前缀时将其保留在基地址中。默认选择“Message API”使用原生请求，选择“Message API （兼容）”会将消息中的系统指令合并到顶层 `system`，用于要求这种布局的服务。模型标识和支持的思考强度、速度档位以服务实际配置为准。API Key 保存在服务器，编辑时留空保留原凭据，勾选清除会移除已保存凭据。
 
@@ -174,7 +174,7 @@ Claude Code 的对话、配置和原生账户状态继续保存在本机 CLI 原
 
 ## 配置
 
-在“设置 → 模型与服务配置”中，分别在两个后端的同一行选择子代理模型及思考强度，强度档位随所选模型提供。Codex 子代理候选遵循“显示的模型”偏好。Claude Code 的选项按“供应商 / 模型”排列，可以为子代理选择其他供应商；保存前等待所属后端空闲。选择“原生默认”恢复原生子代理模型规则。
+在「设置 → 后端」的对应卡片选择子代理模型及思考强度，强度档位随所选模型提供。Codex 子代理候选遵循「显示的模型」偏好。Claude Code 的选项按「供应商 / 模型」排列，可以为子代理选择其他供应商。保存前等待所属后端空闲。选择「原生默认」恢复原生子代理模型规则。
 
 全局命令从 `~/.config/claudex-web/.env` 读取配置；设置 `XDG_CONFIG_HOME` 时使用其下的 `claudex-web` 目录，设置 `CLAUDEX_WEB_CONFIG_DIR` 时优先使用该目录。外部环境变量优先于 `.env`。执行 `claudex-web config init` 可创建配置并显示路径，已有配置和 npm 升级后的配置均会保留。
 
@@ -262,7 +262,7 @@ claudex-web service restart-when-idle
 
 ## 思考内容翻译
 
-功能默认关闭。在“设置 → 思考内容翻译”开启后，服务器从 Microsoft 组件服务取得模型和分词组件，并通过 npm 获取 CPU 运行库，首次合计下载约 300 MB。校验后保留英译中所需文件，当前版本安装后约占 147 MiB。Linux x64（glibc 2.34+）服务器使用单线程 CPU 推理，客户端可使用任意受支持的浏览器。源码构建需要 C 编译器，预构建发行包已包含分词器。
+功能默认关闭。在「设置 → 通用」开启「思考内容翻译」后，服务器从 Microsoft 组件服务取得模型和分词组件，并通过 npm 获取 CPU 运行库，首次合计下载约 300 MB。校验后保留英译中所需文件，当前版本安装后约占 147 MiB。Linux x64（glibc 2.34+）服务器使用单线程 CPU 推理，客户端可使用任意受支持的浏览器。源码构建需要 C 编译器，预构建发行包已包含分词器。
 
 思考消息接收完整后再翻译，流式阶段、下载及翻译等待期间继续显示原文。译文完成后可切换原文与译文，代码、公式及链接目标保持原始内容。翻译正文只在浏览器与本站服务间传输，推理在服务器本地完成。首次下载通过 HTTPS 获取组件目录及 SHA-256，组件文件沿用 Microsoft 返回的下载地址，完整校验后启用。
 
@@ -333,4 +333,4 @@ Claude Code 的网络代理使用服务器可访问的代理地址和端口，�
 
 ## Codex 后台终端扩展
 
-在「设置 → 其他设置」勾选「为Codex开启后台终端功能」即可启动同机任务服务。已有独立服务可用 `CLAUDEX_BACKGROUND_TASKS_DIR` 指定其状态目录。配置、停止和日志读取见[后台终端说明](background-tasks.md)。
+在「设置 → 通用」开启 Codex 后台终端功能即可启动同机任务服务。已有独立服务可用 `CLAUDEX_BACKGROUND_TASKS_DIR` 指定其状态目录。配置、停止和日志读取见[后台终端说明](background-tasks.md)。

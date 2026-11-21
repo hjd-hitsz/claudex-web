@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 import http from "node:http";
 import { readFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -104,7 +105,7 @@ try {
     .first()
     .click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.locator(".backend-settings").waitFor();
+  if (!before) await settingsPage(page, "模型服务商").click();
   await page.locator(".provider-settings").waitFor();
   const row = page
     .locator(".backend-heading")
@@ -136,14 +137,15 @@ try {
         el.nextElementSibling?.matches(".provider-editor"),
       ),
     );
-    assert.ok(
-      await form.evaluate((el) =>
-        Boolean(
-          el.compareDocumentPosition(
-            el.closest(".provider-settings").querySelector(":scope > button"),
-          ) & Node.DOCUMENT_POSITION_FOLLOWING,
-        ),
-      ),
+    assert.equal(
+      await page
+        .locator(".settings-page-heading")
+        .getByRole("button", {
+          name: "添加供应商",
+          exact: true,
+        })
+        .count(),
+      1,
     );
     await page.locator(".provider-settings").screenshot({
       path: join(output, "provider-editor.png"),
@@ -330,11 +332,8 @@ try {
     await form.waitFor({ state: "detached" });
     assert.equal(await row.count(), 0);
     await add.click();
-    assert.ok(
-      await add.evaluate((el) =>
-        el.nextElementSibling?.matches(".provider-editor"),
-      ),
-    );
+    assert.equal(await add.getAttribute("aria-expanded"), "true");
+    await page.locator(".provider-new .provider-editor").waitFor();
     assert.equal(await clearKey.count(), 0);
     const emptyKey = await keyField.boundingBox();
     const emptyProtocol = await fields.getByLabel("API 协议").boundingBox();
@@ -362,6 +361,7 @@ try {
       });
       if (await openSidebar.isVisible()) await openSidebar.click();
       await page.getByRole("button", { name: "设置", exact: true }).click();
+      await settingsPage(page, "模型服务商").click();
       await edit.click();
       await effort.getByText("xhigh", { exact: true }).click();
       for (const theme of ["light", "dark"]) {

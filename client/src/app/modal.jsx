@@ -57,10 +57,12 @@ export function Modal() {
       aria-label={titles[type]}
       onDismiss={dismiss}
     >
-      <div className="modal-heading">
-        <h2>{titles[type]}</h2>
-        <IconButton icon={X} title="关闭窗口" onClick={dismiss} />
-      </div>
+      {type !== "settings" && (
+        <div className="modal-heading">
+          <h2>{titles[type]}</h2>
+          <IconButton icon={X} title="关闭窗口" onClick={dismiss} />
+        </div>
+      )}
       {type === "command" ? (
         <div
           className="command-dialog"
@@ -83,6 +85,7 @@ export function Modal() {
       ) : type === "settings" ? (
         <SettingsDialog
           focusMaintenance={s.modal.section === "maintenance"}
+          onClose={dismiss}
           accountActions={<LogoutButton />}
           certificateHelp={<CertificateHelp />}
         />

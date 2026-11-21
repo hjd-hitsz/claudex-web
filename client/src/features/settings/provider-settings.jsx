@@ -1,33 +1,53 @@
 import { ResizableTextarea } from "../../ui/resizable-textarea.jsx";
 import React, { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { ProviderModels } from "./provider-models.jsx";
 import { PresetProviderForm } from "./preset-provider-form.jsx";
 import { rpc, saveProvider, removeProvider } from "../../store.js";
 import { contextWindowTokens } from "../../domain/provider-context-window.js";
 
-export function ProviderSettings({ backend }) {
+const providerBackendId = "claude";
+
+export function ProviderSettings({ actionTarget }) {
   const apiKeyId = useId();
   const [providers, setProviders] = useState([]),
     [editing, setEditing] = useState(null),
+    [loading, setLoading] = useState(true),
+    [loadError, setLoadError] = useState(""),
+    [loadRevision, setLoadRevision] = useState(0),
     [error, setError] = useState(""),
     [saveError, setSaveError] = useState(""),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     let current = true;
-    rpc("lan/providers/list", { backendId: backend.id, includeDisabled: true })
+    rpc("lan/providers/list", { includeDisabled: true })
       .then((r) => {
-        if (current) setProviders(r.providers);
+        if (current) {
+          setProviders(r.providers);
+          setLoadError("");
+        }
       })
       .catch((e) => {
-        if (current) setError(e.message);
+        if (current) setLoadError(e.message);
+      })
+      .finally(() => {
+        if (current) setLoading(false);
       });
     return () => {
       current = false;
     };
-  }, [backend.id]);
+  }, [loadRevision]);
+  function reloadProviders() {
+    setLoading(true);
+    setLoadRevision((revision) => revision + 1);
+  }
   function beginEditing(provider) {
     setSaveError("");
     setEditing(provider);
+  }
+  function finishSaving() {
+    beginEditing(null);
+    reloadProviders();
   }
   const editor =
     editing &&
@@ -37,11 +57,8 @@ export function ProviderSettings({ backend }) {
         provider={editing}
         busy={busy}
         setBusy={setBusy}
-        backendId={backend.id}
-        onSaved={(providers) => {
-          setProviders(providers);
-          beginEditing(null);
-        }}
+        backendId={editing.backendId ?? providerBackendId}
+        onSaved={finishSaving}
         onCancel={() => beginEditing(null)}
       />
     ) : (
@@ -60,7 +77,7 @@ export function ProviderSettings({ backend }) {
               .filter(Boolean);
             await saveProvider({
               id: editing.id,
-              backendId: backend.id,
+              backendId: editing.backendId ?? providerBackendId,
               name: values.get("name"),
               baseUrl: values.get("baseUrl"),
               protocol: values.get("protocol"),
@@ -101,15 +118,7 @@ export function ProviderSettings({ backend }) {
                   ? { apiKey: key }
                   : {}),
             });
-            setProviders(
-              (
-                await rpc("lan/providers/list", {
-                  backendId: backend.id,
-                  includeDisabled: true,
-                })
-              ).providers,
-            );
-            beginEditing(null);
+            finishSaving();
           } catch (e) {
             setSaveError(e.message);
           } finally {
@@ -120,7 +129,12 @@ export function ProviderSettings({ backend }) {
         <div className="provider-fields">
           <label>
             <span>名称</span>
-            <input name="name" required defaultValue={editing.name} />
+            <input
+              name="name"
+              required
+              autoFocus={!editing.id}
+              defaultValue={editing.name}
+            />
           </label>
           <label>
             <span aria-hidden="true">
@@ -225,76 +239,100 @@ export function ProviderSettings({ backend }) {
     ));
   return (
     <div className="provider-settings">
-      {providers.map((p) => (
-        <div className="provider-entry" key={p.id}>
-          <div className="backend-heading">
-            <span className="provider-identity">
-              {p.preset && (
-                <>
-                  <img
-                    className="provider-brand-symbol"
-                    src={
-                      new URL(
-                        `../../assets/providers/${p.icon}.svg`,
-                        import.meta.url,
-                      ).href
+      {actionTarget &&
+        createPortal(
+          <button
+            type="button"
+            className="secondary provider-add-button"
+            disabled={busy || loading}
+            aria-expanded={Boolean(editing && !editing.id)}
+            onClick={() =>
+              beginEditing(
+                editing && !editing.id
+                  ? null
+                  : { name: "", baseUrl: "", models: [] },
+              )
+            }
+          >
+            添加供应商
+          </button>,
+          actionTarget,
+        )}
+      {editing && !editing.id && <div className="provider-new">{editor}</div>}
+      {providers.length > 0 && (
+        <div className="provider-list">
+          {providers.map((p) => (
+            <div className="provider-entry" key={p.id}>
+              <div className="backend-heading">
+                <span className="provider-identity">
+                  {p.preset && (
+                    <img
+                      className="provider-brand-symbol"
+                      src={
+                        new URL(
+                          `../../assets/providers/${p.icon}.svg`,
+                          import.meta.url,
+                        ).href
+                      }
+                      alt={`${p.name} 标识`}
+                    />
+                  )}
+                  <span>{p.name}</span>
+                </span>
+                {p.preset && (
+                  <span className="provider-status">
+                    {p.hasApiKey ? "已启用" : "待填写 API Key"}
+                  </span>
+                )}
+                <div className="provider-actions">
+                  <button
+                    aria-expanded={editing?.id === p.id}
+                    disabled={busy || loading}
+                    onClick={() =>
+                      beginEditing(editing?.id === p.id ? null : p)
                     }
-                    alt={`${p.name} 标识`}
-                  />
-                </>
-              )}
-              <span>{p.name}</span>
-            </span>
-            {p.preset && (
-              <span>{p.hasApiKey ? "已启用" : "待填写 API Key"}</span>
-            )}
-            <div className="provider-actions">
-              <button
-                aria-expanded={editing?.id === p.id}
-                disabled={busy}
-                onClick={() => beginEditing(editing?.id === p.id ? null : p)}
-              >
-                编辑
-              </button>
-              {!p.preset && (
-                <button
-                  disabled={busy}
-                  onClick={async () => {
-                    setBusy(true);
-                    setError("");
-                    try {
-                      const result = await removeProvider({ id: p.id });
-                      setProviders(result.providers);
-                      if (editing?.id === p.id) beginEditing(null);
-                    } catch (error) {
-                      setError(error.message);
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  删除
-                </button>
-              )}
+                  >
+                    编辑
+                  </button>
+                  {!p.preset && (
+                    <button
+                      disabled={busy || loading}
+                      onClick={async () => {
+                        setBusy(true);
+                        setError("");
+                        try {
+                          await removeProvider({ id: p.id });
+                          setProviders((rows) =>
+                            rows.filter((row) => row.id !== p.id),
+                          );
+                          if (editing?.id === p.id) beginEditing(null);
+                          reloadProviders();
+                        } catch (error) {
+                          setError(error.message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      删除
+                    </button>
+                  )}
+                </div>
+              </div>
+              {editing?.id === p.id && editor}
             </div>
-          </div>
-          {editing?.id === p.id && editor}
+          ))}
         </div>
-      ))}
-      <button
-        disabled={busy}
-        aria-expanded={Boolean(editing && !editing.id)}
-        onClick={() =>
-          beginEditing(
-            editing && !editing.id
-              ? null
-              : { name: "", baseUrl: "", models: [] },
-          )
-        }
-      >
-        添加供应商
-      </button>
-      {editing && !editing.id && editor}
+      )}
+      {loading && !providers.length && <p role="status">正在读取供应商…</p>}
+      {loadError && (
+        <div className="provider-load-error">
+          <p role="alert">{loadError}</p>
+          <button type="button" disabled={loading} onClick={reloadProviders}>
+            重试
+          </button>
+        </div>
+      )}
       {error && <p role="alert">{error}</p>}
     </div>
   );

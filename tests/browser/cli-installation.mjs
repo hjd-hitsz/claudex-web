@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
@@ -98,6 +99,7 @@ try {
     if (!(await settings.isVisible()))
       await page.getByRole("button", { name: "显示侧栏", exact: true }).click();
     await settings.click();
+    if (!before) await settingsPage(page, "后端").click();
     await page.locator(".backend-card").first().waitFor();
   };
   await open();

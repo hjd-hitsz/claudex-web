@@ -93,26 +93,6 @@
   overflow: auto;
   padding: 0 1.846154rem 1.769231rem;
 }
-.modal-settings .modal-heading h2 {
-  font-size: 1.538462rem;
-}
-.settings-body > h3,
-.backend-settings > h3 {
-  font-size: 1.153846rem;
-  margin: 1.538462rem 0 1rem;
-  font-weight: 600;
-}
-.settings-body > h3:first-child {
-  margin-top: 0.230769rem;
-}
-.notification-settings label {
-  display: flex;
-  align-items: center;
-  gap: 0.615385rem;
-  min-height: 2.25em;
-  font-size: 0.923077rem;
-  cursor: pointer;
-}
 .notification-settings input {
   width: 1.1em;
   height: 1.1em;

@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 import http from "node:http";
 import { readFile, mkdir, writeFile, mkdtemp, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -118,6 +119,7 @@ try {
     .first()
     .click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
+  if (!before) await settingsPage(page, "模型服务商").click();
   const row = page.locator(".backend-heading").filter({ hasText: "DeepSeek" });
   const first = page.locator(".provider-settings .backend-heading").first();
   assert.match(await first.innerText(), /DeepSeek/);

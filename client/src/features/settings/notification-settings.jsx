@@ -19,15 +19,7 @@ export function NotificationSettings() {
   }
   return (
     <div className="notification-settings">
-      <label>
-        <input
-          type="checkbox"
-          checked={status.enabled}
-          disabled={busy || !status.supported}
-          onChange={(event) => update(event.target.checked)}
-        />
-        对话完成通知
-      </label>
+      <label htmlFor="settings-notifications">对话完成通知</label>
       {(busy || (status.enabled && status.permission === "default")) && (
         <button
           className="secondary"
@@ -37,6 +29,14 @@ export function NotificationSettings() {
           {busy ? "正在设置…" : "允许系统通知"}
         </button>
       )}
+      <input
+        id="settings-notifications"
+        className="settings-switch"
+        type="checkbox"
+        checked={status.enabled}
+        disabled={busy || !status.supported}
+        onChange={(event) => update(event.target.checked)}
+      />
       {description && (
         <p className="section-description" role="status">
           {description}

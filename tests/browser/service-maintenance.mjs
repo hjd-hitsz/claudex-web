@@ -5,6 +5,7 @@ import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const before = process.env.BROWSER_BEFORE === "1";
@@ -96,6 +97,7 @@ try {
     if (!(await settings.isVisible()))
       await page.getByRole("button", { name: "显示侧栏", exact: true }).click();
     await settings.click();
+    if (!before) await settingsPage(page, "更新与重启").click();
     await page.getByRole("button", { name: "更新至 4.1.3" }).waitFor();
     await page.waitForFunction(
       () =>

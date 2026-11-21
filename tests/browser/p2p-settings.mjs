@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createStaticHandler } from "../../server/src/http/static.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output = join(root, ".cache/p2p-settings-browser");
@@ -131,6 +132,7 @@ try {
       await page.getByRole("button", { name: "显示侧栏" }).click();
     }
     await settingsButton.click();
+    await settingsPage(page, "连接与登录").click();
     await section.scrollIntoViewIfNeeded();
   }
 

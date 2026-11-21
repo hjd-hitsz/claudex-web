@@ -142,7 +142,6 @@
   position: relative;
   display: flex;
   align-items: center;
-  background: var(--sidebar);
   border-radius: 8px;
   min-height: 2.1538em;
   margin-top: 0;
@@ -151,7 +150,17 @@
   background: var(--hover);
 }
 .thread-row.selected {
-  background: var(--selected);
+  background: var(--navigation-selection);
+}
+.thread-row.selected::before {
+  position: absolute;
+  inset-block: 0.4em;
+  inset-inline-start: 0;
+  width: 0.230769rem;
+  border-radius: 1em;
+  background: var(--link);
+  pointer-events: none;
+  content: "";
 }
 .thread-link {
   position: relative;

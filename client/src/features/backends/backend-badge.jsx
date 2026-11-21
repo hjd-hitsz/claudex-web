@@ -1,6 +1,6 @@
 import React from "react";
-import claudeIcon from "../assets/claude.svg";
-import openaiIcon from "../assets/openai.svg";
+import claudeIcon from "../../assets/claude.svg";
+import openaiIcon from "../../assets/openai.svg";
 
 export function BackendBadge({ backendId }) {
   const icon = backendId === "claude" ? claudeIcon : openaiIcon;

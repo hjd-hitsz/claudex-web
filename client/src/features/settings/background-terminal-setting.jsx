@@ -22,15 +22,15 @@ export function BackgroundTerminalSetting({ backend }) {
   }
   return (
     <div className="background-terminal-setting" aria-busy={saving}>
-      <label>
-        <input
-          type="checkbox"
-          checked={Boolean(available && backend.backgroundTerminalEnabled)}
-          disabled={saving || !available}
-          onChange={(event) => toggle(event.target.checked)}
-        />
-        为Codex开启后台终端功能
-      </label>
+      <label htmlFor="settings-background-terminal">Codex 后台终端</label>
+      <input
+        id="settings-background-terminal"
+        className="settings-switch"
+        type="checkbox"
+        checked={Boolean(available && backend.backgroundTerminalEnabled)}
+        disabled={saving || !available}
+        onChange={(event) => toggle(event.target.checked)}
+      />
       {error && (
         <p role="alert" className="inline-error">
           {error}

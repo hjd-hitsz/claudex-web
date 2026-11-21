@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 import { X509Certificate } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
@@ -244,6 +245,7 @@ try {
       await local.getByRole("button", { name: "登录", exact: true }).click();
       await local.locator(".app-shell").waitFor();
       await local.getByRole("button", { name: "设置", exact: true }).click();
+      await settingsPage(local, "连接与登录").click();
       const account = local.getByRole("region", { name: "账号与双重验证" });
       await account.getByText(/本机直连/).waitFor();
       await account
@@ -607,16 +609,25 @@ try {
     await second.goto(url);
     await second.locator(".app-shell").waitFor();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    const settingsText = await page.locator(".settings-body").innerText();
-    for (const marker of [
-      "桥接服务",
-      "开发构建",
-      "未提交",
-      "构建时间",
-      "app-server",
-      "+dev.",
-    ])
-      assert(!settingsText.includes(marker));
+    for (const title of [
+      "通用",
+      "后端",
+      "模型服务商",
+      "更新与重启",
+      "连接与登录",
+    ]) {
+      await settingsPage(page, title).click();
+      const settingsText = await page.locator(".settings-body").innerText();
+      for (const marker of [
+        "桥接服务",
+        "开发构建",
+        "未提交",
+        "构建时间",
+        "app-server",
+        "+dev.",
+      ])
+        assert(!settingsText.includes(marker));
+    }
     await screenshot("settings-clean");
     await page.getByText("双重验证（2FA）已启用", { exact: true }).waitFor();
     const totpSettings = page.locator(".totp-settings");

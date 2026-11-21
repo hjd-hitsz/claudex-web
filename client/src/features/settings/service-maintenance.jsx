@@ -1,6 +1,6 @@
 import productIcon from "../../assets/claudex-web.svg";
 import { ArrowUpCircle, ChevronRight, RefreshCw } from "lucide-react";
-import React, { useEffect, useRef, useSyncExternalStore } from "react";
+import React, { useEffect, useSyncExternalStore } from "react";
 import { serviceMaintenance } from "../../application/service-maintenance.js";
 function useMaintenance() {
   return useSyncExternalStore(
@@ -39,19 +39,11 @@ export function ServiceUpdateEntry({ onOpen, compact = false }) {
     </button>
   );
 }
-export function ServiceMaintenanceSettings({ focus = false }) {
-  const section = useRef(null);
+export function ServiceMaintenanceSettings() {
   useEffect(() => {
     void serviceMaintenance.request();
     return () => serviceMaintenance.dismissFeedback();
   }, []);
-  const heading = useRef(null);
-  useEffect(() => {
-    if (focus) {
-      section.current?.scrollIntoView({ block: "center" });
-      heading.current?.focus({ preventScroll: true });
-    }
-  }, [focus]);
   const { status, pending, pendingAction, error, loadError, notice } =
     useMaintenance();
   const busy =
@@ -62,13 +54,9 @@ export function ServiceMaintenanceSettings({ focus = false }) {
   };
   return (
     <section
-      ref={section}
       className="service-maintenance-settings"
-      aria-labelledby="service-maintenance-title"
+      aria-labelledby="settings-maintenance-title"
     >
-      <h3 ref={heading} id="service-maintenance-title" tabIndex={-1}>
-        更新与重启
-      </h3>
       <div className="service-update-card">
         <div className="service-product">
           <img src={productIcon} width="40" height="40" alt="" />

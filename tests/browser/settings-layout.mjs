@@ -6,6 +6,7 @@ import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const main = process.env.UI_MAIN === "1";
@@ -97,7 +98,19 @@ try {
     assert.equal(await page.getByText("快捷键", { exact: true }).count(), 0);
     await page
       .getByRole("button", { name: "添加供应商", exact: true })
+      .waitFor({ state: "hidden" });
+    await settingsPage(page, "模型服务商").click();
+    await page
+      .getByRole("button", { name: "添加供应商", exact: true })
       .waitFor();
+    await page.getByText("示例供应商", { exact: true }).waitFor();
+    await settingsPage(page, "后端").click();
+    assert.equal(
+      await page
+        .getByRole("button", { name: "添加供应商", exact: true })
+        .count(),
+      0,
+    );
     const codex = page
       .locator(".backend-card")
       .filter({ has: page.locator("strong", { hasText: /^Codex$/ }) });
@@ -182,17 +195,7 @@ try {
       Math.max(...row) - Math.min(...row) < 3,
       "桌面代理控件保持同一行",
     );
-    const spacing = await proxy.evaluate((el) => {
-      const row = el.querySelector(".proxy-row").getBoundingClientRect();
-      const providers = el.nextElementSibling.getBoundingClientRect();
-      return {
-        gap: providers.top - row.bottom,
-        indent: row.left - providers.left,
-        fontSize: parseFloat(getComputedStyle(el).fontSize),
-      };
-    });
-    assert.ok(spacing.gap <= spacing.fontSize, JSON.stringify(spacing));
-    assert.ok(Math.abs(spacing.indent) < 1, JSON.stringify(spacing));
+    assert.equal(await claude.locator(".provider-settings").count(), 0);
     await page.evaluate(() => {
       const original = window.backendSocket.send.bind(window.backendSocket);
       window.backendSocket.send = (raw) => {
@@ -248,10 +251,7 @@ try {
           });
           if (await openSidebar.isVisible()) await openSidebar.click();
           await page.getByRole("button", { name: "设置", exact: true }).click();
-          await page
-            .getByRole("button", { name: "添加供应商", exact: true })
-            .waitFor();
-          await page.getByText("示例供应商", { exact: true }).waitFor();
+          await settingsPage(page, "后端").click();
           const proxy = page.getByRole("form", {
             name: "Claude Code 网络代理",
           });
@@ -285,9 +285,7 @@ try {
     await zoom.selectOption("1");
     await settings.close();
   }
-  console.log(
-    "PASS 设置页结构、供应商直接展示、实际浏览器缩放、深浅主题与窄屏",
-  );
+  console.log("PASS 独立设置页、代理保存、实际浏览器缩放、深浅主题与窄屏");
 } finally {
   await context.close();
   server.closeAllConnections();

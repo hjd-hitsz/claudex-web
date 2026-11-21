@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
+import { settingsPage } from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const build = process.env.BROWSER_BUILD_DIR || join(root, "client/dist");
@@ -123,6 +124,8 @@ try {
     const sidebar = page.getByRole("button", { name: "显示侧栏", exact: true });
     if (await sidebar.isVisible()) await sidebar.click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
+    if (process.env.BROWSER_BEFORE !== "1")
+      await settingsPage(page, "后端").click();
     await page
       .getByRole("form", { name: "Claude Code 子代理模型", exact: true })
       .waitFor();

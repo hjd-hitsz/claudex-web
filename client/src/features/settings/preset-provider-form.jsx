@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { rpc, saveProvider } from "../../store.js";
+import { saveProvider } from "../../store.js";
 
 export function PresetProviderForm({
   provider,
@@ -24,11 +24,7 @@ export function PresetProviderForm({
             backendId,
             apiKey: String(values.get("apiKey") || "").trim(),
           });
-          const result = await rpc("lan/providers/list", {
-            backendId,
-            includeDisabled: true,
-          });
-          onSaved(result.providers);
+          onSaved();
         } catch (error) {
           setError(error.message);
         } finally {

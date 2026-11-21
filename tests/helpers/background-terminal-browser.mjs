@@ -51,7 +51,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
       });
     }
     const toggle = page.getByRole("checkbox", {
-      name: "为Codex开启后台终端功能",
+      name: "Codex 后台终端",
       exact: true,
     });
     const close = () => button("关闭窗口").click();
@@ -69,7 +69,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         .locator(".settings-preferences > div > label")
         .evaluateAll((labels) =>
           labels.map((label) => {
-            const box = label.querySelector("input").getBoundingClientRect();
+            const box = label.control.getBoundingClientRect();
             const text = document.createRange();
             text.selectNodeContents(label.lastChild);
             return {
@@ -96,22 +96,22 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
     await button("设置").click();
     await check(false);
     await checkSpacing("desktop");
-    const preferences = page.getByRole("region", { name: "其他设置" });
+    const preferences = page.getByRole("region", { name: "通用" });
     assert.equal(
       await preferences
-        .getByRole("checkbox", { name: "为Codex开启后台终端功能", exact: true })
+        .getByRole("checkbox", { name: "Codex 后台终端", exact: true })
         .count(),
       1,
     );
     assert.equal(
       await page.locator(".background-terminal-setting").innerText(),
-      "为Codex开启后台终端功能",
+      "Codex 后台终端",
     );
     assert.equal(
       await page
         .locator(".backend-card")
         .filter({ hasText: "Claude Code" })
-        .getByText("为Codex开启后台终端功能")
+        .getByText("Codex 后台终端")
         .count(),
       0,
     );

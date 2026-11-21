@@ -525,8 +525,11 @@ try {
     await waitFor("document.querySelector('.modal-settings')");
     assert(
       await evaluate(
-        "!document.querySelector('.settings-account') && !document.querySelector('.settings-body progress') && !document.querySelector('.settings-body').textContent.includes('账户与用量') && document.querySelector('.settings-body').firstElementChild.classList.contains('service-maintenance-settings') && !document.querySelector('.theme-options')",
+        "!document.querySelector('.settings-account') && !document.querySelector('.settings-body progress') && !document.querySelector('.settings-body').textContent.includes('账户与用量') && document.querySelector('#settings-general-title')?.textContent === '通用' && !document.querySelector('.theme-options')",
       ),
+    );
+    await evaluate(
+      "[...document.querySelectorAll('.settings-navigation button')].find(button => button.textContent.trim() === '后端').click()",
     );
     await waitFor("document.querySelector('.codex-model-settings')");
     assert.equal(
@@ -544,7 +547,7 @@ try {
     await screenshot("settings-models-expanded");
     await click(".codex-model-settings > summary");
     await screenshot("settings-plus");
-    await click('.modal-heading button[title="关闭窗口"]');
+    await click('.modal-settings button[title="关闭窗口"]');
 
     const layouts = [];
     for (const theme of ["light", "dark", "system"]) {

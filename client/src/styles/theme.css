@@ -22,6 +22,8 @@
   --red: #b64339;
   --link: #245cc0;
   --link-hover: #174798;
+  --navigation-background: color-mix(in srgb, var(--link) 4%, var(--sidebar));
+  --navigation-selection: color-mix(in srgb, var(--link) 12%, var(--sidebar));
   --syntax-keyword: #8b3da3;
   --syntax-string: #287346;
   --syntax-number: #985b20;

@@ -130,7 +130,7 @@ p {
   min-width: var(--sidebar-min);
   max-width: var(--sidebar-max);
   flex-shrink: 0;
-  background: var(--sidebar);
+  background: var(--navigation-background);
   display: flex;
   flex-direction: column;
   border-right: 1px solid transparent;
