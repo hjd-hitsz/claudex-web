@@ -122,6 +122,36 @@ function mathDelimiters(text) {
     .join("");
 }
 
+function useInlineMathOverflow(markdown) {
+  useLayoutEffect(() => {
+    if (
+      typeof ResizeObserver !== "function" ||
+      !markdown.current?.querySelectorAll
+    )
+      return;
+    const formulas = Array.from(
+      markdown.current.querySelectorAll(".katex:not(.katex-display > .katex)"),
+      (formula) => [formula, formula.querySelector(".katex-html")],
+    ).filter(([, visual]) => visual);
+    if (!formulas.length) return;
+    const update = () => {
+      for (const [formula, visual] of formulas)
+        formula.classList.toggle(
+          "katex-scroll",
+          visual.getBoundingClientRect().width >
+            formula.getBoundingClientRect().width,
+        );
+    };
+    const observer = new ResizeObserver(update);
+    for (const [formula, visual] of formulas) {
+      observer.observe(formula);
+      observer.observe(visual);
+    }
+    update();
+    return () => observer.disconnect();
+  });
+}
+
 export const RichText = memo(
   function RichText({
     text,
@@ -130,8 +160,10 @@ export const RichText = memo(
     references = [],
     renderReference: Reference,
   }) {
+    const markdown = useRef(null);
+    useInlineMathOverflow(markdown);
     return (
-      <div className="markdown" data-markdown-selection="">
+      <div ref={markdown} className="markdown" data-markdown-selection="">
         <DirectoryContext.Provider value={cwd}>
           <AnnotationContext.Provider value={annotations}>
             <Markdown

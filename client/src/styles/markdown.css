@@ -130,7 +130,14 @@
 .markdown .katex:not(.katex-display > .katex) {
   display: inline-block;
   max-inline-size: 100%;
+}
+.markdown .katex:not(.katex-display > .katex) > .katex-html {
+  display: inline-block;
+  inline-size: max-content;
+}
+.markdown .katex.katex-scroll {
   overflow-x: auto;
+  overflow-y: hidden;
   vertical-align: middle;
 }
 .code-block {

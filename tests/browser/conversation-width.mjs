@@ -21,7 +21,7 @@ const text = [
   "手机阅读时，消息应从左侧完整显示。",
   "$$\n" + terms.join(" + ") + "\n$$",
   "行内公式 $" + "\\left[" + terms.join(",") + "\\right]" + "$ 之后继续阅读。",
-  "普通短公式 $D^2$ 保持在这一行。",
+  "普通公式 $x_{\\mathrm{new}}$、$x_{\\mathrm{nearest}}$、$\\gamma_{\\mathrm{RRT}^{*}}$ 和 $D^2$ 保持在这一行。",
   "```text\n" + "path/to/example/".repeat(30) + "\n```",
   "| " +
     terms.join(" | ") +
@@ -95,6 +95,7 @@ async function inspect() {
       .getBoundingClientRect();
     const display = element.querySelector(".katex-display");
     const inline = element.querySelector("p > .katex");
+    const short = Array.from(element.querySelectorAll("p > .katex")).slice(1);
     return {
       viewport: innerWidth,
       dpr: devicePixelRatio,
@@ -113,6 +114,10 @@ async function inspect() {
         width: inline.clientWidth,
         scrollWidth: inline.scrollWidth,
       },
+      shortFormulas: short.map((formula) => ({
+        overflowX: getComputedStyle(formula).overflowX,
+        overflowY: getComputedStyle(formula).overflowY,
+      })),
     };
   });
 }
@@ -128,6 +133,13 @@ function assertConversationFits(metrics) {
   assert(
     metrics.messageLeft >= 0 && metrics.messageRight <= metrics.viewport,
     JSON.stringify(metrics),
+  );
+  assert.deepEqual(
+    metrics.shortFormulas,
+    Array.from({ length: 4 }, () => ({
+      overflowX: "visible",
+      overflowY: "visible",
+    })),
   );
 }
 
@@ -328,6 +340,10 @@ try {
     assert.equal(file.scrollWidth, file.width, JSON.stringify(file));
     assert(file.tableOverflow, JSON.stringify(file));
     assert(await preview.getByText("正文末尾可以继续纵向滚动。").isVisible());
+    assert(
+      (await preview.locator(".katex").count()) >= 4,
+      "文件富文本预览仍渲染行内和块公式",
+    );
     await page.screenshot({ path: join(output, "mobile-file-preview.png") });
     results.push({ file });
   }
