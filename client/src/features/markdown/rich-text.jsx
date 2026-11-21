@@ -1,4 +1,11 @@
-import React, { createContext, useContext, memo } from "react";
+import React, {
+  createContext,
+  useContext,
+  memo,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -18,7 +25,8 @@ import { remarkAnnotations } from "../../domain/annotations.js";
 import {
   AnnotationReference,
   AnnotationContext,
-} from "../annotations/message-annotations.jsx";
+} from "../annotations/annotation-reference.jsx";
+import { annotationQuote } from "../annotations/annotation-selection.js";
 import { MarkdownPicture } from "./markdown-picture.jsx";
 
 import { remarkFileReferences } from "../../domain/user-message-references.js";
@@ -69,6 +77,33 @@ function Picture(props) {
   return <MarkdownPicture {...props} cwd={cwd} />;
 }
 
+export function AnnotationQuote({ entry, cwd, trigger }) {
+  const quote = useRef(null);
+  const [text, setText] = useState(entry.text);
+  useLayoutEffect(() => {
+    const anchor = trigger?.current || quote.current;
+    const scope = anchor?.closest?.(".subagent-history, .conversation");
+    setText(annotationQuote(entry, scope ?? undefined));
+  }, [entry, trigger]);
+  return (
+    <div ref={quote} className="annotation-quote-content">
+      <RichText text={text} cwd={cwd} />
+    </div>
+  );
+}
+
+function MarkdownAnnotationReference({ index }) {
+  const cwd = useContext(DirectoryContext);
+  return (
+    <AnnotationReference
+      index={index}
+      renderQuote={(entry, trigger) => (
+        <AnnotationQuote entry={entry} cwd={cwd} trigger={trigger} />
+      )}
+    />
+  );
+}
+
 function mathDelimiters(text) {
   return (text || "")
     .split(
@@ -96,7 +131,7 @@ export const RichText = memo(
     renderReference: Reference,
   }) {
     return (
-      <div className="markdown">
+      <div className="markdown" data-markdown-selection="">
         <DirectoryContext.Provider value={cwd}>
           <AnnotationContext.Provider value={annotations}>
             <Markdown
@@ -119,7 +154,7 @@ export const RichText = memo(
                 pre: CodeBlock,
                 img: MarkdownImage,
                 picture: Picture,
-                "annotation-ref": AnnotationReference,
+                "annotation-ref": MarkdownAnnotationReference,
                 "file-reference-list": ({ children }) => (
                   <div className="user-reference-list">{children}</div>
                 ),

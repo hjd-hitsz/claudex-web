@@ -195,6 +195,8 @@ npm run check
 
 批注浏览器回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium node tests/browser/annotations.mjs`。脚本复制当前生产资源，在独立浏览器配置目录中使用模拟 WebSocket 历史，验证多批注草稿、Enter 完成并返回主输入框、Shift+Enter 换行、悬浮编辑、缩放、窄屏、刷新恢复、失败重试及 Ctrl+Enter 统一提交；截图和构建来源记录默认写入 `.cache/annotations-browser`，可通过 `BROWSER_OUTPUT_DIR` 指定目录。使用 `ANNOTATION_ENTER_BEFORE=1` 对照旧构建，可复现 Enter 插入换行并保存截图。组件回归同时检查输入法组合输入和键码 229 的 Enter 保持编辑。
 
+在同一浏览器回归入口设置 `ANNOTATION_MARKDOWN=1`，以隔离历史验证现有纯文本批注的公式恢复、新建批注提交及刷新、回复中的编号引用、选区复制、整条消息复制和 Markdown 文件预览复制。剪贴板检查覆盖部分加粗文字、公式、代码、链接、列表和表格。截图和布局测量覆盖深浅主题、手机窄屏及 80% 至 200% 浏览器页面缩放。可用 `BROWSER_BEFORE=1`、`BROWSER_BUILD_DIR` 和 `BROWSER_BUILD_INFO` 验证旧构建中的公式拆行。
+
 后台恢复浏览器回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium node tests/browser/connection-recovery.mjs`。脚本使用隔离模拟 WebSocket 与真实标签切换，在桌面和手机尺寸下验证连接正常时持续更新、断线后延迟重连、后台历史补齐、工作过程展开状态、同步期间编辑草稿及向上翻阅位置。记录消息和输入框的 DOM 实例及移除事件，确认恢复期间保留已有界面，并核对页面时间来源保持一致。截图及构建路径写入 `.cache/background-recovery-browser/after`。对照时将旧 `client/dist` 复制到 `.cache/background-recovery-before/dist`，以 `BROWSER_BEFORE=1` 运行同一脚本。
 
 视觉调整的浏览器检查使用生产构建与隔离的模拟历史，覆盖正文、代码块、工作过程、输入框草稿、右侧详情、设置弹窗及欢迎页。浅色、深色、跟随系统深色和窄屏分别核对文字对比度、选中状态、换行、控件位置及全宽布局。80%、100%、125%、150% 和 200% 缩放按物理窗口尺寸除以缩放倍数设置 CSS 视口，并同步设置设备像素比，检查发送按钮和底栏的可见性。对照时采用相同数据和视口截图，图片及构建信息保存在 `.cache` 中。

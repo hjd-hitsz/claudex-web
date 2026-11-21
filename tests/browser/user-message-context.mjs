@@ -128,7 +128,7 @@ export async function verifyUserContext({
     await click('[data-message-id="annotation-user"] button[title="复制消息"]');
     assert.equal(
       await evaluate(`window.contextCopied`),
-      "也请检查 @planner.js。\n注释 1：请补充无人车停留时的轨迹约束。",
+      "也请检查 @planner.js。\n\n注释 1：请补充无人车停留时的轨迹约束。\n\n> 轨迹规划以无人车为中心。",
     );
     await click('button[aria-label="对话目录"]');
     const navigation = await evaluate(

@@ -8,7 +8,7 @@ import { RichText } from "../markdown/rich-text.jsx";
 import { FileCode, Paperclip, Folder, Sparkles } from "lucide-react";
 import { set } from "../../store.js";
 import { MessageImage } from "../markdown/message-image.jsx";
-import { UserAnnotations } from "../annotations/message-annotations.jsx";
+import { UserAnnotations } from "../annotations/user-annotations.jsx";
 import { planApprovalLabel } from "../../domain/plans.js";
 import { parseUserMessage } from "../../domain/user-message.js";
 export function Content({ content, cwd }) {
@@ -26,7 +26,7 @@ export function Content({ content, cwd }) {
           />
         </div>
       )}
-      <UserAnnotations annotations={parsed.annotations} />
+      <UserAnnotations annotations={parsed.annotations} cwd={cwd} />
       {parsed.attachments.map((c, i) =>
         c.type === "image" || c.type === "localImage" ? (
           <div key={i} className="message-image">

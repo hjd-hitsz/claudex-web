@@ -8,6 +8,10 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { contextItems, verifyUserContext } from "./user-message-context.mjs";
 import { contextResetItems, verifyContextReset } from "./context-reset.mjs";
+import {
+  annotationMarkdownItems,
+  verifyAnnotationMarkdown,
+} from "./annotation-markdown.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output =
@@ -39,25 +43,26 @@ function fixture(contextItems) {
     createdAt: 1,
     completedAt: 2,
   };
-  const items = contextItems || [
-    {
-      id: "user",
-      type: "userMessage",
-      content: [{ type: "text", text: "请说明项目的验证和交付流程。" }],
-    },
-    {
-      id: "answer",
-      type: "agentMessage",
-      phase: "final_answer",
-      text: "先检查项目实际配置，再确定修改范围。\n\n验证时使用隔离测试数据，保留检查结果。\n\n完成后说明修改内容及验证依据。",
-    },
-    {
-      id: "second-answer",
-      type: "agentMessage",
-      phase: "final_answer",
-      text: "第二条回复同样支持添加批注，并与前面的批注一起提交。",
-    },
-  ];
+  const items = JSON.parse(sessionStorage.getItem("annotation-history")) ||
+    contextItems || [
+      {
+        id: "user",
+        type: "userMessage",
+        content: [{ type: "text", text: "请说明项目的验证和交付流程。" }],
+      },
+      {
+        id: "answer",
+        type: "agentMessage",
+        phase: "final_answer",
+        text: "先检查项目实际配置，再确定修改范围。\n\n验证时使用隔离测试数据，保留检查结果。\n\n完成后说明修改内容及验证依据。",
+      },
+      {
+        id: "second-answer",
+        type: "agentMessage",
+        phase: "final_answer",
+        text: "第二条回复同样支持添加批注，并与前面的批注一起提交。",
+      },
+    ];
   const requests = [];
   let fail = false,
     running = false,
@@ -66,6 +71,8 @@ function fixture(contextItems) {
   localStorage.setItem("cx-theme", JSON.stringify("light"));
   window.annotationFixture = {
     requests,
+    setHistory: (items) =>
+      sessionStorage.setItem("annotation-history", JSON.stringify(items)),
     setFail: (v) => (fail = v),
     setRunning: (v) => {
       running = v;
@@ -139,7 +146,13 @@ function fixture(contextItems) {
       if (m.method === "fs/readDirectory")
         result = { entries: [{ fileName: "planner.js", isDirectory: false }] };
       if (m.method === "fs/readFile")
-        result = { dataBase64: btoa("export const hover = true;\n") };
+        result = {
+          dataBase64: btoa(
+            m.params.path.endsWith("quote.md")
+              ? "## Preview copy\n\n**Bold** and $x^2$.\n"
+              : "export const hover = true;\n",
+          ),
+        };
       if (m.method === "fuzzyFileSearch")
         result = {
           files: [
@@ -187,7 +200,16 @@ const server = http.createServer(async (request, response) => {
         .toString()
         .replace(
           "<head>",
-          `<head><script>(${fixture.toString()})(${process.env.CONTEXT_RESET === "1" ? JSON.stringify(contextResetItems) : process.env.USER_CONTEXT === "1" ? JSON.stringify(contextItems) : "null"})</script>`,
+          () =>
+            `<head><script>(${fixture.toString()})(${JSON.stringify(
+              process.env.CONTEXT_RESET === "1"
+                ? contextResetItems
+                : process.env.USER_CONTEXT === "1"
+                  ? contextItems
+                  : process.env.ANNOTATION_MARKDOWN === "1"
+                    ? annotationMarkdownItems
+                    : null,
+            )})</script>`,
         );
     response
       .writeHead(200, {
@@ -388,6 +410,53 @@ async function runScenario() {
   await waitFor(
     `document.querySelector('textarea[aria-label="消息"]') && document.querySelector('.assistant-message')`,
   );
+  if (process.env.ANNOTATION_MARKDOWN === "1") {
+    await call("Browser.grantPermissions", {
+      origin: `http://127.0.0.1:${server.address().port}`,
+      permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
+    });
+    const { targetId: settingsId } = await call("Target.createTarget", {
+      url: "chrome://settings/appearance",
+      background: true,
+    });
+    const { sessionId: settingsSession } = await call("Target.attachToTarget", {
+      targetId: settingsId,
+      flatten: true,
+    });
+    const setPageZoom = async (zoom) => {
+      const { result, exceptionDetails } = await call(
+        "Runtime.evaluate",
+        {
+          expression: `new Promise((resolve) => {
+            chrome.settingsPrivate.setDefaultZoom(${zoom});
+            chrome.settingsPrivate.getDefaultZoom(resolve);
+          })`,
+          awaitPromise: true,
+          returnByValue: true,
+        },
+        settingsSession,
+      );
+      if (exceptionDetails) throw new Error(JSON.stringify(exceptionDetails));
+      assert(Math.abs(result.value - zoom) < 0.01);
+    };
+    try {
+      await verifyAnnotationMarkdown({
+        evaluate,
+        page,
+        waitFor,
+        click,
+        fill,
+        key,
+        screenshot,
+        output,
+        buildInfo,
+        setPageZoom,
+      });
+    } finally {
+      await call("Target.closeTarget", { targetId: settingsId });
+    }
+    return;
+  }
   if (process.env.USER_CONTEXT === "1" || process.env.CONTEXT_RESET === "1") {
     const verify =
       process.env.CONTEXT_RESET === "1"

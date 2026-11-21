@@ -11,6 +11,7 @@ import {
 import { isCompacting } from "../../domain/compaction.js";
 import { Content } from "./user-content.jsx";
 import { ReferenceEditor } from "../composer/reference-editor.jsx";
+import { annotationQuote } from "../annotations/annotation-selection.js";
 
 function MessageEditor({ item, threadId, onCancel }) {
   const s = useStore();
@@ -184,7 +185,14 @@ export function UserMessage({ item, readOnly, editable, cwd }) {
               <IconButton
                 icon={Copy}
                 title="复制消息"
-                onClick={() => copy(userMessageText(item.content))}
+                onClick={(event) => {
+                  const scope = event.currentTarget.closest(".conversation");
+                  copy(
+                    userMessageText(item.content, (entry) =>
+                      annotationQuote(entry, scope ?? undefined),
+                    ),
+                  );
+                }}
               />
               {editable && (
                 <IconButton

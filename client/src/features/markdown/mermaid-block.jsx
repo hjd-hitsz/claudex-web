@@ -76,7 +76,7 @@ export function MermaidBlock({ source }) {
   }, [source, renderedSource, diagramTheme]);
 
   return (
-    <div className="code-block mermaid-block">
+    <div className="code-block mermaid-block" data-mermaid-source={source}>
       <div className="code-heading">
         <span>Mermaid</span>
         <div className="mermaid-actions">

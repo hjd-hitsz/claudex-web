@@ -24,6 +24,7 @@ export function MessageLink({
   cwd: baseDirectory,
 }) {
   const directory = useMarkdownDirectory(baseDirectory);
+  const sourceHref = href;
   const imageOnly = node?.children?.every(
     (child) =>
       child.tagName === "img" || (child.type === "text" && !child.value.trim()),
@@ -65,6 +66,8 @@ export function MessageLink({
     <a
       className="message-link"
       href={href}
+      data-markdown-href={sourceHref}
+      data-markdown-title={title}
       title={title || href}
       target="_blank"
       rel="noreferrer"

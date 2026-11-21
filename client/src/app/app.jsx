@@ -26,6 +26,7 @@ import { BackgroundTaskProvider } from "../features/background-tasks/background-
 import { Sidebar } from "./sidebar.jsx";
 import { Header } from "./header.jsx";
 import { Modal } from "./modal.jsx";
+import { listenForMarkdownCopy } from "../features/markdown/markdown-selection.js";
 const TerminalPanel = lazy(() =>
   import("../features/workspace/terminal-panel.jsx").then((module) => ({
     default: module.TerminalPanel,
@@ -58,6 +59,7 @@ export function App() {
 
 function AppShell() {
   useEffect(() => startTranslationSettings(), []);
+  useEffect(listenForMarkdownCopy, []);
   const drawerOpen = useStoreSelector((state) => state.sidebar);
   const settingsOpen = useStoreSelector(
     (state) => state.modal?.type === "settings",

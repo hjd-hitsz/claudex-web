@@ -42,16 +42,17 @@
   white-space: nowrap;
   vertical-align: baseline;
 }
-.annotation-reference {
-  position: relative;
-}
 .annotation-note {
-  display: block;
-  margin: 0.461538rem 0;
+  position: fixed;
+  z-index: 40;
+  width: min(32rem, calc(100vw - 16px));
+  max-height: min(24rem, 50dvh);
+  overflow: auto;
   padding: 0.769231rem 0.923077rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--subtle);
+  box-shadow: var(--shadow);
   font-size: 1rem;
   line-height: 1.6;
 }
@@ -189,20 +190,14 @@
   margin-right: 0.384615rem;
   vertical-align: middle;
 }
-.annotation-card blockquote {
+.annotation-quote {
   margin: 0.615385rem 0;
   padding-left: 0.769231rem;
   border-left: 3px solid var(--border);
   max-height: 160px;
   overflow: auto;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--muted);
-}
-.annotation-card p {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  margin: 0.615385rem 0 0;
 }
 .annotation-editor-actions {
   position: absolute;

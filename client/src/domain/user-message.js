@@ -95,17 +95,26 @@ export function parseUserMessage(content = []) {
   return { text: texts.join("\n"), annotations, references, attachments };
 }
 
-export function userMessageText(content) {
+export function userMessageText(content, quote) {
   const { text, annotations, references } = parseUserMessage(content);
   return [
     planApprovalLabel(text),
-    ...annotations.map(
-      (entry, index) => `注释 ${index + 1}：${entry.annotation || entry.text}`,
-    ),
+    ...annotations.map((entry, index) => {
+      const label = `注释 ${index + 1}`;
+      if (!quote) return `${label}：${entry.annotation || entry.text}`;
+      const description = entry.annotation
+        ? `${label}：${entry.annotation}`
+        : label;
+      const excerpt = quote(entry)
+        .split(/\r?\n/)
+        .map((line) => (line ? `> ${line}` : ">"))
+        .join("\n");
+      return `${description}\n\n${excerpt}`;
+    }),
     ...references
       .filter((file) => !text.includes("@" + file.name))
       .map((file) => "@" + file.name),
   ]
     .filter(Boolean)
-    .join("\n");
+    .join(quote && annotations.length ? "\n\n" : "\n");
 }

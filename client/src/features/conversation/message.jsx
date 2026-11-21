@@ -40,6 +40,7 @@ export function Message({
   if (readOnly && item.type === "agentMessage")
     return (
       <article
+        data-annotation-message={item.id}
         className={
           "message " +
           (item.phase === "commentary"

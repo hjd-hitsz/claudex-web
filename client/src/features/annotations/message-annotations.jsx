@@ -1,11 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { MessageSquare, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { set, uid, useStore } from "../../store.js";
@@ -17,110 +10,8 @@ import {
   migrateAnnotationDraft,
 } from "./annotation-drafts.js";
 
-export const AnnotationContext = createContext([]);
-export function AnnotationReference({ index }) {
-  const annotation = useContext(AnnotationContext)[Number(index) - 1];
-  const [open, setOpen] = useState(false);
-  const id = useId();
-  return (
-    <span className="annotation-reference">
-      <button
-        type="button"
-        className="annotation-marker"
-        aria-expanded={open}
-        aria-controls={id}
-        onClick={() => setOpen(!open)}
-      >
-        <MessageSquare size={12} />
-        注释 {index}
-      </button>
-      {open && (
-        <span id={id} role="note" className="annotation-note">
-          {annotation ? (
-            <>
-              <strong>选中的原文</strong>
-              <span>{annotation.text}</span>
-              {annotation.annotation && (
-                <>
-                  <strong>你的注释</strong>
-                  <span>{annotation.annotation}</span>
-                </>
-              )}
-            </>
-          ) : (
-            <span>暂时无法显示这条批注。</span>
-          )}
-        </span>
-      )}
-    </span>
-  );
-}
-
-export function UserAnnotations({ annotations }) {
-  return (
-    <>
-      {annotations.map((entry, index) => (
-        <details className="annotation-card" key={index}>
-          <summary>
-            <MessageSquare size={14} />
-            <span>注释 {index + 1}</span>
-            <span className="annotation-card-label">
-              {entry.annotation || entry.text}
-            </span>
-          </summary>
-          <blockquote>{entry.text}</blockquote>
-        </details>
-      ))}
-    </>
-  );
-}
-
-// 选区偏移与持久化来源都按渲染后的 UTF-16 文本计数。
-function sourceRange(root, entry) {
-  if (!root) return null;
-  const walker = root.ownerDocument.createTreeWalker(root, 4);
-  const nodes = [];
-  let node,
-    text = "";
-  while ((node = walker.nextNode())) {
-    nodes.push({ node, start: text.length });
-    text += node.textContent;
-  }
-  const normalized = entry.text.replace(/\s/g, "");
-  let start = entry.source?.startOffset;
-  let end = entry.source?.endOffset;
-  if (
-    start == null ||
-    end == null ||
-    text.slice(start, end).replace(/\s/g, "") !== normalized
-  ) {
-    const characters = [...text.matchAll(/\S/g)];
-    const index = characters
-      .map(([character]) => character)
-      .join("")
-      .indexOf(normalized);
-    if (index < 0 || !normalized) return null;
-    start = characters[index].index;
-    end = characters[index + normalized.length - 1].index + 1;
-  }
-  const first = nodes.find(
-    ({ node, start: offset }) => offset + node.textContent.length > start,
-  );
-  const last = nodes.find(
-    ({ node, start: offset }) => offset + node.textContent.length >= end,
-  );
-  if (!first || !last) return null;
-  const range = root.ownerDocument.createRange();
-  range.setStart(first.node, start - first.start);
-  range.setEnd(last.node, end - last.start);
-  return range;
-}
-
-function annotationRoot(messageId) {
-  return [...document.querySelectorAll("[data-annotation-message]")].find(
-    (node) => node.dataset.annotationMessage === messageId,
-  );
-}
+import { annotationRoot, sourceRange } from "./annotation-selection.js";
+import { markdownFromRange } from "../markdown/markdown-selection.js";
 
 function viewportScale() {
   return (
@@ -157,6 +48,7 @@ export function MessageAnnotations({ item, children }) {
         return;
       }
       const text = selected.toString();
+      const anchorText = range.toString();
       const before = range.cloneRange();
       before.selectNodeContents(content.current);
       before.setEnd(range.startContainer, range.startOffset);
@@ -165,10 +57,12 @@ export function MessageAnnotations({ item, children }) {
       const scale = viewportScale();
       setSelection({
         text,
+        range,
+        anchorText,
         source: {
           messageId: item.id,
           startOffset,
-          endOffset: startOffset + range.toString().length,
+          endOffset: startOffset + anchorText.length,
         },
         anchor: {
           left:
@@ -250,9 +144,17 @@ export function MessageAnnotations({ item, children }) {
             style={selection.anchor}
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => {
+              const markdown = markdownFromRange(
+                selection.range,
+                content.current.querySelector?.("[data-markdown-selection]"),
+              );
+              const text = markdown || selection.text;
               const entry = {
                 id: uid(),
-                text: selection.text,
+                text,
+                ...(text !== selection.anchorText && {
+                  anchorText: selection.anchorText,
+                }),
                 source: selection.source,
                 annotation: "",
               };

@@ -130,7 +130,12 @@ export async function createDocumentEditor(
           mathPaste: mathInput.handlePaste,
           inlineCode: !file,
         }),
-        ...(!file && { clipboardTextSerializer: referenceClipboardText }),
+        clipboardTextSerializer: file
+          ? (slice, view) =>
+              ctx
+                .get(serializerCtx)(view.state.doc.copy(slice.content))
+                .trimEnd()
+          : referenceClipboardText,
       }));
       ctx.set("CodeMirrorThemeCtx", [syntaxHighlighting(codeHighlightStyle)]);
       ctx.update(remarkStringifyOptionsCtx, (previous) => ({

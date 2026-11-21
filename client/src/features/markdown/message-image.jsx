@@ -55,6 +55,7 @@ export function MessageImage({
     <img
       key={attempt}
       src={url}
+      data-markdown-src={src}
       alt={alt}
       title={title}
       width={width}
