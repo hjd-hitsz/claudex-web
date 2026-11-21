@@ -182,17 +182,67 @@
 }
 .directory-address {
   display: flex;
-  gap: 0.538462rem;
-  padding: 0 1.384615rem 0.923077rem;
+  align-items: flex-start;
+  gap: 0.307692rem;
+  padding: 0 1.538462rem 0.923077rem;
+  flex: none;
 }
-.directory-address input {
+.directory-address > input,
+.directory-breadcrumbs {
   flex: 1;
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.538462rem 0.692308rem;
+  border-radius: 8px;
   background: var(--bg);
+}
+.directory-address > input {
+  height: 2.461538rem;
+  padding: 0 0.692308rem;
   font: 0.846154rem/var(--ui-line-height) var(--mono);
+}
+.directory-address-actions {
+  display: flex;
+  gap: 0.307692rem;
+}
+.directory-breadcrumbs {
+  max-height: min(10.5rem, 34dvh);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.directory-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.076923rem;
+  margin: 0;
+  padding: 0.153846rem 0.307692rem;
+  list-style: none;
+}
+.directory-breadcrumbs li {
+  display: flex;
+  align-items: center;
+  gap: 0.076923rem;
+  max-width: 100%;
+}
+.directory-breadcrumbs li > svg {
+  color: var(--muted);
+}
+.directory-breadcrumbs button {
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0 0.461538rem;
+  border-radius: 5px;
+  font-size: 0.923077rem;
+}
+.directory-breadcrumbs button[aria-current="location"] {
+  font-weight: 600;
+}
+.directory-breadcrumbs button:focus-visible {
+  outline-offset: -2px;
+}
+@media (max-width: 240px) {
+  .directory-address-actions {
+    flex-direction: column;
+  }
 }
 .directory-options {
   display: flex;
