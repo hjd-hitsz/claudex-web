@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="#快速开始">快速开始</a> ·
+  <a href="#命令行用法">命令行用法</a> ·
   <a href="docs/deployment.md">部署指南</a> ·
   <a href="https://github.com/hjd-hitsz/claudex-web/releases">版本更新</a>
 </p>
@@ -47,7 +48,7 @@ npm install -g @hjd-hitsz/claudex-web
 claudex-web service install
 ```
 
-浏览器打开 `https://部署电脑的IP:8766`，输入运行服务的系统用户名和密码。从其他设备访问或使用 P2P 时，还需输入验证器里的六位动态码。首次绑定时，在部署电脑运行 `claudex-web auth setup`，用验证器扫描终端二维码。详细步骤见 [双重验证](docs/deployment.md#双重验证)和[证书安装指引](docs/deployment.md#证书配置)。
+浏览器打开 `https://部署电脑的IP:8766`，输入运行服务的系统用户名和密码。从其他设备访问或使用 P2P 时，还需输入验证器里的六位动态码。首次使用动态码时，按[命令行用法](#命令行用法)绑定验证器。首次访问的证书配置见[证书安装指引](docs/deployment.md#证书配置)。
 
 跨网络使用时，可在“设置 → 连接与登录”开启默认关闭的 P2P 远程访问。打开连接链接，等直连建立后按同样的步骤登录。网页与命令行用法见 [P2P 远程访问](docs/deployment.md#p2p-远程访问)。
 
@@ -95,6 +96,15 @@ claude auth login
 在网页“设置 → Claude Code”的供应商列表中添加服务。
 
 DeepSeek 等预置供应商直接填写 API Key。
+
+## 命令行用法
+
+- 用 `claudex-web --help` 查看命令。
+
+* **双重验证**用 `claudex-web auth setup` 生成二维码绑定认证应用。用 `claudex-web auth disable` 关闭双重验证，输入 `yes` 确认。
+* **P2P** 用 `claudex-web p2p enable` 开启远程访问，再用 `claudex-web p2p create "我的手机"` 生成链接。其他操作见 [P2P 远程访问](docs/deployment.md#p2p-远程访问)。
+* **服务管理**用 `claudex-web service status` 查看状态，用 `claudex-web service restart-when-idle` 等待空闲后重启。
+* 其他命令见[部署指南](docs/deployment.md#命令与前台运行)。
 
 ## 更多文档
 
