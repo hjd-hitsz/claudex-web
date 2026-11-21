@@ -9,6 +9,7 @@ export function createBridgeEvents({
   unwrittenThreads,
   updateGoal,
   compactions,
+  streamingMessages,
   threadNaming,
   send,
   broadcast,
@@ -120,7 +121,19 @@ export function createBridgeEvents({
         },
       });
     }
-    if (!request.timedOut) send(request.client, { ...message, id: request.id });
+    if (!request.timedOut) {
+      const streamed = request.includeStreaming
+        ? streamingMessages.read(request.threadId)
+        : [];
+      send(request.client, {
+        ...message,
+        id: request.id,
+        ...(message.result &&
+          streamed.length && {
+            result: { ...message.result, streamingMessages: streamed },
+          }),
+      });
+    }
     releaseUnusedThreads();
     if (!message.error && !request.timedOut && !request.client?.readOnly) {
       if (request.method === "turn/start")

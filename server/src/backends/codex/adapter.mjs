@@ -20,6 +20,7 @@ import { createBridgeEvents } from "./events.mjs";
 import { createRequestHandler } from "./requests.mjs";
 import { createProductMethods } from "../../bridge/product-methods.mjs";
 import { readCodexTokenUsage } from "./token-usage.mjs";
+import { createStreamingMessages } from "./streaming-messages.mjs";
 
 export function createCodexAdapter({
   backend,
@@ -37,6 +38,7 @@ export function createCodexAdapter({
   const activeThreads = new Set();
   const terminals = new Map();
   const compactions = createCompactions(broadcast);
+  const streamingMessages = createStreamingMessages();
   const handoff = createNativeBackgroundHandoff({
     background,
     enabled: () => Boolean(background?.available && backgroundEnabled()),
@@ -55,6 +57,7 @@ export function createCodexAdapter({
     },
     onEvent(message) {
       handoff.event(message);
+      streamingMessages.event(message);
       events.onEvent(message);
     },
     onResponse: (request, message) => events.onResponse(request, message),
@@ -65,6 +68,7 @@ export function createCodexAdapter({
       questions.clear();
       activeTurns.clear();
       activeThreads.clear();
+      streamingMessages.clear();
       handoff.disconnected();
       subscriptions.reset();
       for (const terminal of terminals.values()) terminal.running = false;
@@ -131,6 +135,7 @@ export function createCodexAdapter({
     terminals,
     ...subscriptions,
     compactions,
+    streamingMessages,
     threadNaming,
     send,
     broadcast,
@@ -199,6 +204,7 @@ export function createCodexAdapter({
     close() {
       threadNaming.clear();
       handoff.disconnected();
+      streamingMessages.clear();
       transport.close();
       subscriptions.reset();
     },

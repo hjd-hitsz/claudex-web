@@ -255,6 +255,10 @@ Mermaid 回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/
 
 构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/conversation-width.mjs`。隔离对话包含宽行内公式、块公式、代码块与表格。脚本模拟手机触控，核对正文只沿纵向滚动，宽内容可局部横向滚动，并检查窄屏侧栏焦点、文件预览和五档浏览器页面缩放。截图和测量结果保存在 `.cache/conversation-width/after`，可用 `BROWSER_BEFORE=1 BROWSER_BUILD_DIR=/path/to/previous/dist` 对照旧构建。
 
+### 活动对话恢复
+
+构建后使用相同浏览器环境变量运行 `node tests/browser/active-turn-recovery.mjs`。隔离会话核对切回活动对话时补齐先前正文、读取期间及之后的增量连续显示。截图位于 `.cache/active-turn-recovery/browser`。桥接回归覆盖快照按对话隔离及完成后清理。
+
 ### 对话完成通知回归
 
 执行 `npm run build` 后，使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/completion-notifications.mjs`。脚本使用独立浏览器上下文、模拟轮次及真实 Service Worker 和 IndexedDB，检查默认开启、手动关闭后的刷新恢复、待授权入口及主动授权、正常状态省略重复文案、后台完成、不同对话标题、跨页面原子去重、历史与刷新重连、开关同步及关闭期间的异步取消、失败与中断、存储失败、权限撤销、不支持的环境、通知消息跳转和新页面目标恢复。通知的原生显示接口保留真实调用，并记录实际调用数量，避免同一 tag 替换掩盖重复提醒。截图及构建来源保存在 `.cache/completion-notifications`，包含深浅主题、窄屏和 80%～200% 缩放。可设置 `HEADED=1` 在可用桌面或 Xvfb 中运行；系统横幅展示以浏览器及系统通知设置为准。

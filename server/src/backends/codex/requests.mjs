@@ -89,6 +89,16 @@ export function createRequestHandler({
         message.params?.modelProviders === undefined
       )
         message.params = { ...message.params, modelProviders: [] };
+      const includeStreaming =
+        Boolean(threadId) &&
+        ["thread/items/list", "thread/turns/list"].includes(message.method) &&
+        !message.params.cursor &&
+        message.params.includeStreaming === true;
+      if (message.params && Object.hasOwn(message.params, "includeStreaming")) {
+        const { includeStreaming: _includeStreaming, ...params } =
+          message.params;
+        message.params = params;
+      }
       if (
         backgroundCall &&
         terminalMethods.has(message.method) &&
@@ -147,6 +157,7 @@ export function createRequestHandler({
         processId,
         method: message.method,
         threadId,
+        includeStreaming,
         ...(message.method === "thread/resume" && {
           resumeParams: message.params,
         }),

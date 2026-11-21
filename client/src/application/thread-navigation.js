@@ -357,7 +357,21 @@ export function createThreadNavigation({
       for (const item of history)
         if (map.get(item.id) === item) previous.set(item.id, item);
     }
-    const loaded = await readThreadHistory(rpc, id, {
+    const codex = resourceTarget(id).backendId === "codex";
+    async function readPage(method, params) {
+      const page = await rpc(method, {
+        ...params,
+        ...(codex && !params.cursor && { includeStreaming: true }),
+      });
+      if (current() && page.streamingMessages?.length) {
+        const items = new Map(get().items.map((item) => [item.id, item]));
+        // 快照包含响应前已收到的增量，替换页面打开期间累积的后半段。
+        for (const item of page.streamingMessages) items.set(item.id, item);
+        set({ items: [...items.values()] });
+      }
+      return page;
+    }
+    const loaded = await readThreadHistory(readPage, id, {
       current,
       ...(onFirstPage && {
         onFirstPage: (items) => {
