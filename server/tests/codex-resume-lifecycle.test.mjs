@@ -9,6 +9,29 @@ const closingError = (threadId) => ({
   message: `thread ${threadId} is closing; retry thread/resume after the thread is closed`,
 });
 
+test("Codex 对话列表按原生分页读取所有供应商，保留显式筛选", async (t) => {
+  const app = await bridge(t, (request, socket) => {
+    if (request.method !== "thread/list") return false;
+    socket.send(
+      JSON.stringify({
+        id: request.id,
+        result: { data: [], nextCursor: null },
+      }),
+    );
+    return true;
+  });
+  const client = await app.connect();
+  for (const modelProviders of [undefined, ["custom"]]) {
+    const params = { archived: true, modelProviders, limit: 2 };
+    await app.rpc(client, "thread/list", { ...params, backendId: "codex" });
+    const request = app.requests.findLast(
+      (r) => r.method === "thread/list" && r.params.limit === 2,
+    );
+    assert.equal(request.params.archived, true);
+    assert.deepEqual(request.params.modelProviders, modelProviders ?? []);
+  }
+});
+
 for (const earlyClose of [false, true]) {
   test(`原生关闭${earlyClose ? "先于" : "晚于"}恢复错误时，同一次网页请求自动恢复`, async (t) => {
     let attempted = false;

@@ -16,8 +16,12 @@ import {
 } from "../store.js";
 import { IconButton } from "../ui/primitives.jsx";
 
-export function ProjectGroup({ path, pinned = false, children }) {
-  const [open, expand] = useState(pinned);
+export function ProjectGroup({ path, pinned = false, archived, children }) {
+  const [liveOpen, expandLive] = useState(pinned);
+  const [archiveOpen, expandArchive] = useState(true);
+  const [open, expand] = archived
+    ? [archiveOpen, expandArchive]
+    : [liveOpen, expandLive];
   const [dragOver, setDragOver] = useState(false);
   const [moving, setMoving] = useState(false);
   const [showAll, revealAll] = useState(false);
@@ -32,6 +36,7 @@ export function ProjectGroup({ path, pinned = false, children }) {
     };
   }, [dragOver]);
   const conversations = React.Children.toArray(children);
+  if (archived && !conversations.length) return null;
   const label = path ? basename(path) : "未分类";
   return (
     <div className="project-group">

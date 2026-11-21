@@ -85,6 +85,11 @@ export function createRequestHandler({
           config: { ...message.params?.config, thread_unload_delay_secs: 0 },
         };
       if (
+        message.method === "thread/list" &&
+        message.params?.modelProviders === undefined
+      )
+        message.params = { ...message.params, modelProviders: [] };
+      if (
         backgroundCall &&
         terminalMethods.has(message.method) &&
         includeBackground()

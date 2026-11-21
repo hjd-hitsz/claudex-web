@@ -27,6 +27,7 @@ export function createAppState() {
     serverVersion: null,
     threads: [],
     threadListErrors: [],
+    threadListLoading: false,
     archived: false,
     search: "",
     current: null,

@@ -24,12 +24,13 @@ import {
   titleOf,
   report,
 } from "../store.js";
-import { threadTime } from "../domain/thread-order.js";
+import { isArchivedThread, threadTime } from "../domain/thread-order.js";
 import { isCompacting } from "../domain/compaction.js";
 import { ThreadRunningIcon } from "./thread-running-icon.jsx";
 import { useDismissibleMenu } from "../ui/dismissible-menu.js";
 export function ThreadMenu({ thread, onClose, ...props }) {
   const s = useStore();
+  const archived = isArchivedThread(thread);
   const action = (fn) => {
     onClose();
     Promise.resolve().then(fn).catch(report);
@@ -51,10 +52,10 @@ export function ThreadMenu({ thread, onClose, ...props }) {
         创建分支
       </button>
       <button onClick={() => action(() => archive(thread))}>
-        {s.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}{" "}
-        {s.archived ? "恢复对话" : "归档对话"}
+        {archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}{" "}
+        {archived ? "恢复对话" : "归档对话"}
       </button>
-      {s.current?.id === thread.id && (
+      {!archived && s.current?.id === thread.id && (
         <button
           disabled={
             s.busy ||
@@ -119,7 +120,8 @@ export function ThreadRow({ thread }) {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [titleVisible]);
-  const archiveLabel = s.archived ? "恢复对话" : "归档对话";
+  const archived = isArchivedThread(thread);
+  const archiveLabel = archived ? "恢复对话" : "归档对话";
   const time = threadTime(thread, running);
   const diff = Date.now() / 1000 - time;
   const date =
@@ -172,11 +174,13 @@ export function ThreadRow({ thread }) {
         <span className="thread-title">{title}</span>
         <small
           title={
-            running && thread.startedAt != null
-              ? "消息发送时间"
-              : !running && thread.completedAt != null
-                ? "最近完成时间"
-                : "创建时间"
+            archived && thread.updatedAt != null
+              ? "最近更新时间"
+              : running && thread.startedAt != null
+                ? "消息发送时间"
+                : !running && thread.completedAt != null
+                  ? "最近完成时间"
+                  : "创建时间"
           }
         >
           {date}
@@ -200,7 +204,7 @@ export function ThreadRow({ thread }) {
           aria-label={archiveLabel + " " + titleOf(thread)}
           onClick={() => archive(thread).catch(report)}
         >
-          {s.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+          {archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
         </button>
         <button
           aria-label={"管理对话 " + titleOf(thread)}

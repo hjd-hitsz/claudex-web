@@ -1,5 +1,6 @@
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import {
+  isArchivedThread,
   projectGroups,
   PROJECTLESS_SOURCE,
   preserveFailedBackendThreads,
@@ -24,50 +25,84 @@ export function createThreadCatalog({
     const threads = await records.threadOrdering.list(params, options);
     return sortThreads(threads, get().active);
   }
-  async function loadThreads() {
+  async function loadThreads({ archived = get().archived } = {}) {
     const epoch = ++listing;
+    const scopeChanged = archived !== get().archived;
+    set({
+      threadListLoading: true,
+      ...(scopeChanged && { archived, threads: [], threadListErrors: [] }),
+    });
+    try {
+      await refreshThreadList(epoch);
+    } catch (error) {
+      if (epoch !== listing) return;
+      set({ threadListErrors: [{ message: error.message }] });
+      throw error;
+    } finally {
+      if (epoch === listing) set({ threadListLoading: false });
+    }
+  }
+  async function refreshThreadList(epoch) {
     const revision = records.nameRevision;
     const params = {
       archived: get().archived,
       ...(get().search ? { searchTerm: get().search } : {}),
     };
+    const isCurrent = () => epoch === listing;
+    const previous = get().threads;
+    const visibleRecords = (threads) =>
+      threads
+        .filter((thread) => !records.deletedThreads.has(thread.id))
+        .map((thread) => records.preserveThreadName(thread, revision));
     let errors = [];
     const [loaded, projectless] = await Promise.all([
       listThreads(params, {
+        isCurrent,
         onBackendErrors: (value) => {
           errors = value;
         },
+        ...(params.archived &&
+          !previous.length && {
+            onPage: (threads) => set({ threads: visibleRecords(threads) }),
+          }),
       }),
       rpc("lan/projectless/read").catch(() => ({ directories: {} })),
     ]);
-    if (epoch !== listing) return;
+    if (!isCurrent()) return;
     const data = preserveFailedBackendThreads(
       loaded,
-      get().threads,
+      previous,
       errors,
       params,
       listedScope,
     );
-    pendingForks = pendingForks.filter((id) => !data.some((t) => t.id === id));
-    persist("cx-pending-forks", pendingForks);
-    const extra = await Promise.all(
-      pendingForks.map((id) =>
-        rpc("thread/read", { threadId: id, includeTurns: false })
-          .then((r) => r.thread)
-          .catch(() => null),
-      ),
-    );
+    let extra = [];
+    if (!params.archived) {
+      pendingForks = pendingForks.filter(
+        (id) => !data.some((t) => t.id === id),
+      );
+      persist("cx-pending-forks", pendingForks);
+      extra = await Promise.all(
+        pendingForks.map((id) =>
+          rpc("thread/read", { threadId: id, includeTurns: false })
+            .then((r) => r.thread)
+            .catch(() => null),
+        ),
+      );
+    }
+    if (!isCurrent()) return;
     const visible = extra.filter(
       (t) =>
         t &&
         !records.deletedThreads.has(t.id) &&
-        Boolean(t.path?.includes("/archived_sessions/")) === get().archived &&
+        isArchivedThread(t) === params.archived &&
         (!get().search || titleOf(t).includes(get().search)),
     );
     const threads = [...visible, ...data];
     if (
       get().current &&
-      !get().archived &&
+      !params.archived &&
+      !isArchivedThread(get().current) &&
       !get().search &&
       !threads.some((t) => t.id === get().current.id)
     )
@@ -76,39 +111,41 @@ export function createThreadCatalog({
     const unique = [
       ...new Map(threads.map((thread) => [thread.id, thread])).values(),
     ].filter((thread) => !records.deletedThreads.has(thread.id));
-    const hydrated = [
-      ...(await records.threadOrdering.hydrate(
-        unique.filter(
-          (thread) => !failed.has(resourceTarget(thread.id).backendId),
-        ),
-      )),
-      ...unique.filter((thread) =>
-        failed.has(resourceTarget(thread.id).backendId),
-      ),
-    ];
-    if (epoch !== listing) return;
-    const sorted = hydrated.map((thread) =>
-      records.preserveThreadName(thread, revision),
-    );
+    const hydrated = params.archived
+      ? unique
+      : [
+          ...(await records.threadOrdering.hydrate(
+            unique.filter(
+              (thread) => !failed.has(resourceTarget(thread.id).backendId),
+            ),
+          )),
+          ...unique.filter((thread) =>
+            failed.has(resourceTarget(thread.id).backendId),
+          ),
+        ];
+    if (!isCurrent()) return;
+    const sorted = visibleRecords(hydrated);
     listedScope = params;
     set({
       threadListErrors: errors,
       projectlessDirectories: projectless.directories,
-      projectOrder: [
-        ...projectGroups(
-          sorted,
-          get().projects,
-          get().pins,
-          projectless.directories,
-          get().projectlessRoots?.length
-            ? get().projectlessRoots
-            : get().projectlessRoot,
-        )
-          .map(([path]) => path)
-          .filter((path) => !get().projectOrder?.includes(path)),
-        ...(get().projectOrder || []),
-      ],
-      threads: sorted.filter((t) => !records.deletedThreads.has(t.id)),
+      ...(!params.archived && {
+        projectOrder: [
+          ...projectGroups(
+            sorted,
+            get().projects,
+            get().pins,
+            projectless.directories,
+            get().projectlessRoots?.length
+              ? get().projectlessRoots
+              : get().projectlessRoot,
+          )
+            .map(([path]) => path)
+            .filter((path) => !get().projectOrder?.includes(path)),
+          ...(get().projectOrder || []),
+        ],
+      }),
+      threads: sorted,
       current: get().current
         ? sorted.find((t) => t.id === get().current.id) || get().current
         : null,
@@ -120,7 +157,7 @@ export function createThreadCatalog({
     await loadThreads();
   }
   async function archive(thread) {
-    const restoring = get().archived;
+    const restoring = isArchivedThread(thread);
     await rpc(restoring ? "thread/unarchive" : "thread/archive", {
       threadId: thread.id,
     });
@@ -128,8 +165,11 @@ export function createThreadCatalog({
     if (restoring) {
       pendingForks = [...new Set([...pendingForks, thread.id])];
       persist("cx-pending-forks", pendingForks);
-      set({ archived: false });
-      await navigation.openThread(thread.id);
+      await Promise.all([
+        loadThreads({ archived: false }),
+        navigation.openThread(thread.id),
+      ]);
+      return;
     }
     await loadThreads();
   }

@@ -12,6 +12,7 @@ import React, {
 import { BackgroundTasks } from "../background-tasks/background-task-provider.jsx";
 
 import {
+  Archive,
   ArrowUp,
   Square,
   Plus,
@@ -32,6 +33,7 @@ import {
   useDraft,
   set,
   setDraft,
+  archive,
   refreshThreadAccess,
   stop,
   report,
@@ -79,6 +81,7 @@ export function Composer({ inputRef }) {
   const usage = token?.last?.totalTokens;
   const windowSize = token?.modelContextWindow;
   const access = s.threadAccess;
+  const archived = access?.status === "archived";
   const checking = s.loading || access?.status === "checking";
   const unavailable =
     s.loading ||
@@ -130,6 +133,8 @@ export function Composer({ inputRef }) {
         >
           {checking ? (
             <LoaderCircle size={20} className="spin" />
+          ) : archived ? (
+            <Archive size={20} />
           ) : (
             <AlertCircle size={20} />
           )}
@@ -137,9 +142,11 @@ export function Composer({ inputRef }) {
             <strong>
               {checking
                 ? "正在检查对话状态…"
-                : access?.status === "blocked"
-                  ? "此对话由另一端使用"
-                  : "暂时无法连接此对话"}
+                : archived
+                  ? "此对话已归档"
+                  : access?.status === "blocked"
+                    ? "此对话由另一端使用"
+                    : "暂时无法连接此对话"}
             </strong>
             {!checking && access?.status !== "blocked" && access?.message && (
               <p>{access.message}</p>
@@ -147,12 +154,16 @@ export function Composer({ inputRef }) {
           </div>
           <button
             className="secondary"
-            aria-label="重试连接对话"
+            aria-label={archived ? "恢复对话" : "重试连接对话"}
             disabled={!s.connected || checking}
-            onClick={() => refreshThreadAccess()}
+            onClick={() =>
+              archived
+                ? archive(s.current).catch(report)
+                : refreshThreadAccess()
+            }
           >
-            <RefreshCw size={14} />
-            {checking ? "正在检查…" : "重试"}
+            {archived ? <Archive size={14} /> : <RefreshCw size={14} />}
+            {checking ? "正在检查…" : archived ? "恢复对话" : "重试"}
           </button>
         </div>
       ) : (

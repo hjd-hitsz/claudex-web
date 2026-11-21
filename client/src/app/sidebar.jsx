@@ -81,10 +81,10 @@ export function Sidebar({ drawerOpen, onClose, onShowMaintenance }) {
               icon={Archive}
               title={s.archived ? "查看最近对话" : "查看归档对话"}
               active={s.archived}
-              onClick={() => {
-                set({ archived: !s.archived });
-                loadThreads().catch(report);
-              }}
+              aria-pressed={s.archived}
+              onClick={() =>
+                loadThreads({ archived: !s.archived }).catch(report)
+              }
             />
             <IconButton
               icon={FolderPlus}
@@ -93,10 +93,11 @@ export function Sidebar({ drawerOpen, onClose, onShowMaintenance }) {
             />
           </div>
         </div>
-        <div className="thread-list">
+        <div className="thread-list" aria-busy={s.threadListLoading}>
           <ThreadListErrors
             backends={s.backends}
             errors={s.threadListErrors}
+            loading={s.threadListLoading}
             onRetry={() => loadThreads().catch(report)}
           />
           {shortcuts.length > 0 && (
@@ -122,6 +123,7 @@ export function Sidebar({ drawerOpen, onClose, onShowMaintenance }) {
               key={path}
               path={path}
               pinned={s.projects.includes(path)}
+              archived={s.archived}
             >
               {threads.map((t) => (
                 <ThreadRow key={t.id} thread={t} />
@@ -129,8 +131,8 @@ export function Sidebar({ drawerOpen, onClose, onShowMaintenance }) {
             </ProjectGroup>
           ))}
           {!s.threads.length && !s.threadListErrors?.length && (
-            <div className="sidebar-empty">
-              {s.booting
+            <div className="sidebar-empty" role="status">
+              {s.booting || s.threadListLoading
                 ? "正在载入…"
                 : s.archived
                   ? "还没有归档的对话"

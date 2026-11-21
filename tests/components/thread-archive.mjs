@@ -19,8 +19,14 @@ export async function testThreadArchive(app, requests, setResponse, emit) {
   let holdMethod;
   let holdId;
   let finish;
+  let archiveNextPage;
+  let finishArchivePage;
   let view;
   const start = requests.length;
+  const readThread = (t) => ({
+    ...t,
+    path: archived.has(t.id) ? "/fixture/archived_sessions/chat.jsonl" : "",
+  });
   setResponse(({ method, params }) => {
     if (method === holdMethod && params.threadId === holdId) {
       holdMethod = null;
@@ -30,13 +36,22 @@ export async function testThreadArchive(app, requests, setResponse, emit) {
       archived.add(thread.id);
       return { error: archivedError };
     }
-    if (method === "thread/list")
+    if (method === "thread/list") {
+      if (params.archived && params.cursor === "archive-page-two")
+        return new Promise((resolve) => (finishArchivePage = resolve));
       return {
-        data: threads.filter((t) => archived.has(t.id) === params.archived),
+        data: threads
+          .filter((t) => archived.has(t.id) === params.archived)
+          .map(readThread),
+        nextCursor:
+          params.archived && archiveNextPage ? "archive-page-two" : null,
       };
+    }
     if (method === "lan/projectless/read") return { directories: {} };
     if (method === "thread/read" || method === "thread/resume")
-      return { thread: threads.find((t) => t.id === params.threadId) };
+      return {
+        thread: readThread(threads.find((t) => t.id === params.threadId)),
+      };
     if (method === "thread/unarchive") archived.delete(params.threadId);
     return { data: [] };
   });
@@ -124,16 +139,54 @@ export async function testThreadArchive(app, requests, setResponse, emit) {
         ).length,
       0,
     );
+    let archiveListing;
+    const archiveStart = requests.length;
     await act(async () => {
       failMethod = null;
-      app.set({ archived: true });
-      await app.loadThreads();
+      archiveNextPage = true;
+      archiveListing = app.loadThreads({ archived: true });
+      assert.equal(app.get().threadListLoading, true);
+      assert.deepEqual(app.get().threads, []);
     });
     assert.deepEqual(
       app.get().threads.map((t) => t.id),
       [thread.id],
     );
-    await act(async () => app.archive(thread));
+    assert.equal(app.get().threadListLoading, true);
+    assert(finishArchivePage);
+    assert(
+      requests
+        .slice(archiveStart)
+        .filter((r) => r.method.startsWith("thread/"))
+        .every((r) => r.method === "thread/list"),
+    );
+    await act(async () => {
+      archiveNextPage = false;
+      await app.loadThreads({ archived: false });
+      finishArchivePage({ data: [readThread(thread)], nextCursor: null });
+      await archiveListing;
+    });
+    assert.deepEqual(
+      app.get().threads.map((t) => t.id),
+      [other.id],
+    );
+    assert.equal(app.get().threadListLoading, false);
+    await act(async () => app.loadThreads({ archived: true }));
+    const openStart = requests.length;
+    await act(async () => app.openThread(thread.id));
+    assert.equal(app.get().threadAccess.status, "archived");
+    assert.equal(app.get().current.id, thread.id);
+    assert.equal(
+      view.root.findAllByProps({ "aria-label": "恢复对话" }).length,
+      1,
+    );
+    assert(
+      requests.slice(openStart).some((r) => r.method === "thread/items/list"),
+    );
+    assert(
+      !requests.slice(openStart).some((r) => r.method === "thread/resume"),
+    );
+    await act(async () => app.archive(app.get().current));
     assert.equal(app.get().archived, false);
     assert.equal(app.get().current.id, thread.id);
     assert.equal(app.get().draft, "归档聊天的未发送草稿");

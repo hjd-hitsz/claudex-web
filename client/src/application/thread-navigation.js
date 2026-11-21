@@ -5,6 +5,7 @@ import { backendEnabled } from "../domain/backend-visibility.js";
 import { compatibleEffort } from "../domain/model-preferences.js";
 import { resolveServiceTier } from "../domain/service-tier.js";
 import {
+  isArchivedThread,
   mergeThreadTimes,
   threadGroupPath,
   PROJECTLESS_SOURCE,
@@ -143,11 +144,13 @@ export function createThreadNavigation({
       getAttachmentDraft();
       if (backendId === "claude") selectProvider(thread.providerId);
       set({
-        threads: get().threads.some((t) => t.id === id)
-          ? get().threads.map((t) =>
-              t.id === id ? { ...t, name: thread.name } : t,
-            )
-          : [thread, ...get().threads],
+        ...(isArchivedThread(thread) === get().archived && {
+          threads: get().threads.some((t) => t.id === id)
+            ? get().threads.map((t) =>
+                t.id === id ? { ...t, name: thread.name } : t,
+              )
+            : [thread, ...get().threads],
+        }),
         current: thread,
         ...(thread.tokenUsage &&
           get().tokenUsage[id] === usageSnapshot.value && {
@@ -164,9 +167,9 @@ export function createThreadNavigation({
         draft: localStorage.getItem("cx-draft-" + id) || "",
       });
       localStorage.setItem("cx-current", id);
-      const ordering = records.threadOrdering
-        .hydrate([r.thread])
-        .then(([hydrated]) => {
+      const ordering =
+        !isArchivedThread(thread) &&
+        records.threadOrdering.hydrate([r.thread]).then(([hydrated]) => {
           if (epoch !== opening || records.deletedThreads.has(id)) return;
           const update = (thread) =>
             thread?.id === id
@@ -221,6 +224,10 @@ export function createThreadNavigation({
       return openThread(get().threadAccess.threadId, { preserveServiceTier });
     const id = get().current?.id;
     if (!id) return false;
+    if (isArchivedThread(get().current)) {
+      set({ threadAccess: { threadId: id, status: "archived" } });
+      return false;
+    }
     const epoch = opening;
     const connection = transport.connection;
     const revision = getConnectionRevision();

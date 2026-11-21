@@ -1,8 +1,20 @@
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { titleOf } from "./format.js";
 export const threadTime = (thread, running = false) =>
-  (running ? thread.startedAt : thread.completedAt) ?? thread.createdAt ?? 0;
+  (isArchivedThread(thread)
+    ? thread.updatedAt
+    : running
+      ? thread.startedAt
+      : thread.completedAt) ??
+  thread.createdAt ??
+  0;
 export const PROJECTLESS_SOURCE = "claudex-web-projectless";
+
+export function isArchivedThread(thread) {
+  return Boolean(
+    thread?.archived || thread?.path?.includes("/archived_sessions/"),
+  );
+}
 
 export function sortThreads(threads, active = {}) {
   return threads.slice().sort((a, b) => {
@@ -181,7 +193,10 @@ export function createThreadOrdering(rpc) {
     return sortThreads(result.map(apply));
   }
 
-  async function list(params, { onBackendErrors } = {}) {
+  async function list(
+    params,
+    { onBackendErrors, onPage, isCurrent = () => true } = {},
+  ) {
     const threads = new Map();
     const errors = new Map();
     let cursor;
@@ -189,17 +204,20 @@ export function createThreadOrdering(rpc) {
       const page = await rpc("thread/list", {
         ...params,
         limit: 100,
-        sortKey: "created_at",
+        sortKey: params.archived ? "updated_at" : "created_at",
         sortDirection: "desc",
         ...(cursor ? { cursor } : {}),
       });
+      if (!isCurrent()) return [];
       for (const error of page.backendErrors || [])
         errors.set(error.backendId, error);
       for (const thread of page.data) threads.set(thread.id, thread);
       cursor = page.nextCursor;
+      if (page.data.length) onPage?.([...threads.values()]);
     } while (cursor);
     onBackendErrors?.([...errors.values()]);
-    return hydrate([...threads.values()]);
+    const data = [...threads.values()];
+    return params.archived ? data : hydrate(data);
   }
 
   function forget(id) {
@@ -227,8 +245,7 @@ export function preserveFailedBackendThreads(
   const retained = previous.filter(
     (thread) =>
       failed.has(resourceTarget(thread.id).backendId) &&
-      Boolean(thread.path?.includes("/archived_sessions/")) ===
-        Boolean(params.archived) &&
+      isArchivedThread(thread) === Boolean(params.archived) &&
       (!search ||
         sameSearch ||
         titleOf(thread).toLocaleLowerCase().includes(search)),

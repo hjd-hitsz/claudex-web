@@ -14,15 +14,25 @@ export async function testProjectSnapshot(app, fixture) {
       { id: "stable-a-old", cwd: "/stable-a", completedAt: 10 },
     ].map((thread) => ({ ...thread, createdAt: 1, updatedAt: 1 }));
     const archived = new Set();
+    const archiveOnly = {
+      id: "archive-only-fixture",
+      cwd: "/archive-only",
+      createdAt: 2,
+      updatedAt: 2,
+    };
+    const withArchiveState = (thread) => ({
+      ...thread,
+      path: archived.has(thread.id) ? "/fixture/archived_sessions/" : "",
+    });
     fixture.responseFor = ({ method, params }) => {
       if (method === "lan/projectless/read") return { directories: {} };
       if (method === "thread/archive") archived.add(params.threadId);
       if (method === "thread/unarchive") archived.delete(params.threadId);
       if (method === "thread/list")
         return {
-          data: threads.filter(
-            (thread) => archived.has(thread.id) === params.archived,
-          ),
+          data: [...threads, archiveOnly]
+            .filter((thread) => archived.has(thread.id) === params.archived)
+            .map(withArchiveState),
         };
       if (method === "thread/turns/list")
         return {
@@ -37,7 +47,9 @@ export async function testProjectSnapshot(app, fixture) {
         };
       if (method === "thread/resume" || method === "thread/read")
         return {
-          thread: threads.find((thread) => thread.id === params.threadId),
+          thread: withArchiveState(
+            threads.find((thread) => thread.id === params.threadId),
+          ),
         };
       if (method === "thread/items/list") return { data: [] };
       return {};
@@ -54,6 +66,7 @@ export async function testProjectSnapshot(app, fixture) {
       ).map(([path]) => path);
     };
     try {
+      archived.add(archiveOnly.id);
       app.set({
         current: null,
         threads: [],
@@ -71,6 +84,11 @@ export async function testProjectSnapshot(app, fixture) {
       await app.archive(threads[2]);
       assert.deepEqual(paths(), initial);
       assert(!app.get().threads.some((thread) => thread.cwd === "/stable-a"));
+      await app.loadThreads({ archived: true });
+      assert(paths().includes(archiveOnly.cwd));
+      assert.deepEqual(app.get().projectOrder, initial);
+      await app.loadThreads({ archived: false });
+      assert.deepEqual(paths(), initial);
       let emptyProject;
       await act(async () => {
         emptyProject = create(
@@ -85,10 +103,11 @@ export async function testProjectSnapshot(app, fixture) {
       assert.equal(app.get().cwd, "/stable-a");
       assert.equal(app.get().current, null);
       await act(async () => emptyProject.unmount());
-      app.set({ archived: true });
-      await app.loadThreads();
-      assert.deepEqual(paths(), initial);
-      await app.archive(threads[0]);
+      await app.loadThreads({ archived: true });
+      assert(paths().includes(archiveOnly.cwd));
+      await app.archive(
+        app.get().threads.find((thread) => thread.id === threads[0].id),
+      );
       assert.equal(app.get().archived, false);
       assert.deepEqual(paths(), initial);
       app.addProject("/aaa-new");
