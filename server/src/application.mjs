@@ -4,9 +4,22 @@ import { createTranslationService } from "./translation-service.mjs";
 import https from "node:https";
 import { WebSocketServer } from "ws";
 import { createHttpHandler } from "./http/router.mjs";
+import { createBusinessHttpHandler } from "./http/business.mjs";
 import { createBackendManager } from "./backends/manager.mjs";
 import { sendRpcText } from "./rpc-transport.mjs";
-export function createWebApplication({ config, tls, authentication, version }) {
+import {
+  createP2pService,
+  createP2pManagementHandler,
+} from "./p2p/service.mjs";
+import { createPeerClient } from "./p2p-peer.mjs";
+
+export function createWebApplication({
+  config,
+  tls,
+  authentication,
+  version,
+  runP2pTunnel,
+}) {
   let requestsInFlight = 0;
   const maintenance = createServiceMaintenance({
     config,
@@ -19,13 +32,24 @@ export function createWebApplication({ config, tls, authentication, version }) {
   const translation = createTranslationService(config);
   const clients = new WebSocketServer({ noServer: true });
   const monitors = new WebSocketServer({ noServer: true });
+  const peers = new Set();
   function send(client, message) {
-    if (client.authSessionId && !authentication.valid(client.authSessionId))
+    if (
+      (client.authLinkId || client.authSessionId) &&
+      !authentication.valid(
+        client.authSessionId,
+        client.authLinkId,
+        client.authLocal,
+      )
+    )
       return;
-    sendRpcText(client, JSON.stringify(message));
+    const text = JSON.stringify(message);
+    if (client.authLinkId) client.send(text);
+    else sendRpcText(client, text);
   }
   function broadcast(message) {
     for (const client of clients.clients) send(client, message);
+    for (const peer of peers) send(peer, message);
     if (
       [
         "lan/state",
@@ -39,12 +63,40 @@ export function createWebApplication({ config, tls, authentication, version }) {
   }
   const bridge = createBackendManager({ config, version, send, broadcast });
   const { state, maintenanceState, releaseUnusedThreads } = bridge;
+  const handleBusiness = createBusinessHttpHandler({
+    translation,
+    maintenance,
+  });
+  const p2p = createP2pService({
+    configDirectory: config.configDir,
+    assetsDirectory: config.staticDir,
+    runTunnel: runP2pTunnel,
+    revokeLink: authentication.revokeLink,
+    connectPeer(channel, linkId) {
+      const peer = createPeerClient(channel, handleBusiness, {
+        authentication,
+        linkId,
+        onAuthenticated(client) {
+          peers.add(client);
+          send(client, state());
+        },
+        onLogout(client) {
+          peers.delete(client);
+          bridge.releaseClient(client);
+          releaseUnusedThreads();
+        },
+      });
+      peer.once("close", () => peers.delete(peer));
+      connectClient(peer);
+      return peer.detach;
+    },
+  });
   const server = https.createServer(
     tls,
     createHttpHandler({
       config,
-      translation,
-      maintenance,
+      handleBusiness,
+      handleP2p: createP2pManagementHandler(p2p),
       tls,
       authentication,
       version,
@@ -66,12 +118,16 @@ export function createWebApplication({ config, tls, authentication, version }) {
       return;
     }
     const id = authentication.sessionId(request);
-    if (!authentication.sameOrigin(request) || !authentication.valid(id)) {
+    const local = authentication.isDirectLocalRequest(request);
+    if (
+      !authentication.sameOrigin(request) ||
+      !authentication.valid(id, undefined, local)
+    ) {
       socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       return;
     }
     clients.handleUpgrade(request, socket, head, (client) => {
-      authentication.attach(client, id);
+      authentication.attach(client, id, undefined, local);
       clients.emit("connection", client);
     });
   });
@@ -84,20 +140,33 @@ export function createWebApplication({ config, tls, authentication, version }) {
     client.on("error", (error) =>
       console.error("Browser connection:", error.message),
     );
+    connectClient(client);
+  });
+
+  function connectClient(client) {
     client.on("close", () => {
       bridge.releaseClient(client);
       releaseUnusedThreads();
     });
-    send(client, state());
+    if (!client.authLinkId) send(client, state());
 
     client.on("message", (bytes) => {
-      if (!authentication.valid(client.authSessionId)) return;
+      if (
+        !authentication.valid(
+          client.authSessionId,
+          client.authLinkId,
+          client.authLocal,
+        )
+      )
+        return;
       let message;
       try {
         message = JSON.parse(bytes.toString());
       } catch {
         return;
       }
+      if (!message || typeof message !== "object" || Array.isArray(message))
+        return;
       if (maintenance.switching) {
         send(client, {
           id: message.id,
@@ -121,7 +190,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
           }),
         );
     });
-  });
+  }
   const heartbeat = setInterval(() => {
     for (const client of clients.clients) {
       if (!client.alive) client.terminate();
@@ -141,6 +210,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
     async start() {
       maintenance.initialize();
       await translation.initialize();
+      await p2p.start();
       await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(config.port, config.host, () => {
@@ -153,6 +223,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
     async close() {
       clearInterval(heartbeat);
       maintenance.close();
+      await p2p.close();
       await translation.close();
       await bridge.close();
       for (const client of [...clients.clients, ...monitors.clients])
@@ -163,6 +234,7 @@ export function createWebApplication({ config, tls, authentication, version }) {
         await new Promise((resolve, reject) =>
           server.close((error) => (error ? reject(error) : resolve())),
         );
+      authentication.close();
     },
   };
 }

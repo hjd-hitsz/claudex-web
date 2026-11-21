@@ -4,9 +4,44 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { readTls, localTlsClient } from "../../server/src/tls.mjs";
+import { openTotpStore, totpCode } from "../../server/src/auth-totp.mjs";
 
-export async function authenticationFixture(directory) {
+export async function enrollFixtureTotp(directory) {
+  const totp = await openTotpStore(join(directory, "auth"));
+  try {
+    totp.setup(userInfo().username);
+  } finally {
+    totp.close();
+  }
+}
+
+export function resetFixtureTotpReplay(directory) {
+  const db = new DatabaseSync(join(directory, "auth", "totp.sqlite"));
+  try {
+    db.exec("UPDATE totp SET last_step = 0 WHERE secret IS NOT NULL");
+  } finally {
+    db.close();
+  }
+}
+
+export function fixtureTotpCode(directory, offset = 0) {
+  const db = new DatabaseSync(join(directory, "auth", "totp.sqlite"), {
+    readOnly: true,
+  });
+  try {
+    const { secret } = db.prepare("SELECT secret FROM totp").get();
+    return totpCode(secret, Math.floor(Date.now() / 30000) + offset);
+  } finally {
+    db.close();
+  }
+}
+
+export async function authenticationFixture(
+  directory,
+  { legacy = false } = {},
+) {
   const tls = await readTls({
     configDir: directory,
     claudeHome: join(directory, ".claude"),
@@ -20,6 +55,16 @@ export async function authenticationFixture(directory) {
     username: userInfo().username,
     expiresAt: Date.now() + 86400000,
   };
+  if (!legacy) {
+    const totp = await openTotpStore(authDirectory);
+    try {
+      totp.setup(session.username);
+      resetFixtureTotpReplay(directory);
+      session.binding = totp.state().binding;
+    } finally {
+      totp.close();
+    }
+  }
   await writeFile(
     join(authDirectory, "sessions.json"),
     JSON.stringify([[id, session]]),
@@ -58,6 +103,7 @@ export function httpsFetch(ca, cookie = "") {
         url,
         {
           ...localTlsClient(ca),
+          localAddress: options.localAddress,
           method: options.method || "GET",
           headers: {
             ...(cookie ? { Cookie: cookie, Origin: new URL(url).origin } : {}),

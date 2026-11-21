@@ -304,6 +304,17 @@
   background: transparent;
   color: var(--link);
 }
+.connection-cards {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.connection-heading {
+  margin: 0 0 0.5rem;
+  font: inherit;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
 .modal-settings .login-settings {
   gap: 12px;
 }
@@ -312,14 +323,92 @@
   margin: 0;
   font-size: 14px;
 }
-.modal-settings .certificate-help {
-  margin-top: 8px;
-  padding-top: 12px;
+.p2p-settings {
+  display: grid;
+  gap: 8px;
+}
+.p2p-settings .connection-heading {
+  margin: 0;
+}
+.p2p-settings-row,
+.p2p-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.p2p-settings-row {
+  justify-content: space-between;
+}
+.p2p-settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 28px;
+}
+.p2p-settings .section-description,
+.modal-settings .p2p-settings .inline-error {
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.modal-settings .p2p-settings-form {
+  padding: 0;
+}
+.p2p-settings-form input,
+.p2p-link-address {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
   font-size: 13px;
 }
-.modal-settings .certificate-help summary {
+.p2p-settings-form input {
+  flex: 1 1 8em;
+}
+.p2p-link-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.p2p-link-list li {
+  display: grid;
+  gap: 6px;
+  padding-block: 8px;
+  border-top: 1px solid var(--border);
+}
+.p2p-link-list li:last-child {
+  padding-bottom: 0;
+}
+.p2p-link-name {
+  flex: 1 1 6em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.p2p-copy-button {
+  min-width: 6em;
+}
+.p2p-revoke-button:hover {
+  color: var(--red);
+}
+.modal-settings .certificate-help {
+  margin: 0;
+  font-size: 13px;
+}
+.modal-settings .certificate-help summary,
+.modal-settings .totp-help > summary {
   min-height: 28px;
   color: var(--muted);
+}
+.modal-settings :is(.totp-help, .certificate-help) > summary {
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
 }
 .modal-settings .inline-error {
   margin: 12px 0 0;

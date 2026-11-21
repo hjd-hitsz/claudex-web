@@ -22,6 +22,7 @@ import {
   Download,
 } from "lucide-react";
 import { createWorkspaceBuffers } from "../../application/workspace-buffers.js";
+import { workspaceDownloadProps } from "../../infrastructure/workspace-files.js";
 import { CodeEditor } from "./code-editor.jsx";
 import { isMarkdownFile } from "./editor-language.js";
 import { fileChangeHighlights } from "../../domain/file-changes.js";
@@ -188,11 +189,7 @@ export function FilePanel() {
             </span>
             <a
               className="file-download"
-              href={
-                "/api/files?" +
-                new URLSearchParams({ path: file, download: "1" })
-              }
-              download={basename(file)}
+              {...workspaceDownloadProps(file, basename(file))}
               title="下载文件"
               aria-label="下载文件"
             >

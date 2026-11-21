@@ -20,6 +20,7 @@ import { SearchDialog, RenameDialog, DeleteDialog } from "./thread-dialogs.jsx";
 import { SettingsDialog } from "../features/settings/settings-dialog.jsx";
 import { ModelDialog } from "../features/composer/model-dialog.jsx";
 import { LogoutButton } from "./auth.jsx";
+import { CertificateHelp } from "./certificate-help.jsx";
 
 import { SkillsDialog, PluginsDialog } from "./tool-dialogs.jsx";
 
@@ -83,6 +84,7 @@ export function Modal() {
         <SettingsDialog
           focusMaintenance={s.modal.section === "maintenance"}
           accountActions={<LogoutButton />}
+          certificateHelp={<CertificateHelp />}
         />
       ) : (
         <FolderPicker

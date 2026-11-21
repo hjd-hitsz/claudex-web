@@ -3,6 +3,8 @@ import { createBackends } from "./backends.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { createAppState } from "./state.js";
 import { createRpcClient } from "../infrastructure/rpc-client.js";
+import { isP2pPage } from "../infrastructure/p2p-access.js";
+import { createP2pSocket } from "../infrastructure/p2p-socket.js";
 import { createModelPreferences } from "./models.js";
 import { createThreadRecords } from "./thread-records.js";
 import { createThreadNavigation } from "./thread-navigation.js";
@@ -18,6 +20,7 @@ import { createNotifications } from "./notifications.js";
 
 // 依赖在此处组装；控制器通过显式接口协作，各自持有请求版本和生命周期状态。
 export function createApplication() {
+  const p2p = isP2pPage();
   const store = createAppState();
   const { get, set } = store;
   const listeners = new Set();
@@ -98,7 +101,15 @@ export function createApplication() {
     onRequest: (message) => connection.onRequest(message),
     onResponse: (request, message, error) =>
       connection.onResponse(request, message, error),
-    onClose: (event, socket) => connection.onClose(event, socket),
+    ...(p2p && {
+      createSocket: () => createP2pSocket(session.p2pToken),
+      onOpen: () => session.p2pConnected(),
+    }),
+    onClose: (event, socket) => {
+      if (p2p && (!get().auth?.authenticated || event.code === 4401))
+        session.p2pRejected(event);
+      else connection.onClose(event, socket);
+    },
   });
   const rpc = (method, params = {}, timeout) => {
     if (!get().backends.length) return transport.rpc(method, params, timeout);
@@ -220,7 +231,7 @@ export function createApplication() {
     activateBackend: backends.activateBackend,
     getSession: () => session,
   });
-  const session = createSession({ get, set, transport, connection });
+  const session = createSession({ get, set, transport, connection, p2p });
   return {
     store,
     rpc,

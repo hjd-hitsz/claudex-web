@@ -4,23 +4,32 @@ import { X509Certificate } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 import { once } from "node:events";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtemp, readFile, writeFile, rm, stat, open } from "node:fs/promises";
-import { tmpdir, userInfo } from "node:os";
+import { networkInterfaces, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import WebSocket, { WebSocketServer } from "ws";
 import {
   authenticationFixture,
+  fixtureTotpCode,
   httpsFetch,
 } from "../../tests/helpers/auth.mjs";
 import { readConfig } from "../src/config.mjs";
 import { authenticateSystemUser } from "../src/system-auth.mjs";
+import { totpCode } from "../src/auth-totp.mjs";
 
-async function appFixture(t) {
+test("六位动态码与 RFC 6238 SHA-1 测试向量一致", () => {
+  const seed = Buffer.from("12345678901234567890");
+  assert.equal(totpCode(seed, 1), "287082");
+  assert.equal(totpCode(seed, 37037036), "081804");
+  assert.equal(totpCode(seed, 666666666), "353130");
+});
+
+async function appFixture(t, options) {
   const directory = await mkdtemp(join(tmpdir(), "claudex-web-auth-"));
-  const auth = await authenticationFixture(directory);
+  const auth = await authenticationFixture(directory, options);
   await writeFile(join(directory, "index.html"), "<h1>Login shell</h1>");
   await writeFile(join(directory, "private.txt"), "protected file");
   const backend = new WebSocketServer({ host: "127.0.0.1", port: 0 });
@@ -78,7 +87,7 @@ async function appFixture(t) {
       {
         env: {
           ...process.env,
-          HOST: "127.0.0.1",
+          HOST: options?.host || "127.0.0.1",
           PORT: "0",
           CODEX_HOME: directory,
           CLAUDEX_WEB_CONFIG_DIR: directory,
@@ -100,8 +109,10 @@ async function appFixture(t) {
         reject(new Error(`服务提前退出 ${code}: ${log}`)),
       );
       child.stdout.on("data", (bytes) => {
-        const match = String(bytes).match(/https:\/\/127\.0\.0\.1:\d+/);
-        if (match) resolve(match[0]);
+        const match = String(bytes).match(
+          /https:\/\/(?:127\.0\.0\.1|0\.0\.0\.0):(\d+)/,
+        );
+        if (match) resolve(`https://127.0.0.1:${match[1]}`);
       });
     });
     for (let i = 0; i < 100; i++) {
@@ -135,9 +146,9 @@ async function appFixture(t) {
     request(path, options = {}, cookie = "") {
       return httpsFetch(auth.tls.cert, cookie)(url + path, options);
     },
-    async login(password = "fixture-password", cookie = "") {
+    async authPost(action, input, cookie = "") {
       return this.request(
-        "/api/auth/login",
+        "/api/auth/" + action,
         {
           method: "POST",
           headers: {
@@ -145,9 +156,24 @@ async function appFixture(t) {
             "X-Claudex-Web-Request": "1",
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ username: userInfo().username, password }),
+          body: JSON.stringify(input),
         },
         cookie,
+      );
+    },
+    login(password = "fixture-password", cookie = "") {
+      return this.authPost(
+        "login",
+        { username: userInfo().username, password },
+        cookie,
+      );
+    },
+    async signIn() {
+      const pending = await this.login();
+      return this.authPost(
+        "totp",
+        { code: fixtureTotpCode(directory) },
+        pending.headers.get("set-cookie").split(";")[0],
       );
     },
     connect(cookie = auth.cookie, path = "/rpc", headers = { Origin: url }) {
@@ -300,7 +326,7 @@ test(
     const app = await appFixture(t);
     assert.equal((await app.login("wrong")).status, 401);
     assert.equal((await app.login("unavailable")).status, 503);
-    const login = await app.login();
+    const login = await app.signIn();
     assert.equal(login.status, 200);
     const header = login.headers.get("set-cookie");
     for (const value of [
@@ -434,7 +460,7 @@ test(
         .status,
       401,
     );
-    const response = await app.login();
+    const response = await app.signIn();
     const long = app.connect(response.headers.get("set-cookie").split(";")[0]);
     await state(long);
     await delay(50);
@@ -442,6 +468,248 @@ test(
     assert(!app.log().includes("TimeoutOverflowWarning"));
   },
 );
+
+test(
+  "旧会话失效，密码通过后可在线绑定，当前验证器决定会话权限",
+  { timeout: 20000 },
+  async (t) => {
+    const app = await appFixture(t, { legacy: true });
+    const cli = fileURLToPath(
+      new URL("../../bin/claudex-web.mjs", import.meta.url),
+    );
+    const env = {
+      ...process.env,
+      CLAUDEX_WEB_CONFIG_DIR: app.directory,
+      CODEX_HOME: app.directory,
+    };
+    const getSession = async (cookie) =>
+      (await app.request("/api/auth/session", {}, cookie)).json();
+    const pendingCookie = async () => {
+      const response = await app.login();
+      assert.equal(response.status, 200);
+      const cookie = response.headers.get("set-cookie");
+      assert.match(
+        cookie,
+        /^__Host-claudex-web-login=.+HttpOnly; Secure; SameSite=Strict/,
+      );
+      assert.equal((await response.json()).requiresTotp, true);
+      return cookie.split(";")[0];
+    };
+    assert.equal((await getSession(app.auth.cookie)).authenticated, false);
+    assert.equal(await rejected(app.connect(app.auth.cookie)), 401);
+    const pending = await pendingCookie();
+    assert.equal((await getSession(pending)).requiresTotp, true);
+    assert.equal(
+      (await app.request("/api/files?path=/etc/passwd", {}, pending)).status,
+      401,
+    );
+    assert.equal(await rejected(app.connect(pending)), 401);
+    assert.equal((await app.authPost("totp", { code: "123456" })).status, 410);
+    assert.equal(
+      (await app.authPost("totp", { code: "123456" }, pending)).status,
+      409,
+    );
+    const setup = () =>
+      execFileSync(process.execPath, [cli, "auth", "setup"], {
+        env,
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+    const qr = setup();
+    assert.match(qr, /扫描二维码/);
+    assert.match(qr, /[▄▀█]/);
+    assert.equal(setup(), qr);
+    assert.equal((await getSession(app.auth.cookie)).authenticated, false);
+    assert.equal((await getSession(pending)).totpStatus, "pending");
+    assert.equal(
+      (await stat(join(app.auth.authDirectory, "totp.sqlite"))).mode & 0o777,
+      0o600,
+    );
+    const otherPending = await pendingCookie();
+    const code = fixtureTotpCode(app.directory);
+    assert.equal(
+      (
+        await app.request(
+          "/api/auth/totp",
+          {
+            method: "POST",
+            headers: {
+              Origin: "https://other.example",
+              "X-Claudex-Web-Request": "1",
+            },
+          },
+          pending,
+        )
+      ).status,
+      403,
+    );
+    const results = await Promise.all(
+      [pending, otherPending].map((token) =>
+        app.authPost("totp", { code }, token),
+      ),
+    );
+    assert.deepEqual(
+      results.map((response) => response.status).sort(),
+      [200, 401],
+    );
+    const completed = results.find((response) => response.ok);
+    const verifiedCookie = completed.headers.get("set-cookie").split(";")[0];
+    assert.equal((await completed.json()).totpStatus, "enabled");
+    assert.throws(setup, /验证器已绑定/);
+    assert.equal((await getSession(app.auth.cookie)).authenticated, false);
+    assert.equal((await getSession(verifiedCookie)).totpStatus, "enabled");
+    const beforeRestart = await pendingCookie();
+    await app.stop();
+    await app.start();
+    assert.equal(
+      (await app.authPost("totp", { code }, beforeRestart)).status,
+      410,
+    );
+    const afterRestart = await pendingCookie();
+    assert.equal(
+      (await app.authPost("totp", { code }, afterRestart)).status,
+      401,
+    );
+    const disable = (input) =>
+      execFileSync(process.execPath, [cli, "auth", "disable"], {
+        env,
+        input,
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    disable("no\n");
+    assert.equal((await getSession(verifiedCookie)).totpStatus, "enabled");
+    assert.match(disable("yes\n"), /双重验证已关闭/);
+    assert.equal((await getSession(verifiedCookie)).authenticated, false);
+    assert.equal(
+      (await app.authPost("totp", { code }, afterRestart)).status,
+      410,
+    );
+    const passwordOnly = await app.login();
+    assert.equal((await passwordOnly.json()).totpStatus, "disabled");
+    assert.match(
+      passwordOnly.headers.get("set-cookie"),
+      /^__Host-claudex-web-session=/,
+    );
+    const passwordCookie = passwordOnly.headers.get("set-cookie").split(";")[0];
+    const ws = app.connect(passwordCookie);
+    await state(ws);
+    const closed = once(ws, "close");
+    assert.notEqual(setup(), qr);
+    assert.equal((await closed)[0], 4401);
+    assert.equal((await getSession(passwordCookie)).authenticated, false);
+    assert.equal((await getSession(app.auth.cookie)).authenticated, false);
+  },
+);
+
+test("输错五次动态码后需要重新验证系统密码", async (t) => {
+  const app = await appFixture(t);
+  const pending = (await app.login()).headers.get("set-cookie").split(";")[0];
+  const possible = [-1, 0, 1, 2].map((step) =>
+    fixtureTotpCode(app.directory, step),
+  );
+  const wrong = ["000000", "111111", "222222", "333333", "444444"].find(
+    (code) => !possible.includes(code),
+  );
+  for (let index = 0; index < 4; index++)
+    assert.equal(
+      (await app.authPost("totp", { code: wrong }, pending)).status,
+      401,
+    );
+  assert.equal(
+    (await app.authPost("totp", { code: wrong }, pending)).status,
+    410,
+  );
+  assert.equal(
+    (
+      await app.authPost(
+        "totp",
+        { code: fixtureTotpCode(app.directory) },
+        pending,
+      )
+    ).status,
+    410,
+  );
+});
+
+test("本机直连可用系统密码登录，网卡地址与回环均可用，本机会话只能在本机使用", async (t) => {
+  const app = await appFixture(t, { legacy: true, host: "0.0.0.0" });
+  const lan =
+    Object.values(networkInterfaces())
+      .flat()
+      .find((entry) => entry?.family === "IPv4" && !entry.internal)?.address ||
+    "127.0.0.2";
+  const origin = new URL(app.url());
+  const credentials = JSON.stringify({
+    username: userInfo().username,
+    password: "fixture-password",
+  });
+  const headers = {
+    "X-Claudex-Web-Request": "1",
+    "Content-Type": "application/json",
+    "Sec-Fetch-Site": "same-origin",
+  };
+  let localCookie;
+  for (const address of ["127.0.0.1", lan]) {
+    origin.hostname = address;
+    const local = await httpsFetch(app.auth.tls.cert)(
+      origin.origin + "/api/auth/login",
+      {
+        method: "POST",
+        headers: { ...headers, Origin: origin.origin },
+        body: credentials,
+      },
+    );
+    assert.equal(local.status, 200);
+    const session = await local.json();
+    assert.equal(session.authenticated, true);
+    assert.equal(session.kind, "local");
+    assert.equal(session.totpStatus, "setup");
+    localCookie = local.headers.get("set-cookie").split(";")[0];
+  }
+  const live = app.connect(localCookie);
+  assert.equal((await state(live)).ready, true);
+  const differentPeer = await app.request("/api/auth/login", {
+    method: "POST",
+    localAddress: "127.0.0.2",
+    headers: { ...headers, Origin: app.url() },
+    body: credentials,
+  });
+  assert.equal((await differentPeer.json()).requiresTotp, true);
+  for (const proxy of [
+    { Forwarded: "for=192.0.2.20" },
+    { Host: "bridge.example.test", Origin: "https://bridge.example.test" },
+  ]) {
+    const remote = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { ...headers, Origin: app.url(), ...proxy },
+      body: credentials,
+    });
+    assert.equal((await remote.json()).requiresTotp, true);
+    assert.equal(
+      (
+        await app.request(
+          "/api/files?path=/etc/hostname",
+          { headers: proxy },
+          localCookie,
+        )
+      ).status,
+      401,
+    );
+    assert.equal(
+      await rejected(
+        app.connect(localCookie, "/rpc", { Origin: app.url(), ...proxy }),
+      ),
+      401,
+    );
+  }
+  const getSession = async () =>
+    (await app.request("/api/auth/session", {}, localCookie)).json();
+  assert.equal((await getSession()).kind, "local");
+  await app.stop();
+  await app.start();
+  assert.equal((await getSession()).authenticated, true);
+});
 
 test(
   "登录限流、账户拒绝及验证程序缺失保持拒绝访问",

@@ -9,7 +9,9 @@ export function createRpcClient({
   onNotification,
   onRequest,
   onResponse,
+  onOpen,
   onClose,
+  createSocket = () => new WebSocket(`wss://${location.host}/rpc`),
 }) {
   let connection;
   let sequence = 1;
@@ -61,11 +63,14 @@ export function createRpcClient({
     });
   }
 
-  function connect() {
-    if (!authenticated()) return;
+  function connect({ beforeAuthentication = false } = {}) {
+    if (!beforeAuthentication && !authenticated()) return;
     if (connection) disconnect(new Error("连接已更新，请在新连接就绪后重试。"));
-    const socket = new WebSocket(`wss://${location.host}/rpc`);
+    const socket = createSocket();
     connection = socket;
+    socket.onopen = () => {
+      if (connection === socket) onOpen?.();
+    };
     socket.onmessage = (event) => {
       if (connection !== socket || !authenticated()) return;
       const message = JSON.parse(event.data);

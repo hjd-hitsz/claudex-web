@@ -1,10 +1,4 @@
-import { createMaintenanceHandler } from "./maintenance.mjs";
 import { X509Certificate } from "node:crypto";
-import {
-  createSummaryTranslationHandler,
-  createTranslationSettingsHandler,
-} from "../summary-translation.mjs";
-import { serveFile } from "../file-content.mjs";
 import { createStaticHandler } from "./static.mjs";
 export function createHttpHandler({
   config,
@@ -12,15 +6,10 @@ export function createHttpHandler({
   authentication,
   version,
   isReady,
-  translation,
-  maintenance,
+  handleBusiness,
+  handleP2p,
 }) {
-  const handleMaintenance = createMaintenanceHandler(maintenance);
   const publicCertificate = new X509Certificate(tls.cert);
-  const translateSummary = createSummaryTranslationHandler(
-    translation.translate,
-  );
-  const translationSettings = createTranslationSettingsHandler(translation);
   const serveStatic = createStaticHandler(config.staticDir);
   return async function handleHttp(request, response) {
     const ready = isReady();
@@ -63,25 +52,23 @@ export function createHttpHandler({
       return;
     }
     if (await authentication.handle(request, response, path)) return;
+    const p2p = /^\/api\/p2p(?:\/|$)/.test(path);
+    if (p2p && authentication.maintenance(request)) {
+      await handleP2p(request, response, path);
+      return;
+    }
     if (
       path.startsWith("/api/") &&
       !authentication.authorize(request, response)
     )
       return;
-    if (path.startsWith("/api/maintenance")) {
-      await handleMaintenance(request, response, path);
+    if (p2p) {
+      await handleP2p(request, response, path);
       return;
     }
-    if (["/api/files", "/api/media"].includes(path)) {
-      await serveFile(request, response);
-      return;
-    }
-    if (path === "/api/translation") {
-      await translationSettings(request, response);
-      return;
-    }
-    if (path === "/api/translate") {
-      await translateSummary(request, response);
+    const business = handleBusiness(request, response, path);
+    if (business) {
+      await business;
       return;
     }
     if (path === "/healthz") {

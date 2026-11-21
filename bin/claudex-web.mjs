@@ -28,12 +28,19 @@ async function main() {
   start                      前台启动网页服务（默认命令）
   backend                    前台启动 Codex app-server
   config init                创建用户配置，保留已有配置
+  auth setup                 显示双重验证绑定二维码
+  auth disable               关闭双重验证并清除绑定
   service install            安装并启动 Linux systemd 用户服务
   service status             查看网页与后端服务状态
   service start              启动网页服务及其 Codex 后端
   service stop               停止网页服务
   service restart            重启网页服务
   service restart-when-idle   等待任务与上下文整理结束后重启网页服务
+  p2p status                 查看 P2P 接入状态（默认关闭）
+  p2p enable | disable      开启或暂停 P2P 接入
+  p2p create [名称]          生成长期授权链接
+  p2p list                   查看授权链接及其 ID
+  p2p revoke <ID>            撤销授权链接并断开相应连接
   --version                  显示版本与开发构建标识
   version --json             显示完整版本、提交和构建信息
 
@@ -51,10 +58,13 @@ async function main() {
     return;
   }
   if (
+    args[0] !== "p2p" &&
     ![
       "start",
       "backend",
       "config init",
+      "auth setup",
+      "auth disable",
       "service install",
       "service status",
       "service start",
@@ -86,6 +96,16 @@ async function main() {
     loadEnvFile(join(configDir, ".env"));
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
+  }
+  if (args[0] === "p2p") {
+    const { runP2pCommand } = await import("./p2p.mjs");
+    await runP2pCommand(args.slice(1));
+    return;
+  }
+  if (args[0] === "auth") {
+    const { runAuthCommand } = await import("./auth.mjs");
+    await runAuthCommand(args[1], readConfig());
+    return;
   }
   switch (command) {
     case "config init":

@@ -44,16 +44,16 @@ test("升级保留证书指纹和维护凭据，迁移目录及文件权限受�
       auth.sessionId({
         headers: { cookie: "__Host-claudex-web-session=" + cookie },
       }),
-    ).username,
-    userInfo().username,
+    ),
+    null,
   );
   assert.equal(
     auth.valid(
       auth.sessionId({
         headers: { cookie: "__Host-codex-web-session=" + cookie },
       }),
-    ).username,
-    userInfo().username,
+    ),
+    null,
   );
   assert.equal(
     await readFile(join(config.configDir, "auth", "maintenance-token"), "utf8"),
