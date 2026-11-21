@@ -307,7 +307,7 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 
 双后端回退对照记录见[双后端回归审查](architecture/backend-regressions.md)。`tests/browser/backend-regressions.mjs` 使用生产构建、独立浏览器和隔离传输验证旧未分类目录、用户消息 Markdown、引用键盘打开、Claude 内部消息来源、主题、缩放与窄屏；通过 `CHROME_PATH`、`PLAYWRIGHT_MODULE` 配置浏览器工具。`tests/integration/claude-message-provenance.mjs` 通过真实 SDK 读取临时原生 JSONL，核对来源字段保留与用户轮次归属。
 
-前端外壳与顶部切换回归使用相同浏览器环境变量运行 `tests/browser/backend-interactions.mjs`。脚本核对文件夹与对话的分组、顺序、选择、草稿恢复及工作目录选择器，并在深浅主题、桌面和窄屏的 80% 至 200% 实际页面缩放下检查切换菜单与搜索弹窗的边界。键盘场景还覆盖弹窗聚焦与返回、尺寸记忆与复位、对话操作菜单关闭及背景点击、跨断点的侧栏状态与窄屏抽屉焦点。截图与结果位于 `.cache/backend-interactions/dual/`。
+前端外壳与顶部切换回归使用相同浏览器环境变量运行 `tests/browser/backend-interactions.mjs`。脚本核对文件夹与对话的分组、顺序、选择、草稿恢复及工作目录选择器，并在深浅主题、宽屏横向、宽屏竖向和手机窄屏的 80% 至 200% 实际页面缩放下检查侧栏、切换菜单与搜索弹窗。侧栏场景覆盖竖屏首次载入、转向、手动收放、跨断点状态及焦点返回。其他键盘场景包括弹窗聚焦与返回、尺寸记忆与复位，以及对话操作菜单关闭与背景点击。截图与结果位于 `.cache/backend-interactions/dual/`。
 
 后端启停回归执行 `npm run build` 后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/backend-toggle.mjs`。脚本在隔离传输中保留 Codex 与 Claude 对话，实际在设置中停用后端，核对所属对话立即从侧栏移除、正在查看的对话回到新对话、重新启用后恢复，并确认过程中未刷新页面；截图覆盖深浅主题与手机侧栏，保存在 `.cache/backend-toggle/after`。旧构建保存在 `.cache/backend-toggle-before/dist`，通过 `UI_BUILD_DIR` 与 `UI_BEFORE=1` 复现对话保留到刷新的状态，截图写入 `.cache/backend-toggle/before`。
 

@@ -18,12 +18,13 @@
   .sidebar-resizer {
     display: none;
   }
-  .sidebar.mobile-open,
-  .sidebar-collapsed .sidebar.mobile-open {
+  .sidebar-collapsed .sidebar {
+    display: flex;
+  }
+  .sidebar.mobile-open {
     transform: none;
     visibility: visible;
     transition-delay: 0s;
-    display: flex;
   }
   .sidebar-backdrop.visible {
     display: block;

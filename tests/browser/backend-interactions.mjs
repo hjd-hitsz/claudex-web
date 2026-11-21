@@ -454,6 +454,11 @@ try {
       context: page.context(),
       page,
       artifacts: join(output, "browser-zoom"),
+      viewports: [
+        { width: 1280, height: 900 },
+        { width: 1200, height: 1500 },
+        { width: 390, height: 900 },
+      ],
       async afterScale({ width, theme, scale }) {
         await verifyZoomedSearchDialog(
           page,

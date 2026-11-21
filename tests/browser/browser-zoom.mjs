@@ -7,6 +7,10 @@ export async function testBrowserZoom({
   page,
   artifacts,
   afterScale,
+  viewports = [
+    { width: 1280, height: 900 },
+    { width: 390, height: 900 },
+  ],
 }) {
   await mkdir(artifacts, { recursive: true });
   const settings = await context.newPage();
@@ -15,8 +19,9 @@ export async function testBrowserZoom({
   await zoom.waitFor();
   const results = [];
   try {
-    for (const width of [1280, 390]) {
-      await page.setViewportSize({ width, height: 900 });
+    for (const viewport of viewports) {
+      const { width, height } = viewport;
+      await page.setViewportSize(viewport);
       for (const theme of ["light", "dark"]) {
         for (const scale of [0.8, 1, 1.25, 1.5, 2]) {
           await zoom.selectOption(String(scale));
@@ -86,7 +91,7 @@ export async function testBrowserZoom({
                 .filter((box) => box.width > 0 && box.height > 0),
             };
           });
-          const result = { width, theme, scale, ...metrics };
+          const result = { width, height, theme, scale, ...metrics };
           results.push(result);
           await page.screenshot({
             path: join(artifacts, `${width}-${theme}-${scale}.png`),
@@ -98,6 +103,10 @@ export async function testBrowserZoom({
           );
           assert.ok(
             Math.abs(metrics.innerWidth - width / scale) <= 1,
+            JSON.stringify(result),
+          );
+          assert.ok(
+            Math.abs(metrics.innerHeight - height / scale) <= 1,
             JSON.stringify(result),
           );
           assert.equal(metrics.cssZoom, "1");
@@ -143,8 +152,11 @@ export async function testBrowserZoom({
               });
             assert.ok(scrolled > 0);
           }
-          if (metrics.sidebar.position === "fixed") {
-            assert.equal(metrics.sidebar.visibility, "hidden");
+          const drawer = metrics.sidebar.position === "fixed";
+          if (drawer || metrics.innerHeight >= metrics.innerWidth) {
+            const sidebar = page.locator(".sidebar");
+            assert.equal(await sidebar.isVisible(), false);
+            if (drawer) assert.equal(metrics.sidebar.visibility, "hidden");
             await page
               .getByRole("button", { name: "显示侧栏", exact: true })
               .click();
@@ -156,7 +168,7 @@ export async function testBrowserZoom({
             await page.waitForFunction(
               () =>
                 document
-                  .querySelector(".sidebar.mobile-open")
+                  .querySelector("#project-sidebar")
                   ?.getBoundingClientRect().left >= -1,
             );
             const box = await close.boundingBox();
@@ -165,7 +177,7 @@ export async function testBrowserZoom({
               JSON.stringify({ width, scale, box }),
             );
             await close.click();
-            await page.locator(".sidebar").waitFor({ state: "hidden" });
+            await sidebar.waitFor({ state: "hidden" });
           }
           await afterScale?.({ width, theme, scale });
         }

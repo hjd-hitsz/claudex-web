@@ -8,6 +8,7 @@ import React, {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { Check, LoaderCircle } from "lucide-react";
 import {
@@ -35,6 +36,18 @@ function showMaintenance() {
   set({ modal: { type: "settings", section: "maintenance" } });
 }
 
+const portraitQuery = "(orientation: portrait)";
+
+function subscribeToOrientation(onChange) {
+  const media = window.matchMedia(portraitQuery);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function isPortrait() {
+  return window.matchMedia(portraitQuery).matches;
+}
+
 export function App() {
   return (
     <BackgroundTaskProvider>
@@ -58,7 +71,11 @@ function AppShell() {
       ? state.current?.id
       : null,
   );
-  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
+  const portrait = useSyncExternalStore(subscribeToOrientation, isPortrait);
+  const orientation = portrait ? "portrait" : "landscape";
+  const [sidebarByOrientation, setSidebarByOrientation] = useState({});
+  const desktopSidebarCollapsed = sidebarByOrientation[orientation] ?? portrait;
+  const focusSidebarOnClose = useRef(false);
   const sidebarOpener = useRef(null);
   const contextToggle = useRef(null);
   const composerInput = useRef(null);
@@ -78,9 +95,19 @@ function AppShell() {
     sidebarOpener.current?.focus({ preventScroll: true });
   }
 
+  function setDesktopSidebarCollapsed(collapsed) {
+    setSidebarByOrientation((current) => ({
+      ...current,
+      [orientation]: collapsed,
+    }));
+  }
+
   function closeSidebar() {
     if (usesDrawer()) closeDrawer();
-    else setDesktopSidebarCollapsed(true);
+    else {
+      focusSidebarOnClose.current = true;
+      setDesktopSidebarCollapsed(true);
+    }
   }
 
   function showSidebar() {
@@ -89,8 +116,14 @@ function AppShell() {
   }
 
   useLayoutEffect(() => {
-    if (desktopSidebarCollapsed)
+    if (
+      desktopSidebarCollapsed &&
+      !usesDrawer() &&
+      (focusSidebarOnClose.current ||
+        document.activeElement?.closest("#project-sidebar"))
+    )
       sidebarOpener.current?.focus({ preventScroll: true });
+    focusSidebarOnClose.current = false;
   }, [desktopSidebarCollapsed]);
 
   useEffect(() => {

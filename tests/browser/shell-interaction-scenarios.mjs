@@ -103,6 +103,47 @@ export async function verifyShellInteractions(page, capture) {
   await page.setViewportSize(desktop);
   await sidebar.waitFor();
   assert.equal(await show.isVisible(), false);
+
+  const portrait = { width: 1200, height: 1500 };
+  await hide.focus();
+  await page.setViewportSize(portrait);
+  await sidebar.waitFor({ state: "hidden" });
+  await focused(show);
+  await page.reload();
+  await page.locator(".user-bubble").waitFor();
+  await show.waitFor();
+  assert.equal(await sidebar.isVisible(), false);
+  assert.equal(await sidebar.locator(":focus").count(), 0);
+
+  for (const colorScheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme });
+    await capture(`portrait-${colorScheme}-collapsed`);
+    await show.click();
+    await sidebar.waitFor();
+    assert.equal(
+      await sidebar.evaluate((el) => getComputedStyle(el).position),
+      "relative",
+    );
+    await capture(`portrait-${colorScheme}-expanded`);
+    await hide.click();
+    await sidebar.waitFor({ state: "hidden" });
+    await focused(show);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+
+  await show.click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await sidebar.waitFor({ state: "hidden" });
+  await page.setViewportSize(portrait);
+  await sidebar.waitFor();
+  await page.setViewportSize(desktop);
+  await sidebar.waitFor();
+  await hide.click();
+  await page.setViewportSize(portrait);
+  await sidebar.waitFor();
+  await page.setViewportSize(desktop);
+  await sidebar.waitFor({ state: "hidden" });
+  await show.click();
 }
 
 export async function verifyZoomedSearchDialog(page, capture) {
