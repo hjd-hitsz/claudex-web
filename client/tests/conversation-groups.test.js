@@ -19,6 +19,21 @@ const answer = item("answer", "agentMessage", {
   phase: "final_answer",
   text: "检查完成。",
 });
+test("后台续跑的首条用户补充同时保留气泡及过程内的提交位置", () => {
+  const receipt = item("receipt", "functionCallOutput", {
+    name: "background_completed",
+  });
+  for (const optimistic of [true, false]) {
+    const steer = item("steer", "userMessage", { optimistic });
+    const groups = conversationGroups([receipt, progress, steer, tool, answer]);
+    assert.deepEqual(
+      groups.map((group) => group.id),
+      ["steer", "process-turn-1", "answer"],
+    );
+    assert.deepEqual(groups[1].items, [receipt, progress, steer, tool]);
+  }
+});
+
 test("异步投递的 final_answer 收入同轮过程，连续补充保持一个汇总区域", () => {
   const replies = asyncReplies.map((reply) => ({ ...reply, turnId: "turn-1" }));
   const groups = conversationGroups([

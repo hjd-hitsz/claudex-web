@@ -33,6 +33,7 @@ const user = "请继续检查规划器的实现。";
 const prefix = "本轮回答从代价公式开始。";
 const suffix = "接着检查邻域搜索。";
 const tail = "这是切回后产生的新内容。";
+const followUp = "再核对窄通道的边界条件。";
 const turnId = "legacy-turn";
 const request = {
   id: "initial-user",
@@ -130,8 +131,82 @@ try {
   });
   await emit("turn/completed", { turn: { id: turnId, status: "completed" } });
 
+  const resumed = "background-turn";
+  await emit("turn/started", { turn: { id: resumed, status: "inProgress" } });
+  await emit("item/completed", {
+    turnId: resumed,
+    item: {
+      id: "task-result",
+      type: "functionCallOutput",
+      name: "background_completed",
+      output: '{"results":[]}',
+    },
+  });
+  await emit("item/completed", {
+    turnId: resumed,
+    item: {
+      id: "initial-progress",
+      type: "agentMessage",
+      phase: "commentary",
+      text: "后台检查已完成，正在复核路径。",
+    },
+  });
+  const process = page
+    .locator(".process-history")
+    .filter({ hasText: "后台终端正在续跑" });
+  await process.locator("summary").first().click();
+  await page.locator(".markdown-composer .ProseMirror").fill(followUp);
+  await page.locator(".markdown-composer .ProseMirror").press("Control+Enter");
+  await page.waitForFunction(
+    (turnId) =>
+      window.fixtureRequests.some(
+        ({ method, params }) =>
+          method === "turn/steer" && params.expectedTurnId === turnId,
+      ),
+    resumed,
+  );
+  const supplemental = process.locator(".supplemental-preview");
+  await supplemental.filter({ hasText: followUp }).waitFor();
+  await emit("item/completed", {
+    turnId: resumed,
+    item: {
+      ...request,
+      id: "steered-user",
+      content: [{ type: "text", text: followUp }],
+    },
+  });
+  await emit("item/completed", {
+    turnId: resumed,
+    item: {
+      id: "follow-up-progress",
+      type: "agentMessage",
+      phase: "commentary",
+      text: "继续验证窄通道的转弯半径。",
+    },
+  });
+  const ordered = await process.locator(".process-content").innerText();
+  assert(ordered.indexOf("正在复核路径") < ordered.indexOf(followUp));
+  assert(ordered.indexOf(followUp) < ordered.indexOf("转弯半径"));
+  assert.equal(await process.locator(".supplemental-preview").count(), 1);
+  assert.equal(
+    await page.locator(".user-bubble").filter({ hasText: followUp }).count(),
+    1,
+  );
+  await page.screenshot({
+    path: join(output, "background-steering-expanded.png"),
+  });
+  await page.setViewportSize({ width: 390, height: 850 });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "dark";
+  });
+  await supplemental.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: join(output, "background-steering-mobile-dark.png"),
+  });
   assert.deepEqual(errors, []);
-  console.log("PASS 进行中正文前缀恢复并衔接增量");
+  console.log(
+    "PASS 进行中正文前缀恢复并衔接增量，续跑补充在过程中的顺序及气泡",
+  );
 } finally {
   await context.close();
   await new Promise((resolve) => server.close(resolve));

@@ -257,7 +257,7 @@ Mermaid 回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/
 
 ### 活动对话恢复
 
-构建后使用相同浏览器环境变量运行 `node tests/browser/active-turn-recovery.mjs`。隔离会话核对切回活动对话时补齐先前正文、读取期间及之后的增量连续显示。截图位于 `.cache/active-turn-recovery/browser`。桥接回归覆盖快照按对话隔离及完成后清理。
+构建后使用相同浏览器环境变量运行 `node tests/browser/active-turn-recovery.mjs`。隔离会话核对切回活动对话时补齐先前正文、读取期间及之后的增量连续显示，以及后台续跑中首次补充同时出现在独立气泡与工作过程的提交位置。截图位于 `.cache/active-turn-recovery/browser`。桥接回归覆盖快照按对话隔离及完成后清理。
 
 ### 对话完成通知回归
 
