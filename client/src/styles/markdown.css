@@ -120,6 +120,19 @@
   max-width: 100%;
   border-radius: 8px;
 }
+.markdown .katex-display {
+  overflow-x: auto;
+}
+.markdown .katex-display > .katex {
+  inline-size: max-content;
+  min-inline-size: 100%;
+}
+.markdown .katex:not(.katex-display > .katex) {
+  display: inline-block;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  vertical-align: middle;
+}
 .code-block {
   border: 1px solid var(--border);
   background: var(--subtle);
