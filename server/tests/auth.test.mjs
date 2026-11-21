@@ -632,6 +632,57 @@ test("输错五次动态码后需要重新验证系统密码", async (t) => {
   );
 });
 
+test(
+  "独立验证器各自绑定和防重放，撤销仅终止对应会话",
+  { timeout: 15000 },
+  async (t) => {
+    const app = await appFixture(t);
+    const cli = fileURLToPath(
+      new URL("../../bin/claudex-web.mjs", import.meta.url),
+    );
+    const run = (...args) =>
+      execFileSync(process.execPath, [cli, "auth", ...args], {
+        env: { ...process.env, CLAUDEX_WEB_CONFIG_DIR: app.directory },
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+    const name = "李雷 手机";
+    const qr = run("setup", name);
+    assert.match(qr, /网页登录时填写验证器名称 李雷 手机/);
+    assert.equal(run("setup", name), qr);
+    assert.match(run("list"), /default\t已绑定\n李雷 手机\t待验证/);
+    const cookie = (response) =>
+      response.headers.get("set-cookie").split(";")[0];
+    const pending = await app.login();
+    assert.equal((await pending.json()).totpName, "optional");
+    const code = fixtureTotpCode(app.directory, 0, name);
+    const verify = (token, input = name) =>
+      app.authPost("totp", { name: input, code }, token);
+    assert.equal((await verify(cookie(pending), "其他名称")).status, 401);
+    const named = await verify(cookie(pending));
+    assert.equal(named.status, 200);
+    assert.match(run("list"), /李雷 手机\t已绑定/);
+    const defaultLogin = await app.signIn();
+    assert.equal(defaultLogin.status, 200);
+    assert.equal((await verify(cookie(await app.login()))).status, 401);
+
+    await app.stop();
+    await app.start();
+    const namedSocket = app.connect(cookie(named));
+    const defaultSocket = app.connect(cookie(defaultLogin));
+    await Promise.all([state(namedSocket), state(defaultSocket)]);
+    const closed = once(namedSocket, "close");
+    assert.match(run("revoke", name), /已撤销验证器 李雷 手机/);
+    assert.equal((await closed)[0], 4401);
+    const session = async (response) =>
+      (await app.request("/api/auth/session", {}, cookie(response))).json();
+    assert.equal((await session(named)).authenticated, false);
+    assert.equal((await session(defaultLogin)).authenticated, true);
+    assert.equal(defaultSocket.readyState, WebSocket.OPEN);
+    assert.notEqual(run("setup", name), qr);
+  },
+);
+
 test("本机直连可用系统密码登录，网卡地址与回环均可用，本机会话只能在本机使用", async (t) => {
   const app = await appFixture(t, { legacy: true, host: "0.0.0.0" });
   const lan =

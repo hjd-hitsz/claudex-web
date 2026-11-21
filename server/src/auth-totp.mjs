@@ -12,8 +12,65 @@ import { migrateWebDirectory } from "./web-config-migration.mjs";
 
 const period = 30;
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const defaultName = "default";
 const binding = (mode, key) =>
   mode + ":" + createHash("sha256").update(key).digest("hex");
+
+function authenticatorName(value) {
+  if (value === undefined || value === "") return defaultName;
+  if (typeof value !== "string" || value.length > 64) return;
+  const name = value.trim();
+  if (name && !/[^\p{L}\p{M}\p{N} ._-]/u.test(name)) return name;
+}
+
+function transaction(db, operation) {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = operation();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function initialize(db) {
+  db.exec("PRAGMA secure_delete = ON");
+  transaction(db, () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS totp_authenticators (
+        name TEXT PRIMARY KEY,
+        secret BLOB NOT NULL,
+        binding TEXT NOT NULL UNIQUE,
+        last_step INTEGER NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS totp_password_only (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        binding TEXT NOT NULL
+      ) STRICT;
+    `);
+    const legacy = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'totp'",
+    );
+    if (!legacy.get()) return;
+    const row = db.prepare("SELECT secret, last_step FROM totp").get();
+    if (row?.secret) {
+      db.prepare("INSERT INTO totp_authenticators VALUES (?, ?, ?, ?)").run(
+        defaultName,
+        row.secret,
+        binding("totp", row.secret),
+        row.last_step,
+      );
+    } else if (row) {
+      const { key } = db.prepare("SELECT key FROM password_session_key").get();
+      db.prepare("INSERT INTO totp_password_only VALUES (1, ?)").run(
+        binding("password", key),
+      );
+    }
+    db.exec("DROP TABLE totp; DROP TABLE IF EXISTS password_session_key");
+  });
+}
 
 function base32(bytes) {
   let result = "";
@@ -65,89 +122,109 @@ export async function openTotpStore(directory) {
     await file.close();
   }
   const db = new DatabaseSync(path, { timeout: 2000 });
-  db.exec(`
-    PRAGMA secure_delete = ON;
-    CREATE TABLE IF NOT EXISTS totp (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      secret BLOB,
-      last_step INTEGER NOT NULL
-    ) STRICT;
-  `);
-  db.exec(`CREATE TABLE IF NOT EXISTS password_session_key (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    key BLOB NOT NULL
-  ) STRICT`);
-  const read = db.prepare(`SELECT secret, last_step,
-    (SELECT key FROM password_session_key WHERE id = 1) AS password_key
-    FROM totp WHERE id = 1`);
-  db.prepare("INSERT OR IGNORE INTO password_session_key VALUES (1, ?)").run(
-    randomBytes(20),
+  try {
+    initialize(db);
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+  const read = db.prepare(
+    "SELECT secret, binding, last_step FROM totp_authenticators WHERE name = ?",
   );
+  const readState = db.prepare(`
+    SELECT
+      EXISTS(SELECT 1 FROM totp_authenticators WHERE last_step >= 0) AS enabled,
+      EXISTS(SELECT 1 FROM totp_authenticators WHERE name <> ?) AS named,
+      EXISTS(SELECT 1 FROM totp_authenticators WHERE name = ?) AS default_present,
+      (SELECT binding FROM totp_password_only) AS password_binding
+  `);
   const enroll = db.prepare(`
-    INSERT INTO totp VALUES (1, ?, -1)
-    ON CONFLICT(id) DO UPDATE SET secret = excluded.secret, last_step = -1
-    WHERE totp.secret IS NULL
+    INSERT INTO totp_authenticators VALUES (?, ?, ?, -1)
+    ON CONFLICT(name) DO NOTHING
   `);
   const consume = db.prepare(`
-    UPDATE totp SET last_step = ? WHERE id = 1 AND secret = ? AND last_step < ?
+    UPDATE totp_authenticators SET last_step = ? WHERE binding = ? AND last_step < ?
   `);
-  const disable = db.prepare(`
-    INSERT INTO totp VALUES (1, NULL, -1)
-    ON CONFLICT(id) DO UPDATE SET secret = NULL, last_step = -1
+  const active = db.prepare(`
+    SELECT binding FROM totp_authenticators WHERE binding = ? AND last_step >= 0
+    UNION ALL SELECT binding FROM totp_password_only WHERE binding = ?
   `);
-  const rotatePasswordKey = db.prepare(
-    "UPDATE password_session_key SET key = ? WHERE id = 1",
+  const list = db.prepare(
+    "SELECT name, last_step >= 0 AS enabled FROM totp_authenticators ORDER BY name",
   );
+  const remove = db.prepare("DELETE FROM totp_authenticators WHERE name = ?");
+  function state() {
+    const { enabled, named, default_present, password_binding } = readState.get(
+      defaultName,
+      defaultName,
+    );
+    if (password_binding)
+      return { status: "disabled", binding: password_binding };
+    return {
+      status: enabled
+        ? "enabled"
+        : named || default_present
+          ? "pending"
+          : "setup",
+      ...(named && { totpName: default_present ? "optional" : "required" }),
+    };
+  }
   return {
     close() {
       if (db.isOpen) db.close();
     },
-    state() {
-      const row = read.get();
-      if (!row) return { status: "setup" };
-      if (!row.secret)
-        return {
-          status: "disabled",
-          binding: binding("password", row.password_key),
-        };
-      if (row.last_step < 0) return { status: "pending" };
-      return { status: "enabled", binding: binding("totp", row.secret) };
+    state,
+    allowsBinding(value) {
+      return typeof value === "string" && !!active.get(value, value);
     },
-    setup(username) {
-      enroll.run(randomBytes(20));
-      const row = read.get();
-      if (!row?.secret)
-        throw new Error("双重验证设置已变更，请重新运行绑定命令。");
-      if (row.last_step >= 0)
-        throw new Error("验证器已绑定。换绑请先运行关闭命令，再重新绑定。");
+    setup(username, value) {
+      const name = authenticatorName(value);
+      if (!name) throw new Error("请输入有效的验证器名称。");
+      const row = transaction(db, () => {
+        const secret = randomBytes(20);
+        enroll.run(name, secret, binding("totp", secret));
+        const current = read.get(name);
+        if (current.last_step >= 0)
+          throw new Error(
+            "验证器已绑定。可用其他名称添加，或撤销此名称后重新绑定。",
+          );
+        db.exec("DELETE FROM totp_password_only");
+        return current;
+      });
       const issuer = "Claudex Web";
-      const label = encodeURIComponent(issuer + ":" + username);
+      const account = name === defaultName ? username : `${username} (${name})`;
+      const label = encodeURIComponent(issuer + ":" + account);
       return `otpauth://totp/${label}?secret=${base32(row.secret)}&issuer=${encodeURIComponent(issuer)}&period=${period}`;
     },
-    disable() {
-      db.exec("BEGIN IMMEDIATE");
-      try {
-        if (read.get()?.secret !== null) {
-          rotatePasswordKey.run(randomBytes(20));
-          disable.run();
-        }
-        db.exec("COMMIT");
-      } catch (error) {
-        db.exec("ROLLBACK");
-        throw error;
-      }
+    list: () => list.all(),
+    revoke(value) {
+      const name = value && authenticatorName(value);
+      if (!name) throw new Error("请输入有效的验证器名称。");
+      if (!remove.run(name).changes) throw new Error("找不到该验证器。");
     },
-    verify(code) {
-      const row = read.get();
-      if (!row) return { status: "unconfigured" };
-      if (!row.secret) return { status: "disabled" };
+    disable() {
+      transaction(db, () => {
+        db.exec("DELETE FROM totp_authenticators");
+        db.prepare(
+          "INSERT OR IGNORE INTO totp_password_only VALUES (1, ?)",
+        ).run(binding("password", randomBytes(20)));
+      });
+    },
+    verify(code, value) {
+      const name = authenticatorName(value);
+      const row = name && read.get(name);
+      if (!row) {
+        const { status } = state();
+        if (status === "setup") return { status: "unconfigured" };
+        return { status: status === "disabled" ? "disabled" : "invalid" };
+      }
       const entered = Buffer.from(code);
       const current = Math.floor(Date.now() / (period * 1000));
       for (const step of [current, current - 1, current + 1]) {
         if (step <= row.last_step) continue;
         if (timingSafeEqual(entered, Buffer.from(totpCode(row.secret, step))))
-          return consume.run(step, row.secret, step).changes === 1
-            ? { status: "verified", binding: binding("totp", row.secret) }
+          return consume.run(step, row.binding, step).changes === 1
+            ? { status: "verified", binding: row.binding }
             : { status: "invalid" };
       }
       return { status: "invalid" };

@@ -43,11 +43,13 @@ export function createLoginFlow({ config, username, totp, issueSession }) {
   }
 
   function describe(challenge) {
+    const { status, totpName } = totp.state();
     return {
       authenticated: false,
       requiresTotp: true,
       expiresAt: challenge.expiresAt,
-      totpStatus: totp.state().status,
+      totpStatus: status,
+      ...(totpName && { totpName }),
     };
   }
 
@@ -123,13 +125,16 @@ export function createLoginFlow({ config, username, totp, issueSession }) {
         throw new Error("请输入验证器中的 6 位动态码。", { cause: 400 });
       limit(`totp:${attemptKey}`);
       options.signal?.throwIfAborted();
-      const { status: result, binding } = totp.verify(input.code);
+      const { status: result, binding } = totp.verify(input.code, input.name);
       if (result === "unconfigured")
         throw new Error("请先按下方步骤绑定验证器。", { cause: 409 });
       if (result === "invalid" && ++challenge.failures < 5)
-        throw new Error("动态码错误、已使用或已过期，请输入验证器中的新码。", {
-          cause: 401,
-        });
+        throw new Error(
+          totp.state().totpName
+            ? "验证器名称或动态码有误，请核对名称并输入当前动态码。"
+            : "动态码错误、已使用或已过期，请输入验证器中的新码。",
+          { cause: 401 },
+        );
       challenges.delete(pendingToken);
       if (result !== "verified")
         throw new Error(expiredMessage, { cause: 410 });

@@ -35,22 +35,25 @@ function Command({ action, label }) {
   );
 }
 
-export function TotpSetupSteps({ duringLogin }) {
+export function TotpSetupSteps({ duringLogin, named }) {
+  const action = named ? "setup 我的手机" : "setup";
   return (
     <ol className="totp-steps">
       <li>
         在服务电脑上用运行 Claudex Web 的账户打开终端，执行命令生成二维码。
-        <Command action="setup" label="复制绑定命令" />
+        {named && " 每位使用者取一个独立名称，例如「我的手机」。"}
+        <Command action={action} label="复制绑定命令" />
         <span className="totp-source">
-          源码运行时用 <code>npm run auth -- setup</code>。
+          源码运行时用 <code>npm run auth -- {action}</code>。
         </span>
       </li>
       <li>打开手机上的验证器 App，扫描终端中的二维码。</li>
       <li>
-        打开验证器中新添加的 Claudex Web 项，
         {duringLogin
-          ? "把当前 6 位动态码填到上方。"
-          : "从其他设备登录或打开 P2P 授权链接时，在网页输入当前 6 位动态码。"}
+          ? named
+            ? "命名验证器需填写绑定时的名称和当前 6 位动态码。默认验证器只需动态码。"
+            : "把验证器当前显示的 6 位动态码填到上方。"
+          : "从其他设备登录或打开 P2P 授权链接时，在网页填写验证器名称和当前 6 位动态码。默认验证器只需动态码。"}
       </li>
     </ol>
   );
@@ -68,15 +71,19 @@ export function TotpSettings({ status }) {
       <p>{label}</p>
       <details className="totp-help">
         <summary>双重验证使用方法</summary>
-        <h4>绑定验证器</h4>
-        {status === "enabled" && (
-          <p>更换验证器时，先按下方说明关闭双重验证。</p>
-        )}
-        <TotpSetupSteps />
+        <h4>添加验证器</h4>
+        <TotpSetupSteps named />
+        <h4>查看或撤销验证器</h4>
+        <p>在服务电脑上查看已添加的名称和绑定状态。</p>
+        <Command action="list" label="复制列表命令" />
+        <p>
+          用 <code>claudex-web auth revoke &lt;名称&gt;</code>{" "}
+          撤销指定验证器及其登录会话。
+        </p>
         <h4>关闭双重验证</h4>
         <p>
           在服务电脑的终端执行命令，输入 <code>yes</code>{" "}
-          确认。下次登录时使用系统密码。
+          确认。关闭后会清除全部绑定，下次登录使用系统密码。
         </p>
         <Command action="disable" label="复制关闭命令" />
         <span className="totp-source">

@@ -156,7 +156,12 @@ try {
   await section.getByRole("button", { name: "复制绑定命令" }).click();
   assert.equal(
     await page.evaluate(() => navigator.clipboard.readText()),
-    "claudex-web auth setup",
+    "claudex-web auth setup 我的手机",
+  );
+  await section.getByRole("button", { name: "复制列表命令" }).click();
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    "claudex-web auth list",
   );
   await section.getByRole("button", { name: "复制关闭命令" }).click();
   assert.equal(

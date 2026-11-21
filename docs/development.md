@@ -259,13 +259,13 @@ Mermaid 回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/
 
 ### 登录与证书
 
-`server/tests/auth.test.mjs` 通过临时 `CLAUDEX_WEB_CONFIG_DIR`、实际 TLS/WSS 服务及模拟 PAM 验证程序覆盖未登录访问、跨站请求、旧会话与退出、限流、维护连接及后台任务保护。双重验证回归覆盖 CLI 在线绑定和关闭、待验证权限、动态码重放及重启。测试凭据来自隔离夹具。`server/tests/tls.test.mjs` 检查证书并发生成、重复启动、权限与自定义证书；`server/tests/dev-https.test.mjs` 验证域名证书在本机 HTTPS/WSS 代理中的证书校验、Cookie 与来源转发。
+`server/tests/auth.test.mjs` 通过临时 `CLAUDEX_WEB_CONFIG_DIR`、实际 TLS/WSS 服务及模拟 PAM 验证程序覆盖未登录访问、跨站请求、旧会话与退出、限流、维护连接及后台任务保护。双重验证回归覆盖 CLI 在线绑定、按名称登录、动态码防重放隔离、重启和单独撤销会话。`server/tests/auth-totp.test.mjs` 覆盖旧库迁移、关闭状态及最后一个绑定的撤销。测试凭据来自隔离夹具。`server/tests/tls.test.mjs` 检查证书并发生成、重复启动、权限与自定义证书；`server/tests/dev-https.test.mjs` 验证域名证书在本机 HTTPS/WSS 代理中的证书校验、Cookie 与来源转发。
 
 浏览器回归使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/auth.mjs`，在生产构建和临时模拟后端上实际填写密码和动态码，检查首次绑定步骤、设置中的状态和折叠帮助，以及刷新、跨标签页退出、草稿恢复、过期、证书下载、设备安装指引、关于页隐藏开发标记、深浅主题及手机布局。截图及构建信息保存在 `.cache/auth-browser`。
 
 构建完成后，使用同样的环境变量运行 `node tests/browser/p2p-settings.mjs`。回归在隔离浏览器和模拟授权服务中检查「连接与登录」的启停、状态读取失败重试、生成失败后的名称保留、剪贴板、撤销确认与刷新恢复。使用实际 80%～200% 页面缩放检查深浅主题与窄屏的操作边界和侧栏焦点，截图和测量结果保存在 `.cache/p2p-settings-browser`。
 
-`server/tests/p2p-*.test.mjs` 覆盖回环命令行、授权持久化、真实 WebRTC 协商与撤销、登录前后的 RPC 与文件权限、跨链接会话隔离，以及文件 Range 和流式读取。构建后用与登录回归相同的浏览器环境变量运行 `node tests/browser/p2p-auth.mjs`，在隔离配置目录和模拟 OpenTunnel 上使用真实 WebRTC，检查登录表单、错误密码、刷新、跨标签页恢复与退出、浏览器重开、链接隔离和撤销，并验收深浅主题、窄屏及 80%～200% 页面缩放。截图保存在 `.cache/p2p-auth-browser`。公共入口可用性需另行实测。
+`server/tests/p2p-*.test.mjs` 覆盖回环命令行、授权持久化、真实 WebRTC 协商与撤销、登录前后的 RPC 与文件权限、跨链接会话隔离，以及文件 Range 和流式读取。构建后用与登录回归相同的浏览器环境变量运行 `node tests/browser/p2p-auth.mjs`，在隔离配置目录和模拟 OpenTunnel 上使用真实 WebRTC，检查在线添加验证器后的名称字段、默认和命名验证器的登录、错误密码、刷新、跨标签页恢复与退出、浏览器重开、链接隔离和撤销，并验收深浅主题、窄屏及 80%～200% 页面缩放。截图保存在 `.cache/p2p-auth-browser`。公共入口可用性需另行实测。
 
 Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER 到 PEM 转换、系统安装命令及 Chrome / Chromium 和 Firefox 导入说明，保存桌面深浅主题、手机与 80% 至 200% 缩放截图。
 

@@ -31,16 +31,14 @@ export async function createAuthentication(config) {
     if (error.code !== "ENOENT") throw error;
   }
   const totp = await openTotpStore(directory);
-  const currentBinding = totp.state().binding;
-  const allowed = (session, binding) =>
+  const allowed = (session) =>
     session &&
+    session.expiresAt > Date.now() &&
     (session.binding === localSessionBinding ||
-      (binding && session.binding === binding)) &&
-    session.expiresAt > Date.now();
+      totp.allowsBinding(session.binding));
   const sessions = new Map(
     entries.filter(
-      ([, session]) =>
-        session.username === username && allowed(session, currentBinding),
+      ([, session]) => session.username === username && allowed(session),
     ),
   );
   const sockets = new Map();
@@ -78,7 +76,7 @@ export async function createAuthentication(config) {
   const lookup = (id) => {
     const session = sessions.get(id);
     if (!session) return null;
-    if (!allowed(session, totp.state().binding)) {
+    if (!allowed(session)) {
       revoke(id);
       persist().catch((error) => console.error("清理失效登录会话失败", error));
       return null;
@@ -132,10 +130,7 @@ export async function createAuthentication(config) {
   const sessionCheck = setInterval(() => {
     if (!sessions.size) return;
     try {
-      const { binding } = totp.state();
-      const expired = [...sessions].filter(
-        ([, session]) => !allowed(session, binding),
-      );
+      const expired = [...sessions].filter(([, session]) => !allowed(session));
       if (!expired.length) return;
       for (const [id] of expired) revoke(id);
       persist().catch((error) => console.error("清理失效登录会话失败", error));
@@ -158,7 +153,7 @@ export async function createAuthentication(config) {
     const current =
       binding === localSessionBinding
         ? local && !linkId
-        : binding && totp.state().binding === binding;
+        : totp.allowsBinding(binding);
     if (!current)
       throw new Error("登录设置已变更，请重新登录。", { cause: 410 });
     for (const [key, session] of sessions)
@@ -252,6 +247,7 @@ export async function createAuthentication(config) {
     verifyPeer(linkId, input, options) {
       return loginFlow.verify(input, `p2p:${linkId}`, { ...options, linkId });
     },
+    pendingPeer: loginFlow.pending,
     cancelPeer: loginFlow.cancel,
     resumePeer(linkId, token) {
       const id = tokenId(token);

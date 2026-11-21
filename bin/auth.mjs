@@ -29,7 +29,17 @@ function terminalQr(uri) {
   return lines.join("\n");
 }
 
-export async function runAuthCommand(command, config) {
+export async function runAuthCommand([command, name, ...extra], config) {
+  if (
+    extra.length ||
+    (command === "setup" && name === "") ||
+    (command === "revoke" && !name) ||
+    (!["setup", "revoke"].includes(command) && name !== undefined) ||
+    !["setup", "list", "revoke", "disable"].includes(command)
+  )
+    throw new Error(
+      "用法：claudex-web auth setup [名称] | list | revoke <名称> | disable",
+    );
   if (command === "disable") {
     const input = createInterface({
       input: process.stdin,
@@ -37,7 +47,7 @@ export async function runAuthCommand(command, config) {
     });
     try {
       const answer = await input.question(
-        "关闭后，网页将只验证系统密码，并清除当前验证器绑定。输入 yes 确认：",
+        "关闭后，网页将只验证系统密码，并清除全部验证器绑定。输入 yes 确认：",
       );
       if (answer.trim() !== "yes") return;
     } finally {
@@ -51,11 +61,25 @@ export async function runAuthCommand(command, config) {
       console.log("双重验证已关闭。");
       return;
     }
-    const uri = totp.setup(userInfo().username);
+    if (command === "list") {
+      const entries = totp.list();
+      if (!entries.length) console.log("暂无已添加的验证器。");
+      for (const { name, enabled } of entries)
+        console.log(`${name}\t${enabled ? "已绑定" : "待验证"}`);
+      return;
+    }
+    if (command === "revoke") {
+      totp.revoke(name);
+      console.log(`已撤销验证器 ${name.trim()}。`);
+      return;
+    }
+    const uri = totp.setup(userInfo().username, name);
     console.log(terminalQr(uri));
     console.log(
       "用验证器 App 扫描二维码，再把 6 位动态码输入 Claudex Web。二维码仅供本人绑定。",
     );
+    if (name && name.trim() !== "default")
+      console.log(`网页登录时填写验证器名称 ${name.trim()}。`);
   } finally {
     totp.close();
   }

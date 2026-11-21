@@ -53,10 +53,14 @@ export function createPeerClient(
         return;
       }
       const current = authorized();
-      if (current && message.action === "status") {
+      if (message.action === "status") {
         await wire.send({
           type: "auth-result",
-          session: authentication.describe(current),
+          session: current
+            ? authentication.describe(current)
+            : (authentication.pendingPeer(pendingToken, peer) ?? {
+                authenticated: false,
+              }),
         });
         return;
       }

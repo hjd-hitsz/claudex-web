@@ -121,7 +121,7 @@ export function createSession({ get, set, transport, connection, p2p }) {
         await p2pConnected();
       } else if (
         transport.connection.readyState === 1 &&
-        get().auth?.authenticated
+        (get().auth?.authenticated || get().auth?.requiresTotp)
       ) {
         await p2pConnected(true);
       }
@@ -198,7 +198,7 @@ export function createSession({ get, set, transport, connection, p2p }) {
     checkSession,
     login: (username, password) =>
       advanceLogin("login", { username, password }),
-    verifyTotp: (code) => advanceLogin("totp", { code }),
+    verifyTotp: (code, name) => advanceLogin("totp", { code, name }),
     logout,
     get p2pToken() {
       return p2pToken;

@@ -194,8 +194,12 @@ test("直连保留 RPC 文本和文件 Range，并将管理入口留在 LAN", as
     password: "fixture-password",
   });
   assert.equal(reloginPending.session.requiresTotp, true);
+  const name = "远程设备";
+  await enrollFixtureTotp(directory, name);
+  assert.equal((await authenticate("status")).session.totpName, "optional");
   const relogin = await authenticate("totp", {
-    code: fixtureTotpCode(directory, 1),
+    name,
+    code: fixtureTotpCode(directory, 0, name),
   });
   assert.equal(relogin.session.authenticated, true);
   await until(() => authorized === 2);

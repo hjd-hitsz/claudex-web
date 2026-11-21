@@ -8,10 +8,10 @@ import { DatabaseSync } from "node:sqlite";
 import { readTls, localTlsClient } from "../../server/src/tls.mjs";
 import { openTotpStore, totpCode } from "../../server/src/auth-totp.mjs";
 
-export async function enrollFixtureTotp(directory) {
+export async function enrollFixtureTotp(directory, name) {
   const totp = await openTotpStore(join(directory, "auth"));
   try {
-    totp.setup(userInfo().username);
+    totp.setup(userInfo().username, name);
   } finally {
     totp.close();
   }
@@ -20,18 +20,20 @@ export async function enrollFixtureTotp(directory) {
 export function resetFixtureTotpReplay(directory) {
   const db = new DatabaseSync(join(directory, "auth", "totp.sqlite"));
   try {
-    db.exec("UPDATE totp SET last_step = 0 WHERE secret IS NOT NULL");
+    db.exec("UPDATE totp_authenticators SET last_step = 0");
   } finally {
     db.close();
   }
 }
 
-export function fixtureTotpCode(directory, offset = 0) {
+export function fixtureTotpCode(directory, offset = 0, name = "default") {
   const db = new DatabaseSync(join(directory, "auth", "totp.sqlite"), {
     readOnly: true,
   });
   try {
-    const { secret } = db.prepare("SELECT secret FROM totp").get();
+    const { secret } = db
+      .prepare("SELECT secret FROM totp_authenticators WHERE name = ?")
+      .get(name);
     return totpCode(secret, Math.floor(Date.now() / 30000) + offset);
   } finally {
     db.close();
@@ -59,8 +61,8 @@ export async function authenticationFixture(
     const totp = await openTotpStore(authDirectory);
     try {
       totp.setup(session.username);
+      session.binding = totp.verify(fixtureTotpCode(directory)).binding;
       resetFixtureTotpReplay(directory);
-      session.binding = totp.state().binding;
     } finally {
       totp.close();
     }
