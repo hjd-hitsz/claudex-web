@@ -36,3 +36,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/publish-release.mjs
+
+  dispatch-npm:
+    needs: release
+    if: github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch npm publication for the public tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)
+          if [[ "$draft" == false ]]; then
+            gh workflow run npm-publish.yml --repo "$GITHUB_REPOSITORY" --ref main -f "tag=$GITHUB_REF_NAME"
+          fi

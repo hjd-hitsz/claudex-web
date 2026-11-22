@@ -132,8 +132,8 @@ GitHub cron 补偿 ─┘                                      ↓
 
 ## npm 自动发布
 
-`Publish npm package`（`npm-publish.yml`）监听 `Publish release` 和 `Publish scheduled releases` 的成功运行，通过 npm Trusted Publishing 获取 OIDC 发布凭据。Trusted Publisher 绑定实际 GitHub 仓库和 `npm-publish.yml`，允许直接执行 `npm publish`。工作流使用 GitHub 托管 runner，授予 `id-token: write`。
+`Publish npm package`（`npm-publish.yml`）在 `Publish release` 和 `Publish scheduled releases` 成功后运行。由 `GITHUB_TOKEN` 启动的自动补丁发布在附件验证通过且 Release 公开后，通过 `workflow_dispatch` 传入该标签并启动 npm 发布。该入口沿用 npm Trusted Publishing，绑定实际 GitHub 仓库和 `npm-publish.yml`，由 GitHub 托管 runner 获取 OIDC 发布凭据并执行 `npm publish`。 [GitHub 工作流触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow)
 
-即时发布按来源提交选取公开标签，定时发布读取已到期计划并要求 Release 已公开。流程下载发行包及校验文件，核对包名、版本、构建提交和标签，临时全局安装验证后上传 npm。稳定版使用 `latest`，预发布使用 `next`。同版本重试核对已发布内容，内容不一致时报错。上传后轮询公开状态并校验下载，最长等待 15 分钟。
+工作流优先使用显式指定的公开标签。通过上游运行触发时，即时发布按来源提交选取公开标签，定时发布读取已到期且已公开的计划。流程下载发行包及校验文件，核对包名、版本、构建提交和标签，临时全局安装验证后上传 npm。稳定版使用 `latest`，预发布使用 `next`。同版本重试核对已发布内容，内容不一致时报错。上传后轮询公开状态并校验下载，最长等待 15 分钟。
 
 重试使用 Actions 的 `Publish npm package` 手动入口，`tag` 填已有公开标签。核对 GitHub Release、npm 公开下载和安装结果后确认发布完成。
