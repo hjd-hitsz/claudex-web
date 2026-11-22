@@ -198,10 +198,6 @@
   font-size: 12px;
   line-height: 1.6;
 }
-.modal-settings .codex-model-settings {
-  margin-top: 12px;
-  font-size: 13px;
-}
 .modal-settings .subagent-model-settings {
   margin: 12px 0 0;
   padding: 0;
@@ -253,10 +249,6 @@
   .subagent-save-icon {
     display: block;
   }
-}
-.modal-settings .codex-model-settings summary {
-  padding-block: 4px;
-  color: var(--muted);
 }
 .modal-settings .proxy-settings {
   margin: 12px 0 0;

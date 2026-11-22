@@ -66,6 +66,20 @@ function persistedFixture() {
 const data = {
   markdown: "子代理模型配置验证",
   claudeItems: [],
+  codexModels: [
+    ["gpt-6.2-sol", "GPT-6.2-Sol"],
+    ["gpt-6.2-astra", "GPT-6.2-Astra"],
+    ["gpt-6.1-terra", "GPT-6.1 Terra"],
+    ["gpt-6.1-sol", "GPT-6.1-Sol"],
+    ["gpt-6-astra", "GPT-6-Astra"],
+    ["gpt-6-sol", "GPT-6-Sol"],
+    ["gpt-6-luna", "GPT-6-Luna"],
+    ["gpt-5.6-sol", "GPT-5.6-Sol"],
+    ["gpt-5.6-terra", "GPT-5.6-Terra"],
+    ["gpt-5.6-luna", "GPT-5.6-Luna"],
+    ["gpt-6.10-luna", "GPT-6.10-Luna"],
+    ["gpt-6.3-terra", "GPT-6.3-Terra"],
+  ].map(([model, displayName]) => ({ id: model, model, displayName })),
   providers: [
     {
       id: "secondary",
@@ -124,8 +138,7 @@ try {
     const sidebar = page.getByRole("button", { name: "显示侧栏", exact: true });
     if (await sidebar.isVisible()) await sidebar.click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    if (process.env.BROWSER_BEFORE !== "1")
-      await settingsPage(page, "后端").click();
+    await settingsPage(page, "后端").click();
     await page
       .getByRole("form", { name: "Claude Code 子代理模型", exact: true })
       .waitFor();
@@ -141,13 +154,61 @@ try {
     exact: true,
   });
   const codexCard = page.locator(".backend-card").filter({ has: codex });
-  await codexCard.getByText("显示的模型", { exact: true }).click();
+  const generations = codexCard.getByRole("table", { name: "显示的模型" });
+  await generations.waitFor();
+  assert.deepEqual(
+    await generations.getByRole("columnheader").allTextContents(),
+    ["代际", "Astra", "Sol", "Terra", "Luna"],
+  );
+  assert.deepEqual(await generations.getByRole("rowheader").allTextContents(), [
+    "GPT-6.10",
+    "GPT-6.3",
+    "GPT-6.2",
+    "GPT-6.1",
+    "GPT-6",
+    "GPT-5.6",
+  ]);
+  const row = generations.getByRole("row").filter({
+    has: page.getByRole("rowheader", { name: "GPT-6.2", exact: true }),
+  });
+  const astra = row.getByRole("cell").nth(0).getByRole("checkbox", {
+    name: "GPT-6.2-Astra",
+  });
+  const absentTerra = row.getByRole("cell").nth(2);
+  assert.equal(await absentTerra.getByRole("checkbox").count(), 0);
+  assert.match(await absentTerra.innerText(), /—/);
+  const initialWrites = await page.evaluate(
+    () =>
+      window.fixtureRequests.filter(
+        (request) => request.method === "lan/backends/save",
+      ).length,
+  );
+  await absentTerra.click();
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.fixtureRequests.filter(
+          (request) => request.method === "lan/backends/save",
+        ).length,
+    ),
+    initialWrites,
+  );
+  assert.ok(await astra.isChecked());
+  await astra.press("Space");
+  await astra.and(page.locator("input:not(:checked)")).waitFor();
+  assert.ok(await astra.evaluate((input) => input === document.activeElement));
+  assert.equal(
+    await codex.locator("option").filter({ hasText: "GPT-6.2-Astra" }).count(),
+    0,
+  );
+  await astra.press("Space");
+  await astra.and(page.locator("input:checked")).waitFor();
   await codexCard.getByRole("checkbox", { name: "gpt", exact: true }).uncheck();
   assert.equal(
     await codex
       .getByLabel("子代理模型", { exact: true })
       .locator("option")
-      .filter({ hasText: "ChatGPT / gpt" })
+      .filter({ hasText: /^ChatGPT \/ gpt$/ })
       .count(),
     0,
   );
@@ -246,7 +307,7 @@ try {
     await codex
       .getByLabel("子代理模型", { exact: true })
       .locator("option")
-      .filter({ hasText: "ChatGPT / gpt" })
+      .filter({ hasText: /^ChatGPT \/ gpt$/ })
       .count(),
     0,
   );
@@ -278,6 +339,22 @@ try {
         await zoom.selectOption(String(scale));
         await page.reload();
         await open();
+        const layout = await generations.evaluate((table) => ({
+          width: table.clientWidth,
+          scroll: table.scrollWidth,
+          aligned: [...table.tBodies[0].rows].every((row) =>
+            [...row.cells].every((cell, col) => {
+              const bounds = cell.getBoundingClientRect();
+              const header =
+                table.tHead.rows[0].cells[col].getBoundingClientRect();
+              return Math.abs(bounds.left - header.left) < 1;
+            }),
+          ),
+        }));
+        assert.ok(
+          layout.aligned && layout.scroll <= layout.width + 1,
+          JSON.stringify({ width, theme, scale, layout }),
+        );
         await claude.scrollIntoViewIfNeeded();
         const size = await page.locator(".settings-body").evaluate((el) => ({
           width: el.clientWidth,
@@ -356,6 +433,7 @@ try {
         checks: [
           "independent backend settings",
           "Codex hidden models excluded and restored",
+          "Codex generation order, fixed tier columns, unavailable models and keyboard toggling",
           "model command uses the same hidden model settings",
           "per-model effort choices and persistence",
           "cross-provider selection",

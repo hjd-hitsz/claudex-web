@@ -531,21 +531,13 @@ try {
     await evaluate(
       "[...document.querySelectorAll('.settings-navigation button')].find(button => button.textContent.trim() === '后端').click()",
     );
-    await waitFor("document.querySelector('.codex-model-settings')");
-    assert.equal(
-      await evaluate("document.querySelector('.codex-model-settings').open"),
-      false,
-    );
-    await click(".codex-model-settings > summary");
-    await waitFor("document.querySelector('.codex-model-options input')");
+    await waitFor("document.querySelector('.codex-model-settings input')");
     assert.equal(
       await evaluate(
-        "document.querySelector('.codex-model-settings').querySelector('fieldset,small') === null",
+        "document.querySelector('.codex-model-settings input').getBoundingClientRect().height > 0",
       ),
       true,
     );
-    await screenshot("settings-models-expanded");
-    await click(".codex-model-settings > summary");
     await screenshot("settings-plus");
     await click('.modal-settings button[title="关闭窗口"]');
 

@@ -247,6 +247,8 @@ export function backendFixture(data) {
           ],
           defaultReasoningEffort: "high",
         });
+      if (m.method === "model/list" && p.backendId === "codex")
+        result.data.push(...(data.codexModels || []));
       if (
         (data.providerModelNames || data.providers) &&
         m.method === "model/list" &&
