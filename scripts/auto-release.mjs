@@ -7,10 +7,11 @@ import { npmPackageName } from "./npm-archive.mjs";
 import { readReleaseSchedule, releaseNotesBody } from "./publish-release.mjs";
 import { checkRelease, checkVersions, prepareVersion } from "./version.mjs";
 
-const firstCheck = Date.parse("2026-11-22T04:16:00Z");
-const day = 24 * 60 * 60 * 1000;
+const firstReleaseWindow = Date.parse("2026-11-22T04:16:00Z");
+const releaseInterval = 2 * 24 * 60 * 60 * 1000;
 const stableVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const trailer = "Claudex-Auto-Release";
+const windowTrailer = "Claudex-Auto-Release-Window";
 const run = (command, args) =>
   execFileSync(command, args, {
     encoding: "utf8",
@@ -19,9 +20,27 @@ const run = (command, args) =>
 const git = (...args) => run("git", args);
 const gh = (...args) => run("gh", args);
 
-export function releaseCheckDue(now) {
-  const daysSinceFirstCheck = Math.floor((now - firstCheck) / day);
-  return daysSinceFirstCheck >= 0 && daysSinceFirstCheck % 2 === 0;
+export function releaseWindow(now) {
+  if (now < firstReleaseWindow) return null;
+  const interval = Math.floor((now - firstReleaseWindow) / releaseInterval);
+  return new Date(
+    firstReleaseWindow + interval * releaseInterval,
+  ).toISOString();
+}
+
+export function lastAutomaticReleaseWindow(dir) {
+  const [committedAt, recordedWindow] = git(
+    "-C",
+    dir,
+    "log",
+    "-1",
+    "--first-parent",
+    `--grep=^${trailer}:`,
+    `--format=%ct%n%(trailers:key=${windowTrailer},valueonly)`,
+    "HEAD",
+  ).split("\n");
+  if (!committedAt) return null;
+  return recordedWindow ?? releaseWindow(Number(committedAt) * 1000);
 }
 
 export function changelogEntries(markdown) {
@@ -55,12 +74,16 @@ export function planPatch({
   baseline,
   entries,
   schedule,
+  window,
+  lastWindow,
 }) {
   const parts = latest.match(stableVersion);
   assert.ok(parts, "最新正式版必须使用稳定版本");
   if (latest !== version) return { status: "other-release" };
   if (head === baseline) return { status: "up-to-date" };
   if (!entries.length) return { status: "empty-changelog" };
+  if (window && lastWindow && lastWindow >= window)
+    return { status: "window-complete" };
   const [, major, minor, patch] = parts;
   const tag = `v${major}.${minor}.${BigInt(patch) + 1n}`;
   return Object.hasOwn(schedule, tag)
@@ -155,7 +178,7 @@ function retryNpm(tag) {
   );
 }
 
-function preparePatch(repo, head, tag, entries) {
+function preparePatch(repo, head, tag, entries, window) {
   const notes = patchReleaseNotes(
     repo,
     tag,
@@ -207,7 +230,7 @@ function preparePatch(repo, head, tag, entries) {
     "-m",
     "- 同步正式版与部署示例，将未发布变更归档并生成发布说明。",
     "-m",
-    `${trailer}: ${tag}`,
+    `${trailer}: ${tag}\n${windowTrailer}: ${window}`,
   );
   git(
     "-c",
@@ -226,8 +249,9 @@ function preparePatch(repo, head, tag, entries) {
 
 async function main({ repo, preview }) {
   assert.ok(repo, "需要 GITHUB_REPOSITORY");
-  if (!preview && !releaseCheckDue(Date.now())) {
-    console.log("当前日期不在两天一次的检查周期内");
+  const window = releaseWindow(Date.now());
+  if (!preview && !window) {
+    console.log("自动发布周期尚未开始");
     return;
   }
   assert.equal(git("status", "--porcelain"), "", "自动发布需要干净检出");
@@ -247,6 +271,7 @@ async function main({ repo, preview }) {
   const version = checkVersions();
   const schedule = readReleaseSchedule();
   const entries = changelogEntries(readFileSync("CHANGELOG.md", "utf8"));
+  const lastWindow = lastAutomaticReleaseWindow(process.cwd());
   const plan = planPatch({
     version,
     latest,
@@ -254,6 +279,8 @@ async function main({ repo, preview }) {
     baseline,
     entries,
     schedule,
+    window,
+    lastWindow,
   });
   console.log(
     JSON.stringify({
@@ -261,6 +288,8 @@ async function main({ repo, preview }) {
       baseline,
       head,
       entries: entries.length,
+      window,
+      lastWindow,
       ...plan,
     }),
   );
@@ -281,7 +310,7 @@ async function main({ repo, preview }) {
     return;
   }
   if (plan.status !== "prepare" || git("tag", "--list", plan.tag)) return;
-  const commit = preparePatch(repo, head, plan.tag, entries);
+  const commit = preparePatch(repo, head, plan.tag, entries, window);
   const current = gh(
     "api",
     `repos/${repo}/releases/latest`,

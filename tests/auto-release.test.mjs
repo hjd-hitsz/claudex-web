@@ -1,24 +1,78 @@
 import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   changelogEntries,
+  lastAutomaticReleaseWindow,
   patchReleaseNotes,
   planPatch,
-  releaseCheckDue,
+  releaseWindow,
 } from "../scripts/auto-release.mjs";
 
-test("两天的检查周期跨月延续，起点前与间隔日跳过", () => {
+test("错过首个触发后，两日窗口仍可补跑并按原起点跨月延续", () => {
   for (const [time, expected] of [
-    ["2026-11-22T04:15:59Z", false],
-    ["2026-11-22T04:16:00Z", true],
-    ["2026-11-23T04:16:00Z", false],
-    ["2026-11-24T04:30:00Z", true],
-    ["2026-11-30T04:20:00Z", true],
-    ["2026-12-01T04:20:00Z", false],
-    ["2026-12-02T04:20:00Z", true],
+    ["2026-11-22T04:15:59Z", null],
+    ["2026-11-22T04:16:00Z", "2026-11-22T04:16:00.000Z"],
+    ["2026-11-23T04:16:00Z", "2026-11-22T04:16:00.000Z"],
+    ["2026-11-24T04:15:59Z", "2026-11-22T04:16:00.000Z"],
+    ["2026-11-24T04:16:00Z", "2026-11-24T04:16:00.000Z"],
+    ["2026-12-01T04:20:00Z", "2026-11-30T04:16:00.000Z"],
+    ["2026-12-02T04:20:00Z", "2026-12-02T04:16:00.000Z"],
   ]) {
-    assert.equal(releaseCheckDue(Date.parse(time)), expected, time);
+    assert.equal(releaseWindow(Date.parse(time)), expected, time);
   }
+});
+
+test("发布窗口从主线提交恢复，兼容旧自动发布和期间的手动版本", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "claudex-web-auto-release-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const git = (...args) => execFileSync("git", args, { cwd: dir });
+  const commit = (date, ...messages) =>
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=Release Test",
+        "-c",
+        "user.email=release@example.test",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        ...messages.flatMap((message) => ["-m", message]),
+      ],
+      {
+        cwd: dir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: date,
+          GIT_COMMITTER_DATE: date,
+        },
+      },
+    );
+  git("init", "--quiet", "--initial-branch=main");
+  commit("2026-11-22T05:00:00Z", "例行提交");
+  assert.equal(lastAutomaticReleaseWindow(dir), null);
+  commit("2026-11-23T05:00:00Z", "旧自动发布", "Claudex-Auto-Release: v4.2.1");
+  assert.equal(lastAutomaticReleaseWindow(dir), "2026-11-22T04:16:00.000Z");
+  commit(
+    "2026-11-26T04:20:00Z",
+    "跨窗口完成的自动发布",
+    "Claudex-Auto-Release: v4.2.2\nClaudex-Auto-Release-Window: 2026-11-24T04:16:00.000Z",
+  );
+  commit("2026-11-26T05:00:00Z", "手动发布 v4.3.0");
+  assert.equal(lastAutomaticReleaseWindow(dir), "2026-11-24T04:16:00.000Z");
 });
 
 test("自动发布跟随手动版本，只发布有新提交与未发布条目的 patch", () => {
@@ -29,6 +83,8 @@ test("自动发布跟随手动版本，只发布有新提交与未发布条目�
     baseline: "released",
     entries: [{ text: "- 改进。" }],
     schedule: {},
+    window: "2026-11-24T04:16:00.000Z",
+    lastWindow: "2026-11-22T04:16:00.000Z",
   };
   assert.deepEqual(planPatch(fixture), { status: "prepare", tag: "v4.1.6" });
   assert.deepEqual(planPatch({ ...fixture, head: "released" }), {
@@ -47,6 +103,166 @@ test("自动发布跟随手动版本，只发布有新提交与未发布条目�
   assert.deepEqual(
     planPatch({ ...fixture, schedule: { "v4.1.6": "2026-12-02T00:00:00Z" } }),
     { status: "scheduled-release" },
+  );
+});
+
+test("同一窗口保留后续变更，并优先恢复尚未公开的自动版本", () => {
+  const window = "2026-11-22T04:16:00.000Z";
+  const sameWindow = {
+    version: "4.2.1",
+    latest: "4.2.1",
+    head: "new",
+    baseline: "released",
+    entries: [{ text: "- 修复。" }],
+    schedule: {},
+    window,
+    lastWindow: window,
+  };
+  assert.deepEqual(planPatch(sameWindow), { status: "window-complete" });
+  assert.deepEqual(planPatch({ ...sameWindow, latest: "4.2.0" }), {
+    status: "other-release",
+  });
+  assert.deepEqual(
+    planPatch({ ...sameWindow, window: "2026-11-24T04:16:00.000Z" }),
+    { status: "prepare", tag: "v4.2.2" },
+  );
+});
+
+test("首次检查缺席后，真实提交与标签只推送一次，发布调用中断可恢复", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "claudex-web-auto-release-cli-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const project = join(dir, "main");
+  const remote = join(dir, "remote.git");
+  const bin = join(dir, "bin");
+  for (const path of [
+    "main/docs/releases",
+    "main/scripts",
+    "main/server/src",
+    "bin",
+  ])
+    mkdirSync(join(dir, path), { recursive: true });
+  for (const path of [
+    "scripts/auto-release.mjs",
+    "scripts/npm-archive.mjs",
+    "scripts/publish-release.mjs",
+    "scripts/release-version.mjs",
+    "scripts/version.mjs",
+    "server/src/version.mjs",
+  ])
+    cpSync(new URL(`../${path}`, import.meta.url), join(project, path));
+
+  const write = (path, content) => writeFileSync(join(project, path), content);
+  const workspaces = ["client", "server", "packages/translation-engine"];
+  const version = "4.2.0";
+  write("package.json", JSON.stringify({ version, workspaces }));
+  for (const workspace of workspaces) {
+    mkdirSync(join(project, workspace), { recursive: true });
+    write(`${workspace}/package.json`, JSON.stringify({ version }));
+  }
+  write(
+    "package-lock.json",
+    JSON.stringify({
+      version,
+      packages: Object.fromEntries(
+        ["", ...workspaces].map((path) => [path, { version }]),
+      ),
+    }),
+  );
+  const changelog = "## 未发布\n\n## [4.2.0] - 2026-11-21\n\n- 初始版本。\n";
+  write("CHANGELOG.md", changelog);
+  for (const path of ["README.md", "docs/deployment.md"])
+    write(path, "npm install -g @hjd-hitsz/claudex-web\n");
+
+  const git = (...args) =>
+    execFileSync("git", args, {
+      cwd: project,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  git("init", "--bare", "--quiet", remote);
+  git("init", "--quiet", "--initial-branch=main");
+  git("config", "user.name", "Release Test");
+  git("config", "user.email", "release@example.test");
+  git("config", "commit.gpgsign", "false");
+  git("config", "tag.gpgsign", "false");
+  git("add", ".");
+  git("commit", "-qm", "初始版本");
+  git("tag", "v4.2.0");
+  write(
+    "CHANGELOG.md",
+    changelog.replace("## 未发布\n", "## 未发布\n\n- 待发布修复。\n"),
+  );
+  git("commit", "-qam", "记录待发布修复");
+  git("remote", "add", "origin", remote);
+  git("push", "origin", "main", "--tags");
+
+  const preload = join(dir, "runner.mjs");
+  writeFileSync(
+    preload,
+    `Date.now = () => Date.parse("2026-11-23T10:16:00Z");
+globalThis.fetch = async () => new Response();\n`,
+  );
+  writeFileSync(join(bin, "npm"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  writeFileSync(
+    join(bin, "gh"),
+    `#!/bin/sh
+case "$1 $2" in
+  "api repos/example/claudex-web/releases/latest") printf '%s\\n' "$TEST_LATEST_TAG" ;;
+  "run list") printf '[]\\n' ;;
+  "workflow run")
+    printf '%s\\n' "$*" >> "$TEST_DISPATCH_LOG"
+    exit "$TEST_DISPATCH_EXIT" ;;
+  *) exit 2 ;;
+esac
+`,
+    { mode: 0o755 },
+  );
+  const dispatches = join(dir, "dispatches");
+  const run = (latest, exit) =>
+    spawnSync(
+      process.execPath,
+      ["--import", preload, "scripts/auto-release.mjs"],
+      {
+        cwd: project,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          GITHUB_REPOSITORY: "example/claudex-web",
+          PREVIEW: "false",
+          TEST_DISPATCH_LOG: dispatches,
+          TEST_DISPATCH_EXIT: String(exit),
+          TEST_LATEST_TAG: latest,
+        },
+      },
+    );
+  const interrupted = run("v4.2.0", 1);
+  assert.equal(interrupted.status, 1, interrupted.stderr);
+  assert.match(interrupted.stdout, /"status":"prepare","tag":"v4.2.1"/);
+  const preparedCommit = git("rev-parse", "v4.2.1^{commit}");
+  assert.equal(git("-C", remote, "rev-parse", "main"), preparedCommit);
+  assert.equal(lastAutomaticReleaseWindow(project), "2026-11-22T04:16:00.000Z");
+
+  const resumed = run("v4.2.0", 0);
+  assert.equal(resumed.status, 0, resumed.stderr);
+  assert.match(resumed.stdout, /"status":"other-release"/);
+
+  write(
+    "CHANGELOG.md",
+    readFileSync(join(project, "CHANGELOG.md"), "utf8").replace(
+      "### 新增\n",
+      "### 新增\n\n- 后续新功能。\n",
+    ),
+  );
+  git("commit", "-qam", "记录后续功能");
+  git("push", "origin", "HEAD:refs/heads/main");
+  const repeated = run("v4.2.1", 0);
+  assert.equal(repeated.status, 0, repeated.stderr);
+  assert.match(repeated.stdout, /"status":"window-complete"/);
+  assert.equal(git("-C", remote, "tag", "--list"), "v4.2.0\nv4.2.1");
+  assert.equal(
+    readFileSync(dispatches, "utf8"),
+    "workflow run release.yml --ref v4.2.1\n".repeat(2),
   );
 });
 

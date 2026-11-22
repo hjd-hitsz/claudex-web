@@ -2,7 +2,10 @@ name: Automatic patch releases
 
 on:
   schedule:
-    - cron: "16 4 * * *"
+    - cron: "16 * * * *"
+  push:
+    branches: [main]
+    paths: [CHANGELOG.md]
   workflow_dispatch:
 
 permissions:
