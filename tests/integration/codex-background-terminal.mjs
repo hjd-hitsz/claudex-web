@@ -13,12 +13,16 @@ import {
   rm,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import WebSocket from "ws";
 import { authenticationFixture } from "../helpers/auth.mjs";
 import { taskRequest } from "../../packages/background-terminal/client.mjs";
+import {
+  processIdentity,
+  stopProcess,
+} from "../../server/src/service-maintenance-process.mjs";
 
 // 真实 Codex app-server 与本地 Responses 服务验证 MCP、卸载和自动续跑。
 // 所有会话、任务及模型请求均留在临时目录和本机回环地址。
@@ -34,8 +38,14 @@ const output = join(
 const directory = await mkdtemp(join(tmpdir(), "codex-web-real-background-"));
 const codexHome = join(directory, "codex-home");
 const workspace = join(directory, "workspace");
+const unavailableSystemd = join(directory, "bin");
 await mkdir(codexHome);
 await mkdir(workspace);
+await mkdir(unavailableSystemd);
+for (const command of ["systemctl", "systemd-run"])
+  await writeFile(join(unavailableSystemd, command), "#!/bin/sh\nexit 1\n", {
+    mode: 0o700,
+  });
 await writeFile(
   join(workspace, "background.test.cjs"),
   `
@@ -281,6 +291,7 @@ supports_websockets = false
 );
 const env = {
   ...process.env,
+  PATH: unavailableSystemd + delimiter + process.env.PATH,
   CODEX_HOME: codexHome,
   CODEX_APP_SERVER_URL: upstreamUrl,
   CLAUDEX_BACKGROUND_TASKS_DIR: "",
@@ -422,19 +433,6 @@ try {
     "卸载旧对话",
   );
   phase = "job";
-  spawnProcess(process.execPath, [
-    join(root, "packages/background-terminal/cli.mjs"),
-    "serve",
-    state,
-    upstreamUrl,
-  ]);
-  await until(async () => {
-    try {
-      return await taskRequest(state, "health");
-    } catch {
-      return false;
-    }
-  }, "等待独立任务服务");
   const auth = await authenticationFixture(env.CLAUDEX_WEB_CONFIG_DIR);
   await writeFile(
     join(env.CLAUDEX_WEB_CONFIG_DIR, "backends.json"),
@@ -539,7 +537,7 @@ try {
       return true;
     }
   }, "关闭 MCP 时原生会话按正常生命周期卸载");
-  assert.deepEqual(await disabledNative.jobs(), []);
+  await assert.rejects(taskRequest(state, "health"), { code: "ENOENT" });
   if (process.env.PLAYWRIGHT_MODULE)
     ui = await backgroundTerminalBrowser(
       url,
@@ -548,6 +546,9 @@ try {
       before ? join(root, ".cache/background-empty-before") : null,
     );
   else assert.equal((await preference(true)).backgroundTerminalEnabled, true);
+  const { pid: workerPid } = await taskRequest(state, "health");
+  assert.ok(Number.isInteger(workerPid) && workerPid > 1);
+  assert.notEqual(workerPid, bridge.pid);
   assert.equal(
     JSON.parse(
       await readFile(join(env.CLAUDEX_WEB_CONFIG_DIR, "backends.json"), "utf8"),
@@ -708,6 +709,7 @@ try {
     const exit = once(bridge, "exit");
     bridge.kill("SIGTERM");
     await exit;
+    assert.equal((await taskRequest(state, "health")).pid, workerPid);
     await until(async () => {
       const { data } = await direct.rpc("thread/loaded/list", { limit: 100 });
       return !data.includes(thread.id);
@@ -807,6 +809,8 @@ try {
 } finally {
   await ui?.close();
   for (const socket of sockets) socket.terminate();
+  const health = await taskRequest(state, "health").catch(() => null);
+  if (health?.pid) await stopProcess(await processIdentity(health.pid));
   for (const child of children.reverse())
     if (child.exitCode === null && child.signalCode === null) {
       const closed = once(child, "exit");

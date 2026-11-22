@@ -4,7 +4,7 @@
 
 ## 后台终端回归
 
-独立 MCP 服务与 Codex 适配的部署方式见[后台终端说明](background-tasks.md)。命令及日志回归纳入单元测试。修改执行、取消和唤醒时按受影响后端验证真实原生调用。Codex 验证分别核对任务退出、通知进入模型请求、原生续跑终态与网页结果。关闭桥接的场景先确认原生对话卸载，再放行隔离任务完成；另覆盖仅独立服务持有订阅且启用零延迟卸载，以及没有回复正文时刷新仍可查看任务结果、退出码和日志。运行 `node --import ./tests/helpers/test-console.mjs tests/integration/codex-background-terminal.mjs` 验证真实 Codex 与本机模拟 Responses 服务的调用和完成投递。运行 `node tests/integration/claude-runtime-lifecycle.mjs` 对照 Claude SDK 的原生后台执行、停止和唤醒。
+独立 MCP 服务与 Codex 适配的部署方式见[后台终端说明](background-tasks.md)。命令及日志回归纳入单元测试。修改执行、取消和唤醒时按受影响后端验证真实原生调用。运行 `node --import ./tests/helpers/test-console.mjs tests/integration/codex-background-terminal.mjs`，在 systemd 命令不可用的夹具中通过网页 RPC 开启后台终端，以真实 Codex 和本机模拟 Responses 服务验证任务退出、通知进入模型请求、原生续跑终态和网页结果。关闭桥接的场景先确认独立进程仍可响应及原生对话卸载，再放行隔离任务完成。另覆盖仅独立服务持有订阅且启用零延迟卸载，以及没有回复正文时刷新仍可查看任务结果、退出码和日志。运行 `node tests/integration/claude-runtime-lifecycle.mjs` 对照 Claude SDK 的原生后台执行、停止和唤醒。
 
 运行 `node --import ./tests/helpers/test-console.mjs tests/integration/codex-background-live.mjs`，通过隔离网页桥接和真实 `gpt-6-luna` 验证执行选择。测试使用 `CODEX_VALIDATION_HOME`、`CODEX_HOME` 或默认 Codex 目录的 ChatGPT 文件认证，在临时目录运行。长下载和构建在首轮完成后才放行，断言首轮直接调用 `background_start`、自动续跑完成文件校验，以及短命令使用前台执行。默认让模型可调用 `sleep`，设置 `BACKGROUND_SLEEP_DISABLED=1` 可对照。
 
@@ -71,7 +71,7 @@ CLI 安装回归使用 `server/tests/cli-package.test.mjs` 验证原生平台包
 
 公共网页操作在 `server/src/bridge` 维护，原生适配分别位于 `server/src/backends/codex` 和 `server/src/backends/claude`。调整适配器接口时执行 `node --import ./tests/helpers/test-console.mjs --test server/tests/backend-product-contract.test.mjs server/tests/backend-routing.test.mjs`，核对两端的离线偏好、保存通知、失败重试、目录创建、整理写入限制、工作区所有者声明和浏览器代理释放。产品契约夹具使用真实适配器与模拟 app-server，Claude 只执行进程版本检查；真实 CLI/SDK 的执行与恢复由下述验收覆盖。架构检查同时禁止公共桥接依赖具体后端和原生适配器之间的交叉依赖。
 
-真实 Claude Code 回归使用临时配置、原生会话和隔离 Messages 服务。执行持久化场景需要可访问的 systemd 用户管理器，以实际独立 service 和 cgroup 验证生产部署；指定本机已安装的可执行文件：
+真实 Claude Code 回归使用临时配置、原生会话和隔离 Messages 服务。验证 systemd 托管及 cgroup 时需连接用户管理器。运行时可指定本机已安装的可执行文件：
 
 ```bash
 CLAUDE_EXECUTABLE=/absolute/path/to/claude npm run test:backends
@@ -79,7 +79,7 @@ CLAUDE_EXECUTABLE=/absolute/path/to/claude npm run test:backends
 
 该入口依次执行原生会话分支与历史、模型/插件/MCP 目录、项目指令、工具和提问、计划批准、整理、中断、持续输入、目标及后台任务等脚本，记录真实 CLI 版本和各脚本结果，日志位于 `.cache/backend-acceptance`。测试不访问用户对话，模型回应由隔离服务提供。图片验证通过真实 CLI 提交临时 PNG，检查首次供应商请求保留 base64 内容、刷新历史恢复图片地址，以及原生 Read 返回图片后在统一工具结果中的显示数据。`server/tests` 另验证身份、额度窗口与额外用量的转换；原生账户授权和在线余额的验证记录需要相应服务环境，按实际完成的项目单独报告。
 
-`claude-runtime-restart.mjs` 使用真实 systemd transient 用户服务、临时模型会话及后台 shell，验证网页代理进程 SIGKILL 后执行服务与原生 PID 保持、后台任务继续、重连快照和忙时停止拒绝。`claude-worker-upgrade.mjs` 通过隔离源码身份与配置验证忙时待更新、空闲替换、旧桥接保留新代际及多连接行为。`server/tests/claude-worker-client.test.mjs` 以 Unix IPC 协议夹具验证多连接、提问和执行状态透传、关闭桥接及在途请求结算；`claude-worker-location.test.mjs` 核对目录、socket 权限及符号链接替代拒绝。协议夹具与真实系统服务的证据分别记录。
+`claude-runtime-restart.mjs` 使用临时模型会话及后台 shell，验证网页代理进程 SIGKILL 后执行服务与原生 PID 保持、后台任务继续、重连快照和忙时停止拒绝。默认使用真实 systemd 用户单元，设置 `CLAUDE_NO_SYSTEMD=1` 时使用 systemd 命令不可用且进程继承 `INVOCATION_ID` 的夹具。`claude-worker-upgrade.mjs` 通过隔离源码身份与配置验证忙时待更新、空闲替换、旧桥接保留新代际及多连接行为。`server/tests/claude-worker-client.test.mjs` 以 Unix IPC 协议夹具验证多连接、提问和执行状态透传、关闭桥接及在途请求结算；`claude-worker-location.test.mjs` 核对目录、socket 权限及符号链接替代拒绝。协议夹具与真实系统服务的证据分别记录。
 
 `claude-native-configuration.mjs` 通过真实 CLI 核对既有用户设置、多级软链接技能和原生历史读取，网页状态目录单独配置。夹具在原生设置中保留不同的供应商环境，再通过网页显式选择隔离供应商，验证首次请求到达所选服务、原配置文件保持原样。显式供应商覆盖经原生 `applyFlagSettings` 在输入前通过进程通信应用，凭据保持在受限环境和通信中。
 

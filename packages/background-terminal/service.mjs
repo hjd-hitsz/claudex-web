@@ -56,7 +56,11 @@ export async function serve(location, upstream) {
       if (params?.expectedUpstream && params.expectedUpstream !== url.href)
         throw new Error("任务服务绑定的 Codex 后端地址与客户端不同");
       if (method === "health")
-        return reply(200, { upstream: url.href, nativeWatch: true });
+        return reply(200, {
+          upstream: url.href,
+          nativeWatch: true,
+          pid: process.pid,
+        });
       if (method === "tool") return reply(200, await jobs.tool(params));
       if (method === "watchNative")
         return reply(200, await nativeWatches.watch(params));
@@ -76,9 +80,6 @@ export async function serve(location, upstream) {
     await writeFile(binding + ".tmp", url.href, { mode: 0o600 });
     await rename(binding + ".tmp", binding);
     await rm(path, { force: true });
-    server.listen(path);
-    await once(server, "listening");
-    await chmod(path, 0o600);
     jobs = await createBackgroundJobs({
       directory,
       terminateNative: ({ threadId, native }) =>
@@ -106,6 +107,9 @@ export async function serve(location, upstream) {
         }),
     });
     nativeWatches = createNativeWatches(url, jobs);
+    server.listen(path);
+    await once(server, "listening");
+    await chmod(path, 0o600);
     const stopDelivery = createDelivery(directory, url, jobs);
     const stop = async () => {
       if (closing) return;

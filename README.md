@@ -35,7 +35,7 @@
 
 ## 快速开始
 
-需要 Linux、Node.js 24+、npm 和 systemd。Debian / Ubuntu 安装系统依赖可执行以下命令。
+需要 Linux、Node.js 24.5+ 和 npm。Debian / Ubuntu 安装系统依赖可执行以下命令。
 
 ```bash
 sudo apt-get install openssl pamtester
@@ -45,14 +45,13 @@ sudo apt-get install openssl pamtester
 
 ```bash
 npm install -g @hjd-hitsz/claudex-web
-claudex-web service install
 ```
+
+使用 systemd 托管时，执行 `claudex-web service install`，需要开机自启动时再执行 `loginctl enable-linger "$USER"`。也可以用 `claudex-web start` 直接启动网页进程，使用 Codex 时在另一个终端运行 `claudex-web backend`。运行方式见[部署指南](docs/deployment.md#命令与前台运行)。
 
 浏览器打开 `https://部署电脑的IP:8766`，输入运行服务的系统用户名和密码。从其他设备访问或使用 P2P 时，还需输入验证器里的六位动态码。首次使用动态码时，按[命令行用法](#命令行用法)绑定验证器。首次访问的证书配置见[证书安装指引](docs/deployment.md#证书配置)。
 
 跨网络使用时，可在“设置 → 连接与登录”开启默认关闭的 P2P 远程访问。打开连接链接，等直连建立后按同样的步骤登录。网页与命令行用法见 [P2P 远程访问](docs/deployment.md#p2p-远程访问)。
-
-需要开机启动并在退出系统登录后继续运行时，执行 `loginctl enable-linger "$USER"`。
 
 ## 配置 Codex
 
@@ -103,7 +102,7 @@ DeepSeek 等预置供应商直接填写 API Key。
 
 * **双重验证**用 `claudex-web auth setup [名称]` 为认证应用生成绑定二维码。多人使用时，每人使用自己的验证器名称和动态码。查看、撤销和关闭方法见[双重验证](docs/deployment.md#双重验证)。
 * **P2P** 用 `claudex-web p2p enable` 开启远程访问，再用 `claudex-web p2p create "我的手机"` 生成链接。其他操作见 [P2P 远程访问](docs/deployment.md#p2p-远程访问)。
-* **服务管理**用 `claudex-web service status` 查看状态，用 `claudex-web service restart-when-idle` 等待空闲后重启。
+* **systemd 部署**用 `claudex-web service status` 查看状态，用 `claudex-web service restart-when-idle` 等待空闲后重启。
 * 其他命令见[部署指南](docs/deployment.md#命令与前台运行)。
 
 ## 更多文档

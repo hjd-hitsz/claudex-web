@@ -9,7 +9,7 @@ import {
   stat,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import { once } from "node:events";
@@ -20,6 +20,16 @@ import { messagesServer } from "../helpers/claude-messages-server.mjs";
 const directory = await mkdtemp(join(tmpdir(), "claude-worker-restart-"));
 const cwd = join(directory, "workspace");
 await mkdir(cwd);
+const direct = process.env.CLAUDE_NO_SYSTEMD === "1";
+const env = { ...process.env };
+if (direct) {
+  const bin = join(directory, "bin");
+  await mkdir(bin);
+  for (const command of ["systemctl", "systemd-run"])
+    await writeFile(join(bin, command), "#!/bin/sh\nexit 1\n", { mode: 0o700 });
+  env.PATH = bin + delimiter + env.PATH;
+  env.INVOCATION_ID ||= "00000000000000000000000000000001";
+}
 const backend = {
   id: "claude",
   type: "claude",
@@ -80,7 +90,7 @@ let adapter;
 const worker = fork(
   new URL("../helpers/claude-runtime-worker.mjs", import.meta.url),
   [],
-  { stdio: ["ignore", "pipe", "pipe", "ipc"] },
+  { env, stdio: ["ignore", "pipe", "pipe", "ipc"] },
 );
 worker.on("message", (event) => events.push(event));
 worker.stderr.on("data", (data) => process.stderr.write(data));
@@ -201,25 +211,22 @@ try {
   const location = workerLocation(backend);
   assert.equal((await stat(location.directory)).mode & 0o777, 0o700);
   assert.equal((await stat(location.socket)).mode & 0o777, 0o600);
-  const { stdout } = await promisify(execFile)("systemctl", [
-    "--user",
-    "show",
-    location.unit,
-    "--property=ControlGroup",
-    "--property=MainPID",
-    "--value",
-  ]);
-  assert.ok(
-    stdout.includes(String(connected.pid)),
-    "真实systemd用户服务持有独立worker",
-  );
   const workerGroup = await readFile(`/proc/${connected.pid}/cgroup`, "utf8");
   const bridgeGroup = await readFile(`/proc/${process.pid}/cgroup`, "utf8");
-  assert.notEqual(
-    workerGroup,
-    bridgeGroup,
-    "后端与网页桥接处于独立systemd cgroup",
-  );
+  if (direct) {
+    assert.equal(workerGroup, bridgeGroup);
+  } else {
+    const { stdout } = await promisify(execFile)("systemctl", [
+      "--user",
+      "show",
+      location.unit,
+      "--property=ControlGroup",
+      "--property=MainPID",
+      "--value",
+    ]);
+    assert.ok(stdout.includes(String(connected.pid)));
+    assert.notEqual(workerGroup, bridgeGroup);
+  }
   await until(
     () => Object.keys(adapter.state().params.activeTurns).length === 0,
     "空闲状态同步",
@@ -227,7 +234,7 @@ try {
   await adapter.shutdown();
   adapter.close();
   console.log(
-    "Claude worker restart passed: independent systemd cgroup, bridge SIGKILL preserves identical native PID and background task, IPC reconnect and cleanup, busy shutdown rejection, confirmed idle shutdown",
+    `Claude worker restart passed (${direct ? "direct process" : "systemd unit"}): bridge SIGKILL preserves identical native PID and background task, IPC reconnect and cleanup, busy shutdown rejection, confirmed idle shutdown`,
   );
 } finally {
   worker.kill("SIGKILL");

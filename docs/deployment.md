@@ -10,16 +10,9 @@
 npm install -g @hjd-hitsz/claudex-web
 ```
 
-准备 Node.js 24.5+、npm、OpenSSL、Linux PAM、`pamtester` 和 systemd，完成上方安装后，以运行服务的普通用户启动服务。进入网页后，在「设置 → 后端」安装并启用所需的 Codex 或 Claude Code。
+准备 Node.js 24.5+、npm、OpenSSL、Linux PAM 和 `pamtester`。完成安装后，以运行服务的普通用户执行 `claudex-web start`。进入网页后，在「设置 → 后端」安装并启用所需的 Codex 或 Claude Code。使用 Codex 时另开终端执行 `claudex-web backend`。
 
-```bash
-claudex-web service install
-loginctl enable-linger "$USER"
-claudex-web service status
-curl --cacert "${CLAUDEX_WEB_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/claudex-web}/tls/certificate.pem" https://127.0.0.1:8766/healthz
-```
-
-`service install` 创建缺失的后端服务并安装网页服务，启用两者的自启动；已有后端服务继续使用原配置。`enable-linger` 使用户服务可在开机后、登录前启动，是否需要管理员操作由系统授权策略决定。npm 全局命令所在目录需在 `PATH` 中，目标电脑的防火墙需允许访问网页端口。
+npm 全局命令所在目录需在 `PATH` 中，目标电脑的防火墙需允许访问网页端口。开机托管可选择下文的 [systemd 服务部署](#systemd-服务)。
 
 默认网页地址为 `https://电脑IP:8766`，本机可使用 `https://127.0.0.1:8766`。网页登录使用运行服务的系统账户，成功后沿用本机 Codex 授权，以服务用户的完全访问权限执行任务。访问和登录均使用加密连接。
 
@@ -30,7 +23,6 @@ curl --cacert "${CLAUDEX_WEB_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/claud
 ```bash
 sha256sum -c claudex-web-4.2.1.tgz.sha256
 npm install -g ./claudex-web-4.2.1.tgz
-claudex-web service install
 ```
 
 仓库安装命令按 Git 标签选择最新稳定版源码；Release 的 `.tgz` 包含预构建网页资源，可用于固定版本安装。两种方式均通过 npm 获取运行依赖。
@@ -115,12 +107,8 @@ AUTH_SESSION_DAYS=30
 - `claudex-web backend`：前台运行 Codex app-server。
 - `claudex-web config init`：创建用户 `.env`，显示配置路径并保留已有文件。
 - `claudex-web --version` / `claudex-web version --json`：查看版本或完整的版本来源信息。
-- `claudex-web service install`：安装或更新服务文件，启动尚未运行的服务。
-- `claudex-web service status`：查看网页与后端状态。
-- `claudex-web service start` / `stop` / `restart`：启动、停止或重启网页服务；启动网页时也会拉起后端，停止网页时后端继续运行。
-- `claudex-web service restart-when-idle`：等待当前任务和上下文整理结束后重启网页，打开的网页终端保持独立。
 
-前台运行时，在两个终端分别执行 `claudex-web backend` 和 `claudex-web`，并保持终端打开。已有可连接的后端时，直接运行 `claudex-web`。
+在两个终端分别运行 Codex 后端与网页进程。已有可连接的 Codex 后端或仅使用 Claude Code 时，启动网页进程即可。网页的[更新与重启](#网页更新与重启)支持这两种进程部署。
 
 ## P2P 远程访问
 
@@ -197,7 +185,7 @@ systemd 服务会记录安装时的配置目录，后续启动继续使用该目
 
 ## systemd 服务
 
-网页服务名为 `claudex-web.service`，后端服务名为 `codex-app-server.service`。`claudex-web service install` 保留已有后端配置，更新网页服务文件，并让正在运行的服务继续运行。切换到新安装路径或配置后，通过重启使新设置生效。
+选择 systemd 托管时，用 `claudex-web service install` 安装并启用 `claudex-web.service`，同时创建缺失的 `codex-app-server.service`。安装保留已有后端配置，并让正在运行的服务继续运行。可用 `claudex-web service start`、`stop` 和 `restart` 管理网页服务，使用 `claudex-web service restart-when-idle` 等待当前任务和上下文整理结束后重启。运行 `loginctl enable-linger "$USER"` 可让用户服务在开机后、登录前启动，是否需要管理员操作由系统授权策略决定。
 
 安装脚本创建的后端服务从用户配置目录下的 `.env.backend` 读取环境变量，可在其中配置后端代理。已有后端服务的代理、登录环境和启动设置继续由原服务配置管理。更改后端配置后，在所有相关对话和终端空闲时重启后端服务。
 

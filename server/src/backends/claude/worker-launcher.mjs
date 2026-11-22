@@ -47,11 +47,8 @@ export async function launchWorker(backend, desired) {
       timeout: 5000,
     });
     userManager = true;
-  } catch (error) {
-    if (process.env.INVOCATION_ID) {
-      await unlink(envPath);
-      throw new Error(`无法启动独立 Claude 后端服务：${error.message}`);
-    }
+  } catch {
+    // A session can inherit INVOCATION_ID without access to a user manager.
   }
   if (userManager) {
     for (let attempt = 0; attempt < 50; attempt++) {
