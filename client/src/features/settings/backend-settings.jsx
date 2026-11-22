@@ -150,11 +150,12 @@ export function BackendSettings() {
                 />
               </div>
             </div>
-            {notice?.id === backend.id && (
-              <p className="inline-error" role="alert">
-                {notice.message}
-              </p>
-            )}
+            {notice?.id === backend.id &&
+              notice.message === cli.installError && (
+                <p className="inline-error" role="alert">
+                  {notice.message}
+                </p>
+              )}
             {(cli.latestError || cli.error || backend.error) && (
               <p role="status">
                 {cli.latestError || cli.error || backend.error}

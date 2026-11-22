@@ -21,6 +21,7 @@ test("search retains failed backend rows, retries, and rejects late query result
   globalThis.__searchFixture = {
     state: {
       archived: false,
+      connected: false,
       threads: [old],
       backends: [
         { id: "codex", name: "Codex", enabled: true },
@@ -64,6 +65,11 @@ test("search retains failed backend rows, retries, and rejects late query result
     const { SearchDialog } = await import(pathToFileURL(output));
     await act(async () => {
       renderer = create(React.createElement(SearchDialog));
+    });
+    assert.equal(requests.length, 0);
+    await act(async () => {
+      globalThis.__searchFixture.state.connected = true;
+      renderer.update(React.createElement(SearchDialog));
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 280));
@@ -117,6 +123,25 @@ test("search retains failed backend rows, retries, and rejects late query result
     assert.ok(
       !JSON.stringify(renderer.toJSON()).includes("obsolete first query"),
     );
+    await act(async () => {
+      globalThis.__searchFixture.state.connected = false;
+      renderer.update(React.createElement(SearchDialog));
+    });
+    assert.match(JSON.stringify(renderer.toJSON()), /Second result/);
+    await act(async () => {
+      globalThis.__searchFixture.state.connected = true;
+      renderer.update(React.createElement(SearchDialog));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 280));
+    });
+    assert.equal(requests[4].params.searchTerm, "second");
+    await act(async () => {
+      requests[4].resolve([
+        { id: "reconnected", name: "Updated after reconnect", createdAt: 4 },
+      ]);
+    });
+    assert.match(JSON.stringify(renderer.toJSON()), /Updated after reconnect/);
     await act(async () => {
       renderer.unmount();
     });

@@ -177,6 +177,15 @@ export async function testConnectionRecovery(app, requests, setResponse, emit) {
     assert.equal(view.root.findByProps({ "aria-label": "消息" }), input);
 
     await recover();
+    assert.match(app.get().error, /模拟历史同步失败/);
+    await act(async () => {
+      finishHistory(history("重新同步后恢复的历史"));
+      finishResume({ thread });
+    });
+    assert.equal(app.get().error, "");
+    assert.equal(app.get().items.at(-1).text, "重新同步后恢复的历史");
+
+    await recover();
     await act(async () => {
       app.newChat("/another-project");
       app.setDraft("新对话的草稿");

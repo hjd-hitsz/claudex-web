@@ -1,7 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import { Shield } from "lucide-react";
 import { useStore, sendMessage, respond } from "../../store.js";
 import { QuestionRecord, UserInputForm } from "./user-input.jsx";
+
+function raiseFailure(error) {
+  throw error;
+}
+
 export function AsyncQuestion({ item, context }) {
   const s = useStore();
   const questions = item.questions.map((question, index) => ({
@@ -43,6 +48,7 @@ export function AsyncQuestion({ item, context }) {
           {
             clearDraft: false,
             questionId: item.id,
+            onFailure: raiseFailure,
             questionAnswers: item.questions.map(
               (_, index) => answers[index].answers[0],
             ),
@@ -62,6 +68,7 @@ export function AsyncQuestion({ item, context }) {
 export function Question({ request }) {
   const s = useStore(),
     p = request.params;
+  const [error, setError] = useState("");
   const input = request.method === "item/tool/requestUserInput";
   if (input)
     return (
@@ -69,7 +76,9 @@ export function Question({ request }) {
         questions={p.questions}
         isBlocking={p.isBlocking}
         disabled={!s.connected}
-        onSubmit={(answers) => respond(request, { answers })}
+        onSubmit={(answers) =>
+          respond(request, { answers }, undefined, raiseFailure)
+        }
       />
     );
   const permission = request.method === "item/permissions/requestApproval";
@@ -77,6 +86,10 @@ export function Question({ request }) {
     "item/commandExecution/requestApproval",
     "item/fileChange/requestApproval",
   ].includes(request.method);
+  function answer(result, failure) {
+    setError("");
+    respond(request, result, failure, (error) => setError(error.message));
+  }
   return (
     <div className="request-card">
       <div className="request-title">
@@ -89,20 +102,18 @@ export function Question({ request }) {
         <div className="request-actions">
           <button
             className="secondary"
+            disabled={!s.connected}
             onClick={() =>
-              respond(
-                request,
-                permission ? { permissions: {} } : { decision: "decline" },
-              )
+              answer(permission ? { permissions: {} } : { decision: "decline" })
             }
           >
             拒绝
           </button>
           <button
             className="secondary"
+            disabled={!s.connected}
             onClick={() =>
-              respond(
-                request,
+              answer(
                 permission
                   ? { permissions: p.permissions, scope: "session" }
                   : { decision: "acceptForSession" },
@@ -113,9 +124,9 @@ export function Question({ request }) {
           </button>
           <button
             className="primary"
+            disabled={!s.connected}
             onClick={() =>
-              respond(
-                request,
+              answer(
                 permission
                   ? { permissions: p.permissions, scope: "turn" }
                   : { decision: "accept" },
@@ -130,8 +141,9 @@ export function Question({ request }) {
           <p className="muted">此工具暂时无法使用，可以取消请求后继续对话。</p>
           <button
             className="secondary"
+            disabled={!s.connected}
             onClick={() =>
-              respond(request, null, {
+              answer(null, {
                 code: -32601,
                 message: "此工具暂时无法使用。",
               })
@@ -140,6 +152,11 @@ export function Question({ request }) {
             取消此请求
           </button>
         </>
+      )}
+      {error && (
+        <p className="inline-error" role="alert">
+          {error}
+        </p>
       )}
     </div>
   );

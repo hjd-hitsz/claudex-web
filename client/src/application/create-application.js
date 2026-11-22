@@ -17,6 +17,7 @@ import { createConnection } from "./connection.js";
 import { createSession } from "./session.js";
 import { createTranslationSettings } from "./translation.js";
 import { createNotifications } from "./notifications.js";
+import { createErrorFeedback, rpcFeedbackKey } from "./error-feedback.js";
 
 // 依赖在此处组装；控制器通过显式接口协作，各自持有请求版本和生命周期状态。
 export function createApplication() {
@@ -31,35 +32,39 @@ export function createApplication() {
     listeners.add(listener);
     return () => listeners.delete(listener);
   };
-  function report(error) {
-    if (error?.archivedThreadId) return;
-    set({ error: error?.message || String(error) });
-  }
+  const feedback = createErrorFeedback({
+    get,
+    set,
+    opening: () => navigation.opening,
+  });
+  const { report } = feedback;
+  let noticeRevision = 0;
   function notice(text) {
+    const revision = ++noticeRevision;
     set({ notice: text });
     setTimeout(() => {
-      if (get().notice === text) set({ notice: "" });
+      if (noticeRevision === revision && get().notice) set({ notice: "" });
     }, 4000);
   }
-  async function copy(text) {
-    try {
-      if (navigator.clipboard?.writeText)
-        await navigator.clipboard.writeText(text);
-      else {
-        const input = document.createElement("textarea");
-        input.value = text;
-        input.style.position = "fixed";
-        input.style.opacity = "0";
-        document.body.append(input);
-        input.select();
-        const ok = document.execCommand("copy");
-        input.remove();
-        if (!ok) throw new Error("浏览器未允许复制，请长按文本选择复制。");
-      }
-      notice("已复制");
-    } catch (e) {
-      report(e);
-    }
+  function copy(text) {
+    return feedback
+      .track("clipboard-copy", async () => {
+        if (navigator.clipboard?.writeText)
+          await navigator.clipboard.writeText(text);
+        else {
+          const input = document.createElement("textarea");
+          input.value = text;
+          input.style.position = "fixed";
+          input.style.opacity = "0";
+          document.body.append(input);
+          input.select();
+          const ok = document.execCommand("copy");
+          input.remove();
+          if (!ok) throw new Error("浏览器未允许复制，请长按文本选择复制。");
+        }
+        notice("已复制");
+      })
+      .catch(report);
   }
   function openSubAgent(agent) {
     set({
@@ -112,7 +117,11 @@ export function createApplication() {
     },
   });
   const rpc = (method, params = {}, timeout) => {
-    if (!get().backends.length) return transport.rpc(method, params, timeout);
+    const request = (params) =>
+      feedback.track(rpcFeedbackKey(method, params), () =>
+        transport.rpc(method, params, timeout),
+      );
+    if (!get().backends.length) return request(params);
     const backendId =
       params.backendId ||
       (params.threadId
@@ -123,11 +132,7 @@ export function createApplication() {
       method.startsWith("lan/backends/") ||
       method.startsWith("lan/terminal/") ||
       method.startsWith("lan/providers/");
-    return transport.rpc(
-      method,
-      { ...(!global && { backendId }), ...params },
-      timeout,
-    );
+    return request({ ...(!global && { backendId }), ...params });
   };
   const goals = createGoals({
     get,
@@ -177,7 +182,7 @@ export function createApplication() {
     catalog,
     records,
     models,
-    report,
+    feedback,
   });
   const account = createAccount({ get, set, rpc, transport });
   const compaction = createCompaction({
@@ -231,12 +236,20 @@ export function createApplication() {
     activateBackend: backends.activateBackend,
     getSession: () => session,
   });
-  const session = createSession({ get, set, transport, connection, p2p });
+  const session = createSession({
+    get,
+    set,
+    transport,
+    connection,
+    p2p,
+    resetFeedback: feedback.reset,
+  });
   return {
     store,
     rpc,
     onEvent,
     report,
+    trackFeedback: feedback.track,
     notice,
     copy,
     openSubAgent,

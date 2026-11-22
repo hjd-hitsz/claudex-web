@@ -253,7 +253,7 @@ export function createThreadNavigation({
       revision === getConnectionRevision() &&
       get().connected &&
       get().threadAccess === checking;
-    set({ threadAccess: checking, error: "" });
+    set({ threadAccess: checking });
     let resumed = false;
     try {
       // 原生 Codex 分支创建已加载对话并返回同一组模型设置。
@@ -317,7 +317,8 @@ export function createThreadNavigation({
           return;
         const active = { ...get().active };
         const running = page.data.find((t) => t.status === "inProgress");
-        if (records.turnRevisions.get(id) === turnRevision) {
+        const unchanged = records.turnRevisions.get(id) === turnRevision;
+        if (unchanged) {
           if (resumed && running) active[id] = running.id;
           else if (
             page.data.some(
@@ -326,7 +327,17 @@ export function createThreadNavigation({
           )
             delete active[id];
         }
-        set({ turns: { ...get().turns, [id]: page.data }, active });
+        const live = get().turns[id] || [];
+        const liveIds = new Set(live.map((turn) => turn.id));
+        set({
+          turns: {
+            ...get().turns,
+            [id]: unchanged
+              ? page.data
+              : [...live, ...page.data.filter((turn) => !liveIds.has(turn.id))],
+          },
+          active,
+        });
       })
       .catch(() => {});
     return access.status === "ready";

@@ -8,6 +8,7 @@ import {
 } from "../domain/thread-order.js";
 import { nextForkTitle } from "../domain/fork-title.js";
 import { saved, persist } from "../infrastructure/storage.js";
+import { RpcConnectionError } from "../infrastructure/rpc-client.js";
 import { titleOf } from "../domain/format.js";
 export function createThreadCatalog({
   get,
@@ -35,7 +36,7 @@ export function createThreadCatalog({
     try {
       await refreshThreadList(epoch);
     } catch (error) {
-      if (epoch !== listing) return;
+      if (epoch !== listing || error instanceof RpcConnectionError) return;
       set({ threadListErrors: [{ message: error.message }] });
       throw error;
     } finally {

@@ -117,7 +117,7 @@ export function Composer({ inputRef }) {
     >
       <InputQueue />
       <GoalSummary />
-      {compaction && (
+      {compaction && !compaction.dismissed && (
         <CompactionStatus
           key={s.current?.id + compaction.id}
           entry={compaction}

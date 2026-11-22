@@ -224,7 +224,10 @@ export function createConnection({
     const accountEpoch = account.revision;
     const backendId = get().backendId;
     const epoch = navigation.opening;
-    const id = get().current?.id || localStorage.getItem("cx-current");
+    const id =
+      get().threadAccess?.threadId ||
+      get().current?.id ||
+      localStorage.getItem("cx-current");
     const current = () => revision === bootRevision && get().connected;
     try {
       if (get().backends.length) {
@@ -275,7 +278,12 @@ export function createConnection({
       if (!current()) return;
       // 初始化只恢复启动时的选择，保留期间新建、发送和切换的对话。
       if (epoch === navigation.opening && !get().busy) {
-        if (id && get().current?.id === id && !get().loading)
+        if (
+          id &&
+          get().current?.id === id &&
+          !get().loading &&
+          get().threadAccess?.status !== "loadError"
+        )
           await Promise.all([
             navigation.loadHistory(epoch),
             navigation.refreshThreadAccess({ background: true }),

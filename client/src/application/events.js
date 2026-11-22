@@ -215,17 +215,21 @@ export function createEvents({
         unreadCompletions,
       });
       if (get().current?.id === p.threadId) {
-        if (p.turn.error) report(p.turn.error);
         if (p.turn.status === "interrupted") notice("任务已停止");
+        const previous = get().turns[p.threadId] || [];
+        const existing = previous.some((entry) => entry.id === p.turn.id);
         set({
           turns: {
             ...get().turns,
-            [p.threadId]: [
-              p.turn,
-              ...(get().turns[p.threadId] || []).filter(
-                (t) => t.id !== p.turn.id,
-              ),
-            ],
+            [p.threadId]:
+              existing && !observedTurn
+                ? previous.map((entry) =>
+                    entry.id === p.turn.id ? p.turn : entry,
+                  )
+                : [
+                    p.turn,
+                    ...previous.filter((entry) => entry.id !== p.turn.id),
+                  ],
           },
         });
       }
@@ -262,7 +266,8 @@ export function createEvents({
           mode: p.threadSettings.collaborationMode.mode,
         }),
       });
-    if (method === "error") report(p.error || p.message || "任务失败");
+    if (method === "error" && !p.turnId && p.willRetry !== true)
+      report(p.error || p.message || "任务失败");
     if (method === "item/started" || method === "item/completed") {
       if (["contextCompaction", "reasoning"].includes(p.item.type)) {
         p.item = {

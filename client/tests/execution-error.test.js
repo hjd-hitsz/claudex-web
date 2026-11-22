@@ -70,6 +70,24 @@ test("latest failed turn restores its retry action after earlier successful turn
     assert.ok(retry);
     await act(async () => retry.props.onClick());
     assert.equal(patches[0].messageEditRequest.itemId, "input");
+    const state = globalThis.__executionErrorState;
+    async function update(patch) {
+      Object.assign(state, patch);
+      await act(async () =>
+        renderer.update(React.createElement(ExecutionError)),
+      );
+    }
+    await update({ active: { thread: "next-turn" } });
+    assert.equal(renderer.toJSON(), null);
+    await update({ active: {}, error: "保存文件失败" });
+    assert.match(JSON.stringify(renderer.toJSON()), /保存文件失败/);
+    assert.equal(
+      renderer.root
+        .findAllByType("button")
+        .some((button) => button.children.includes("编辑并重试")),
+      false,
+    );
+    await update({ error: "" });
     await act(async () =>
       renderer.root.findByProps({ title: "关闭错误提示" }).props.onClick(),
     );

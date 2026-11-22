@@ -13,6 +13,7 @@ const dirty = (buffer) => buffer != null && buffer.text !== buffer.original;
 export function createWorkspaceBuffers({
   get,
   rpc,
+  trackFeedback,
   confirmDiscard,
   report,
   notice,
@@ -160,14 +161,16 @@ export function createWorkspaceBuffers({
       const body = presentation
         ? null
         : decodeTextFile(
-            await readWorkspaceFile({
-              path,
-              backendId: target.backendId,
-              cwd: target.cwd,
-              providerId: target.providerId,
-              threadId: target.owner,
-              rpc,
-            }),
+            await trackFeedback("workspace-read:" + path, () =>
+              readWorkspaceFile({
+                path,
+                backendId: target.backendId,
+                cwd: target.cwd,
+                providerId: target.providerId,
+                threadId: target.owner,
+                rpc,
+              }),
+            ),
           );
       if (!current()) return;
       if (!canReplace(target.owner, buffer, message)) return;

@@ -1,11 +1,19 @@
 import { completePasswordLogin } from "../infrastructure/password-manager.js";
+import { RpcConnectionError } from "../infrastructure/rpc-client.js";
 import {
   forgetP2pToken,
   openP2pLoginStorage,
   readP2pToken,
 } from "../infrastructure/p2p-access.js";
 
-export function createSession({ get, set, transport, connection, p2p }) {
+export function createSession({
+  get,
+  set,
+  transport,
+  connection,
+  p2p,
+  resetFeedback,
+}) {
   let authRevision = 0;
   let authMutating = false;
   let p2pToken = "";
@@ -22,6 +30,7 @@ export function createSession({ get, set, transport, connection, p2p }) {
         transport.connect();
     } else {
       connection.reset();
+      resetFeedback();
       set({
         connected: false,
         usageLoading: false,
@@ -30,7 +39,7 @@ export function createSession({ get, set, transport, connection, p2p }) {
       });
       if (!p2p)
         transport.disconnect(
-          new Error("登录已结束；已提交的任务会在电脑上继续。"),
+          new RpcConnectionError("登录已结束，未收到请求结果。", true),
         );
     }
   }

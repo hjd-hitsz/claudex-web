@@ -10,13 +10,12 @@ export function mergeCompactions(current, incoming = {}) {
   const entries = { ...current };
   for (const [threadId, entry] of Object.entries(incoming)) {
     const previous = current[threadId];
-    if (
-      isCompacting(entry) ||
-      (previous &&
-        (previous.id === entry.id ||
-          (previous.turnId && previous.turnId === entry.turnId)))
-    )
-      entries[threadId] = entry;
+    const sameTask =
+      previous &&
+      (previous.id === entry.id ||
+        (previous.turnId && previous.turnId === entry.turnId));
+    if (sameTask && previous.dismissed) continue;
+    if (isCompacting(entry) || sameTask) entries[threadId] = entry;
   }
   return entries;
 }

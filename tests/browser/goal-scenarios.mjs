@@ -73,11 +73,11 @@ export async function runGoalScenarios({
   );
   await screenshot("goal-save-failure");
   await evaluate(`commandFixture.failGoal(false)`);
-  await click('button[title="关闭错误提示"]');
   await click('button[aria-label="发送消息"]');
   await waitFor(
     `document.querySelector('.goal-summary')?.textContent.includes('新目标完成条件')`,
   );
+  await waitFor(`!document.querySelector('.error-banner')`);
   await screenshot("goal-created");
 }
 

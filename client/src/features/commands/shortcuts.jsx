@@ -285,12 +285,14 @@ export function useComposerShortcuts(area) {
         )
           store.setDraft(text);
       }
-      runComposerCommand(commandText, { onFailure: restoreDraft }).catch(
-        (error) => {
+      store
+        .trackFeedback("composer-submit", () =>
+          runComposerCommand(commandText, { onFailure: restoreDraft }),
+        )
+        .catch((error) => {
           restoreDraft();
           store.report(error);
-        },
-      );
+        });
       return;
     }
     if (item.kind === "skill" && t.kind === "/") {

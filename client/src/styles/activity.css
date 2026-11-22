@@ -240,6 +240,9 @@
   background: var(--green);
   flex: none;
 }
+.working-status .pulse-dot[data-retrying="true"] {
+  background: var(--muted);
+}
 .scroll-bottom {
   position: absolute;
   bottom: 10px;

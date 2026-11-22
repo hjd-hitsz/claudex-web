@@ -2,12 +2,12 @@ import React from "react";
 import { Square, TerminalSquare } from "lucide-react";
 
 export function BackgroundTaskList({ tasks, stopping, error, stop, onSelect }) {
-  if (!tasks.length) return null;
+  if (!tasks.length && !error) return null;
   return (
     <section className="context-background-tasks" aria-label="后台终端">
       <div className="context-section-heading">
         <strong>后台终端</strong>
-        <small>{tasks.length} 个运行中</small>
+        {tasks.length > 0 && <small>{tasks.length} 个运行中</small>}
       </div>
       <ul>
         {tasks.map((task) => (

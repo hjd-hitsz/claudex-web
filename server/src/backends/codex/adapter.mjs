@@ -35,6 +35,7 @@ export function createCodexAdapter({
   config = { ...config, upstreamUrl: backend.url, codexHome: backend.dataDir };
   const questions = new Map();
   const activeTurns = new Map();
+  const executionStatuses = new Map();
   const activeThreads = new Set();
   const terminals = new Map();
   const compactions = createCompactions(broadcast);
@@ -67,6 +68,7 @@ export function createCodexAdapter({
       threadNaming.clear();
       questions.clear();
       activeTurns.clear();
+      executionStatuses.clear();
       activeThreads.clear();
       streamingMessages.clear();
       handoff.disconnected();
@@ -131,6 +133,7 @@ export function createCodexAdapter({
   const events = createBridgeEvents({
     questions,
     activeTurns,
+    executionStatuses,
     activeThreads,
     terminals,
     ...subscriptions,
@@ -178,6 +181,7 @@ export function createCodexAdapter({
         ready: transport.ready,
         questions: [...questions.values()],
         activeTurns: Object.fromEntries(activeTurns),
+        executionStatuses: Object.fromEntries(executionStatuses),
         compactions: Object.fromEntries(compactions.entries),
         terminals: Object.fromEntries(terminals),
         undoneFiles: [...files.undoneFiles.values()],

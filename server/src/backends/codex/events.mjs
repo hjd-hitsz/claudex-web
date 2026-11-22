@@ -1,8 +1,29 @@
 import WebSocket from "ws";
 import { threadMethods } from "./methods.mjs";
+
+const modelItems = new Set(["agentMessage", "plan", "reasoning"]);
+const modelProgress = new Set([
+  "item/agentMessage/delta",
+  "item/plan/delta",
+  "item/reasoning/summaryPartAdded",
+  "item/reasoning/summaryTextDelta",
+  "item/reasoning/textDelta",
+]);
+// 已启动的工具仍可独立输出和结束，新的工具调用才表明模型恢复进展。
+const modelToolStarts = new Set([
+  "commandExecution",
+  "fileChange",
+  "mcpToolCall",
+  "dynamicToolCall",
+  "collabAgentToolCall",
+  "webSearch",
+  "imageGeneration",
+]);
+
 export function createBridgeEvents({
   questions,
   activeTurns,
+  executionStatuses,
   activeThreads,
   terminals,
   subscriptions,
@@ -18,7 +39,41 @@ export function createBridgeEvents({
 }) {
   function onEvent(message) {
     if (message.id !== undefined) questions.set(String(message.id), message);
+    const { method } = message;
     const p = message.params || {};
+    if (method === "error" && p.willRetry === true) {
+      if (p.turnId && activeTurns.get(p.threadId) === p.turnId) {
+        const status = {
+          turnId: p.turnId,
+          kind: "retrying",
+          message: p.error?.message || "正在重试模型请求…",
+        };
+        executionStatuses.set(p.threadId, status);
+        broadcast({
+          method: "lan/executionStatus",
+          params: { threadId: p.threadId, ...status },
+        });
+      }
+      return;
+    }
+    if (
+      p.turnId &&
+      executionStatuses.get(p.threadId)?.turnId === p.turnId &&
+      (method === "error" ||
+        modelProgress.has(method) ||
+        (method === "item/started" &&
+          (modelItems.has(p.item?.type) ||
+            modelToolStarts.has(p.item?.type))) ||
+        (method === "item/completed" &&
+          (modelItems.has(p.item?.type) ||
+            p.item?.type === "contextCompaction")))
+    ) {
+      executionStatuses.delete(p.threadId);
+      broadcast({
+        method: "lan/executionStatus",
+        params: { threadId: p.threadId, turnId: p.turnId, kind: "working" },
+      });
+    }
     if (
       ["thread/name/updated", "thread/deleted", "thread/archived"].includes(
         message.method,
@@ -26,6 +81,8 @@ export function createBridgeEvents({
     )
       threadNaming.cancel(p.threadId);
     if (message.method === "turn/started") {
+      if (executionStatuses.get(p.threadId)?.turnId !== p.turn.id)
+        executionStatuses.delete(p.threadId);
       activeTurns.set(p.threadId, p.turn.id);
       activeThreads.add(p.threadId);
       unwrittenThreads.delete(p.threadId);
@@ -37,6 +94,7 @@ export function createBridgeEvents({
     ) {
       activeTurns.delete(p.threadId);
       activeThreads.delete(p.threadId);
+      executionStatuses.delete(p.threadId);
     }
     if (message.method === "thread/status/changed") {
       if (p.status.type === "active") activeThreads.add(p.threadId);
@@ -55,6 +113,7 @@ export function createBridgeEvents({
       updateGoal(p.threadId, null);
       activeThreads.delete(p.threadId);
       activeTurns.delete(p.threadId);
+      executionStatuses.delete(p.threadId);
       if (message.method !== "thread/closed")
         compactions.entries.delete(p.threadId);
     }

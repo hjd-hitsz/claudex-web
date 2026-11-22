@@ -33,6 +33,7 @@ import {
   get,
   set,
   rpc,
+  trackFeedback,
   report,
   notice,
   basename,
@@ -49,6 +50,7 @@ export function FilePanel() {
     createWorkspaceBuffers({
       get,
       rpc,
+      trackFeedback,
       report,
       notice,
       confirmDiscard: (message) => window.confirm(message),

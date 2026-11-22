@@ -1,5 +1,9 @@
 import { isCompacting, recoverCompaction } from "../domain/compaction.js";
 import { uid } from "../domain/format.js";
+import {
+  RpcConnectionError,
+  RpcTimeoutError,
+} from "../infrastructure/rpc-client.js";
 export function createCompaction({
   get,
   set,
@@ -25,29 +29,27 @@ export function createCompaction({
       status: "starting",
       startedAt: Date.now() / 1000,
     };
-    set({ compactions: { ...get().compactions, [t.id]: entry }, error: "" });
+    set({ compactions: { ...get().compactions, [t.id]: entry } });
     try {
       await rpc("thread/compact/start", { threadId: t.id });
     } catch (error) {
       const latest = get().compactions[t.id];
+      const unconfirmed =
+        error instanceof RpcTimeoutError ||
+        (error instanceof RpcConnectionError && error.sent);
       if (latest?.id === entry.id && isCompacting(latest))
         set({
           compactions: {
             ...get().compactions,
             [t.id]: {
               ...latest,
-              status: /超时|连接中断/.test(error.message)
-                ? "reconnecting"
-                : "failed",
+              status: unconfirmed ? "reconnecting" : "failed",
               error: error.message,
-              ...(!/超时|连接中断/.test(error.message) && {
-                completedAt: Date.now() / 1000,
-              }),
+              ...(!unconfirmed && { completedAt: Date.now() / 1000 }),
             },
           },
         });
-      if (get().current?.id !== t.id) return false;
-      throw error;
+      return false;
     }
   }
   function refreshCompaction(threadId = get().current?.id) {

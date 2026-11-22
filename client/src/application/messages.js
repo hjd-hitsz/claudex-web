@@ -24,8 +24,9 @@ export function createMessages({
   catalog,
   records,
   models,
-  report,
+  feedback,
 }) {
+  const { report } = feedback;
   const editing = createMessageEditing({ get, set, rpc, navigation });
   function put(item) {
     const index = get().items.findIndex((i) => i.id === item.id);
@@ -56,13 +57,13 @@ export function createMessages({
     const previous = get().items.find((entry) => entry.id === item.id);
     put({ ...item, answers: answers || previous?.answers });
   }
-  function respond(request, result, error) {
+  function respond(request, result, error, onFailure = report) {
     try {
       if (
         !get().connected ||
-        transport.connection.readyState !== WebSocket.OPEN
+        transport.connection?.readyState !== WebSocket.OPEN
       )
-        throw new Error("连接尚未就绪，请等待重连后提交回答。");
+        throw new Error("回答提交时连接尚未就绪，请重试。");
       if (!get().questions.some((q) => String(q.id) === String(request.id)))
         throw new Error("此请求已结束，请查看最新消息。");
       transport.connection.send(
@@ -76,7 +77,7 @@ export function createMessages({
       });
       return true;
     } catch (error) {
-      report(error);
+      onFailure(error);
       return false;
     }
   }
@@ -99,6 +100,7 @@ export function createMessages({
       annotations = [],
       replace,
       implementation,
+      onFailure,
     } = {},
   ) {
     if (
@@ -114,7 +116,8 @@ export function createMessages({
     const submission = get();
     const epoch = navigation.opening;
     const attachmentDraft = navigation.getAttachmentDraft();
-    set({ busy: true, error: "" });
+    const attempt = feedback.start("send-message");
+    set({ busy: true });
     let thread;
     try {
       if (replace && get().current?.id !== replace.threadId) return false;
@@ -245,17 +248,18 @@ export function createMessages({
       if (replace) editing.finish(replace);
       if (!get().threads.some((entry) => entry.id === thread.id))
         catalog.loadThreads().catch(() => {});
+      feedback.resolve(attempt);
       return true;
     } catch (e) {
       if (get().current?.id === thread?.id)
         set({ items: get().items.filter((i) => !i.optimistic) });
       if (/already has an active writer/i.test(e.message)) {
         if (get().current?.id === thread?.id)
-          set({
-            threadAccess: { threadId: thread.id, status: "blocked" },
-            error: "",
-          });
-      } else if (epoch === navigation.opening) report(e);
+          set({ threadAccess: { threadId: thread.id, status: "blocked" } });
+      } else if (epoch === navigation.opening) {
+        if (onFailure) onFailure(e);
+        else report(e, attempt);
+      }
       return false;
     } finally {
       if (replace) editing.release(replace);

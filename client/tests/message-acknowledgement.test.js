@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMessages } from "../src/application/messages.js";
+import { createErrorFeedback } from "../src/application/error-feedback.js";
 
 for (const acknowledgedStatus of ["queued", "inProgress"]) {
   for (const finishedBeforeAck of [false, true]) {
@@ -71,9 +72,7 @@ for (const acknowledgedStatus of ["queued", "inProgress"]) {
               });
           },
         },
-        report: (e) => {
-          throw e;
-        },
+        feedback: createErrorFeedback({ get, set, opening: () => 1 }),
         rpc: async (method, params) => {
           assert.equal(method, "turn/start");
           assert.equal(params.providerId, "");

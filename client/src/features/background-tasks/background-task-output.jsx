@@ -20,27 +20,30 @@ export function BackgroundTaskOutput({ task }) {
   const [error, setError] = useState("");
   const [following, setFollowing] = useState(true);
   const [frozen, setFrozen] = useState("");
-  const [retry, setRetry] = useState(false);
+  const [retry, setRetry] = useState(0);
   const scroll = useRef(null);
   const status = result?.status || task.status;
-  useBackgroundPoll(connected && (!error || retry), 1000, async (current) => {
-    try {
-      const next = await rpc("thread/backgroundTasks/read", {
-        threadId: task.threadId,
-        taskId: task.id,
-      });
-      if (!current()) return true;
-      setResult(next);
-      setError("");
-      setRetry(false);
-      return next.status !== "running";
-    } catch (failure) {
-      if (!current()) return true;
-      setError(failure.message);
-      setRetry(false);
-      return true;
-    }
-  });
+  useBackgroundPoll(
+    connected,
+    1000,
+    async (current) => {
+      try {
+        const next = await rpc("thread/backgroundTasks/read", {
+          threadId: task.threadId,
+          taskId: task.id,
+        });
+        if (!current()) return true;
+        setResult(next);
+        setError("");
+        return next.status !== "running";
+      } catch (failure) {
+        if (!current()) return true;
+        setError(failure.message);
+        return true;
+      }
+    },
+    retry,
+  );
   const output = following ? result?.output : frozen;
   useLayoutEffect(() => {
     if (following && scroll.current)
@@ -114,7 +117,7 @@ export function BackgroundTaskOutput({ task }) {
           <button
             type="button"
             className="secondary"
-            onClick={() => setRetry(true)}
+            onClick={() => setRetry((attempt) => attempt + 1)}
           >
             重试
           </button>

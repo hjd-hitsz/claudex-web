@@ -294,15 +294,15 @@ async function executeCommand(text) {
   return true;
 }
 
-export async function submitComposer() {
+export function submitComposer() {
   if (isCompacting(store.get().compactions[store.get().current?.id])) return;
-  try {
-    const s = store.get();
-    const annotations = readAnnotationDrafts(s.current?.id);
-    if (!annotations.length && (await runComposerCommand(s.draft))) return;
-    if (s.goalMode) await store.submitGoal();
-    else await store.sendMessage(s.draft, s.attachments, { annotations });
-  } catch (error) {
-    store.report(error);
-  }
+  return store
+    .trackFeedback("composer-submit", async () => {
+      const s = store.get();
+      const annotations = readAnnotationDrafts(s.current?.id);
+      if (!annotations.length && (await runComposerCommand(s.draft))) return;
+      if (s.goalMode) await store.submitGoal();
+      else await store.sendMessage(s.draft, s.attachments, { annotations });
+    })
+    .catch(store.report);
 }

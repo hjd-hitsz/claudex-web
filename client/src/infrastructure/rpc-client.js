@@ -1,6 +1,14 @@
 import { fullAccessParams } from "../domain/execution-policy.js";
 import { MAX_RPC_MESSAGE_BYTES } from "../../../shared/rpc-limits.mjs";
 
+export class RpcConnectionError extends Error {
+  constructor(message, sent = false) {
+    super(message);
+    this.sent = sent;
+  }
+}
+export class RpcTimeoutError extends Error {}
+
 // 每个实例独立持有连接和待完成请求，替换连接后丢弃旧连接的响应。
 export function createRpcClient({
   isConnected,
@@ -28,7 +36,7 @@ export function createRpcClient({
   function rpc(method, params = {}, timeout = 120000) {
     return new Promise((resolve, reject) => {
       if (!isConnected() || connection?.readyState !== WebSocket.OPEN)
-        return reject(new Error("与电脑的连接尚未就绪，正在自动重连。"));
+        return reject(new RpcConnectionError("请求发送时连接尚未就绪。"));
       const id = sequence++;
       const message = JSON.stringify({
         id,
@@ -42,7 +50,7 @@ export function createRpcClient({
       const timer = timeout
         ? setTimeout(() => {
             pending.delete(id);
-            reject(new Error("请求等待超时，请刷新会话查看任务状态。"));
+            reject(new RpcTimeoutError("请求等待超时，请核对操作结果后重试。"));
           }, timeout)
         : null;
       pending.set(id, {
@@ -65,7 +73,8 @@ export function createRpcClient({
 
   function connect({ beforeAuthentication = false } = {}) {
     if (!beforeAuthentication && !authenticated()) return;
-    if (connection) disconnect(new Error("连接已更新，请在新连接就绪后重试。"));
+    if (connection)
+      disconnect(new RpcConnectionError("连接已更新，未收到请求结果。", true));
     const socket = createSocket();
     connection = socket;
     socket.onopen = () => {
@@ -90,7 +99,7 @@ export function createRpcClient({
     socket.onclose = (event) => {
       if (connection !== socket) return;
       rejectPending(
-        new Error("连接中断，正在重连；已提交的任务会在电脑上继续。"),
+        new RpcConnectionError("连接已中断，未收到请求结果。", true),
       );
       onClose(event, socket);
     };

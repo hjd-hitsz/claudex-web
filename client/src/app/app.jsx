@@ -191,7 +191,7 @@ function AppShell() {
         />
         <ServiceUpdateNotice settingsOpen={settingsOpen} />
         {!connected && (
-          <div className="connection-banner">
+          <div className="connection-banner" role="status">
             <LoaderCircle size={14} className="spin" />
             正在连接…
           </div>

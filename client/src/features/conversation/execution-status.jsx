@@ -10,7 +10,7 @@ export function ExecutionStatus({ status }) {
   const seconds = Math.max(0, Math.ceil(((status?.retryAt || 0) - now) / 1000));
   return (
     <div className="working-status" role="status">
-      <span className="pulse-dot" />
+      <span className="pulse-dot" data-retrying={status?.kind === "retrying"} />
       {status?.message || "正在工作"}
       {status?.kind === "retrying" &&
         (seconds > 0 ? ` ${seconds} 秒后重试` : "")}

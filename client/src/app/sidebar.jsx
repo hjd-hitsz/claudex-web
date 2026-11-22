@@ -97,7 +97,7 @@ export function Sidebar({ drawerOpen, onClose, onShowMaintenance }) {
           <ThreadListErrors
             backends={s.backends}
             errors={s.threadListErrors}
-            loading={s.threadListLoading}
+            loading={s.threadListLoading || !s.connected}
             onRetry={() => loadThreads().catch(report)}
           />
           {shortcuts.length > 0 && (

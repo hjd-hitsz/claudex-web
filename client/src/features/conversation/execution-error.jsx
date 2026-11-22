@@ -6,28 +6,27 @@ import { IconButton } from "../../ui/primitives.jsx";
 export function ExecutionError() {
   const s = useStore();
   const threadId = s.current?.id;
-  const turn = s.turns[threadId]?.[0];
-  const [dismissed, dismiss] = useState("");
+  const turn = s.active[threadId] ? null : s.turns[threadId]?.[0];
+  const [dismissed, dismiss] = useState({});
   const failureId =
     turn?.status === "failed" && s.compactions[threadId]?.turnId !== turn.id
       ? `${threadId}:${turn.id}`
       : "";
-  const message =
-    s.error ||
-    (failureId && failureId !== dismissed
-      ? turn.error?.message || "任务失败，请重试。"
-      : "");
-  const user =
-    turn?.status === "failed"
-      ? s.items.find(
-          (item) => item.turnId === turn.id && item.type === "userMessage",
-        )
-      : null;
+  const showTurnFailure =
+    !s.error && failureId && failureId !== dismissed[threadId];
+  const message = showTurnFailure
+    ? turn.error?.message || "任务失败，请重试。"
+    : s.error;
+  const user = showTurnFailure
+    ? s.items.find(
+        (item) => item.turnId === turn.id && item.type === "userMessage",
+      )
+    : null;
   if (!message) return null;
   return (
     <div className="error-banner" role="alert">
       <span>{message}</span>
-      {user && !s.active[threadId] && (
+      {user && (
         <button
           type="button"
           className="secondary"
@@ -50,8 +49,9 @@ export function ExecutionError() {
         icon={X}
         title="关闭错误提示"
         onClick={() => {
-          dismiss(failureId);
-          set({ error: "" });
+          if (showTurnFailure)
+            dismiss((previous) => ({ ...previous, [threadId]: failureId }));
+          else set({ error: "" });
         }}
       />
     </div>

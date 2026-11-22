@@ -5,6 +5,7 @@ import {
   sortThreads,
 } from "../domain/thread-order.js";
 import { visibleBackendThreads } from "../domain/backend-visibility.js";
+import { RpcConnectionError } from "../infrastructure/rpc-client.js";
 import React, { useState, useEffect, useRef } from "react";
 
 import {
@@ -45,6 +46,10 @@ export function SearchDialog() {
     s.active,
   ).slice(0, 60);
   useEffect(() => {
+    if (!s.connected) {
+      load(false);
+      return;
+    }
     const n = ++epoch.current;
     const params = { archived: s.archived, searchTerm: q || undefined };
     let failures = [];
@@ -71,7 +76,8 @@ export function SearchDialog() {
           );
         })
         .catch((error) => {
-          if (n !== epoch.current) return;
+          if (n !== epoch.current || error instanceof RpcConnectionError)
+            return;
           setErrors([{ message: error.message }]);
           update((previous) =>
             preserveFailedBackendThreads(
@@ -91,7 +97,7 @@ export function SearchDialog() {
       clearTimeout(timer);
       epoch.current++;
     };
-  }, [q, s.archived, attempt, enabledKey]);
+  }, [q, s.archived, s.connected, attempt, enabledKey]);
   return (
     <>
       <label className="search-input">
@@ -107,7 +113,7 @@ export function SearchDialog() {
       <ThreadListErrors
         backends={s.backends}
         errors={errors}
-        loading={loading}
+        loading={loading || !s.connected}
         onRetry={() => retry((value) => value + 1)}
       />
       <div className="search-results">
@@ -127,9 +133,10 @@ export function SearchDialog() {
             <ChevronRight size={14} />
           </button>
         ))}
-        {!visibleResults.length && !loading && !errors.length && (
-          <Empty icon={Search} title="没有找到对话" />
-        )}
+        {s.connected &&
+          !visibleResults.length &&
+          !loading &&
+          !errors.length && <Empty icon={Search} title="没有找到对话" />}
       </div>
     </>
   );

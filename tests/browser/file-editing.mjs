@@ -332,14 +332,17 @@ try {
     await page.evaluate(() => (fileFixture.fail = true));
     await page.keyboard.press("Control+s");
     await page.getByText("模拟文件保存失败", { exact: true }).waitFor();
+    assert.equal(await page.locator(".toast").count(), 0);
     assert.equal(await save.isEnabled(), true);
     assert.match(await editor.innerText(), /失败后保留/);
+    await page.screenshot({ path: join(output, "save-failed.png") });
     await page.evaluate(() => (fileFixture.fail = false));
     await page.keyboard.press("Control+s");
     await page.waitForFunction(
       () => document.querySelector('[aria-label="保存文件"]').disabled,
     );
-    await page.locator(".error-banner button").click();
+    await page.locator(".error-banner").waitFor({ state: "hidden" });
+    await page.screenshot({ path: join(output, "save-recovered.png") });
     await page.waitForFunction(() => !document.querySelector(".toast"));
     await page
       .getByRole("button", { name: "关闭文件面板", exact: true })

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { refreshBackgroundResults, rpc } from "../../store.js";
 import { useBackgroundPoll } from "./use-background-poll.js";
 
-const empty = { tasks: [], stopping: null, error: "" };
+const empty = { tasks: [], stopping: null, readError: "", stopError: null };
 
 export function useBackgroundTasks(threadId, enabled) {
   const scope = useMemo(
@@ -29,7 +29,13 @@ export function useBackgroundTasks(threadId, enabled) {
           { threadId },
         );
         if (!current()) return;
-        update(() => ({ tasks, error: "" }));
+        update(({ stopError }) => ({
+          tasks,
+          readError: "",
+          stopError: tasks.some((task) => task.id === stopError?.id)
+            ? stopError
+            : null,
+        }));
         for (const task of tasks) scope.watched.add(task.id);
         const pending = completed
           .filter(
@@ -48,25 +54,30 @@ export function useBackgroundTasks(threadId, enabled) {
             }
         }
       } catch (failure) {
-        if (current()) update(() => ({ error: failure.message }));
+        if (current()) update(() => ({ readError: failure.message }));
       }
     },
     scope,
   );
 
   async function stop(task) {
-    update(() => ({ stopping: task.id, error: "" }));
+    update(() => ({ stopping: task.id, stopError: null }));
     try {
       await rpc("thread/backgroundTasks/cancel", { threadId, taskId: task.id });
       update(({ tasks }) => ({
         tasks: tasks.filter((entry) => entry.id !== task.id),
       }));
     } catch (failure) {
-      update(() => ({ error: failure.message }));
+      update(() => ({ stopError: { id: task.id, message: failure.message } }));
     } finally {
       update(() => ({ stopping: null }));
     }
   }
 
-  return { ...state, stop };
+  return {
+    tasks: state.tasks,
+    stopping: state.stopping,
+    error: state.stopError?.message || state.readError,
+    stop,
+  };
 }

@@ -17,6 +17,13 @@ export function CompactionStatus({ entry }) {
   const working = isCompacting(entry);
   const [checking, setChecking] = useState(false);
   const threadId = s.current?.id;
+  const executionStatus = s.executionStatuses[threadId];
+  const retryMessage =
+    entry.status === "running" &&
+    executionStatus?.kind === "retrying" &&
+    executionStatus.turnId === entry.turnId
+      ? executionStatus.message
+      : "";
   useEffect(() => {
     if (!working || !s.connected) return;
     const check = () => {
@@ -57,7 +64,7 @@ export function CompactionStatus({ entry }) {
       )}
       <div className="compaction-status-content">
         <strong>
-          {titles[entry.status]}
+          {retryMessage || titles[entry.status]}
           {entry.status === "failed" && entry.error ? `：${entry.error}` : ""}
         </strong>
         <ProcessDuration timing={entry} working={working} />
@@ -94,7 +101,9 @@ export function CompactionStatus({ entry }) {
           title="关闭整理状态"
           onClick={() => {
             const entries = { ...get().compactions };
-            delete entries[s.current.id];
+            if (entry.status === "failed" && entry.turnId)
+              entries[threadId] = { ...entry, dismissed: true };
+            else delete entries[threadId];
             set({ compactions: entries });
           }}
         />

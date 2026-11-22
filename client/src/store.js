@@ -27,6 +27,7 @@ export const {
   updateGoal,
   submitGoal,
   report,
+  trackFeedback,
   notice,
   listThreads,
   rpc,

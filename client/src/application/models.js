@@ -94,7 +94,9 @@ export function createModelPreferences({ get, set, rpc, transport, report }) {
       }
     })()
       .catch((error) => {
-        throw new Error("项目模型设置保存失败：" + error.message);
+        throw new Error("项目模型设置保存失败：" + error.message, {
+          cause: error,
+        });
       })
       .finally(() => {
         if (projectModelsWriting.get(backendId) === writing)
