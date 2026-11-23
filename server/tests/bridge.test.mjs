@@ -477,8 +477,21 @@ test(
       diagramScript.headers.get("content-type"),
       "text/javascript; charset=utf-8",
     );
-    assert.equal(diagramScript.headers.get("cache-control"), "no-store");
+    assert.equal(
+      diagramScript.headers.get("cache-control"),
+      "public, no-cache",
+    );
+    const diagramEtag = diagramScript.headers.get("etag");
+    assert.ok(diagramEtag);
     assert.equal(await diagramScript.text(), "export const diagram = 1;");
+    assert.equal(
+      (
+        await fetch(url + "/mermaid.core.js", {
+          headers: { "If-None-Match": diagramEtag },
+        })
+      ).status,
+      304,
+    );
     await writeFile(
       join(files, "mermaid.core.js"),
       "export const diagram = 2;",

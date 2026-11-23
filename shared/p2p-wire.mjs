@@ -4,6 +4,7 @@ const frameSize = 16 * 1024;
 const maxJsonBytes = 64 * 1024;
 export const MAX_P2P_BODY_BYTES = 512 * 1024;
 export const P2P_STREAM_CHUNK_BYTES = 64 * 1024;
+export const P2P_STREAM_CREDIT_WINDOW = 8;
 const bufferLimit = 256 * 1024;
 const maxQueueBytes = 2 * MAX_RPC_MESSAGE_BYTES;
 const encoder = new TextEncoder();

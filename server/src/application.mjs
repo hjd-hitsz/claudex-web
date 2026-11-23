@@ -33,33 +33,42 @@ export function createWebApplication({
   const clients = new WebSocketServer({ noServer: true });
   const monitors = new WebSocketServer({ noServer: true });
   const peers = new Set();
-  function send(client, message) {
-    if (
-      (client.authLinkId || client.authSessionId) &&
-      !authentication.valid(
+  function canSend(client) {
+    return (
+      (!client.authLinkId && !client.authSessionId) ||
+      authentication.valid(
         client.authSessionId,
         client.authLinkId,
         client.authLocal,
       )
-    )
-      return;
-    const text = JSON.stringify(message);
+    );
+  }
+  function sendText(client, text) {
     if (client.authLinkId) client.send(text);
     else sendRpcText(client, text);
   }
+  function send(client, message) {
+    if (canSend(client)) sendText(client, JSON.stringify(message));
+  }
   function broadcast(message) {
-    for (const client of clients.clients) send(client, message);
-    for (const peer of peers) send(peer, message);
+    let text;
+    for (const group of [clients.clients, peers])
+      for (const client of group)
+        if (canSend(client))
+          sendText(client, (text ??= JSON.stringify(message)));
     if (
+      monitors.clients.size &&
       [
         "lan/state",
         "lan/compaction",
         "turn/started",
         "turn/completed",
       ].includes(message.method)
-    )
+    ) {
+      const state = JSON.stringify(bridge.maintenanceState());
       for (const monitor of monitors.clients)
-        send(monitor, bridge.maintenanceState());
+        if (canSend(monitor)) sendText(monitor, state);
+    }
   }
   const bridge = createBackendManager({ config, version, send, broadcast });
   const { state, maintenanceState, releaseUnusedThreads } = bridge;

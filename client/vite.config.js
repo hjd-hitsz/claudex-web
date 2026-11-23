@@ -7,6 +7,8 @@ import { readVersion } from "../server/src/version.mjs";
 import { readConfig } from "../server/src/config.mjs";
 import { readTls, localTlsClient } from "../server/src/tls.mjs";
 
+const font = /\.(?:woff2?|ttf)$/i;
+
 export default defineConfig(async ({ mode, command }) => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const env = loadEnv(mode, root, "");
@@ -41,15 +43,18 @@ export default defineConfig(async ({ mode, command }) => {
     },
     build: {
       cssCodeSplit: false,
-      assetsInlineLimit: Infinity,
+      assetsInlineLimit: (path) => !font.test(path),
       rollupOptions: {
         output: {
           entryFileNames: "app.js",
           chunkFileNames: "[name].js",
-          assetFileNames: (asset) =>
-            asset.names?.some((n) => n.endsWith(".css"))
-              ? "style.css"
-              : "[name][extname]",
+          assetFileNames(asset) {
+            if (asset.names.some((name) => name.endsWith(".css")))
+              return "style.css";
+            if (asset.names.some((name) => font.test(name)))
+              return "font-[hash][extname]";
+            return "[name][extname]";
+          },
         },
       },
     },
