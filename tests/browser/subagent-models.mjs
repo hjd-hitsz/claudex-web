@@ -91,6 +91,13 @@ const data = {
         "shared-model": { supportedEffortLevels: ["low", "high"] },
       },
     },
+    {
+      id: "third",
+      backendId: "claude",
+      name: "同名模型供应商",
+      models: ["shared-model"],
+      modelAliases: { "shared-model": "同名模型" },
+    },
   ],
 };
 const server = http.createServer(async (req, res) => {
@@ -154,6 +161,7 @@ try {
     exact: true,
   });
   const codexCard = page.locator(".backend-card").filter({ has: codex });
+  const claudeCard = page.locator(".backend-card").filter({ has: claude });
   const generations = codexCard.getByRole("table", { name: "显示的模型" });
   await generations.waitFor();
   assert.deepEqual(
@@ -172,7 +180,7 @@ try {
     has: page.getByRole("rowheader", { name: "GPT-6.2", exact: true }),
   });
   const astra = row.getByRole("cell").nth(0).getByRole("checkbox", {
-    name: "GPT-6.2-Astra",
+    name: "ChatGPT/GPT-6.2-Astra",
   });
   const absentTerra = row.getByRole("cell").nth(2);
   assert.equal(await absentTerra.getByRole("checkbox").count(), 0);
@@ -203,12 +211,14 @@ try {
   );
   await astra.press("Space");
   await astra.and(page.locator("input:checked")).waitFor();
-  await codexCard.getByRole("checkbox", { name: "gpt", exact: true }).uncheck();
+  await codexCard
+    .getByRole("checkbox", { name: "ChatGPT/gpt", exact: true })
+    .uncheck();
   assert.equal(
     await codex
       .getByLabel("子代理模型", { exact: true })
       .locator("option")
-      .filter({ hasText: /^ChatGPT \/ gpt$/ })
+      .filter({ hasText: /^ChatGPT\/gpt$/ })
       .count(),
     0,
   );
@@ -240,7 +250,7 @@ try {
     window.blockSubagentRefresh = false;
   });
   await codexCard
-    .getByRole("checkbox", { name: "Second Model", exact: true })
+    .getByRole("checkbox", { name: "ChatGPT/Second Model", exact: true })
     .uncheck();
   assert.equal(
     await codex.getByLabel("子代理模型", { exact: true }).inputValue(),
@@ -256,7 +266,7 @@ try {
   );
   await page.screenshot({ path: join(output, "hidden-selected-model.png") });
   await codexCard
-    .getByRole("checkbox", { name: "Second Model", exact: true })
+    .getByRole("checkbox", { name: "ChatGPT/Second Model", exact: true })
     .check();
   assert.equal(
     await codex.getByLabel("子代理模型", { exact: true }).inputValue(),
@@ -301,13 +311,64 @@ try {
   await page.evaluate(() => {
     window.blockSubagentRefresh = false;
   });
+  const claudeModels = claudeCard.getByRole("region", { name: "显示的模型" });
+  const hiddenChoice = claudeModels.getByRole("checkbox", {
+    name: "另一家供应商/同名模型",
+    exact: true,
+  });
+  const otherChoice = claudeModels.getByRole("checkbox", {
+    name: "同名模型供应商/同名模型",
+    exact: true,
+  });
+  const all = claudeModels.getByRole("checkbox", { name: "全选" });
+  await hiddenChoice.uncheck();
+  assert.equal(
+    await claude.getByRole("option", { name: "已选模型已隐藏" }).count(),
+    1,
+  );
+  assert.equal(
+    await claude.getByRole("option", { name: "另一家供应商/同名模型" }).count(),
+    0,
+  );
+  assert.equal(
+    await claude
+      .getByRole("option", { name: "同名模型供应商/同名模型" })
+      .count(),
+    1,
+  );
+  assert.ok(await otherChoice.isChecked());
+  assert.ok(await all.evaluate((input) => input.indeterminate));
+  await claudeModels.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(output, "claude-model-hidden.png") });
+  await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
+  await page
+    .getByRole("button", { name: "在当前目录新建对话", exact: true })
+    .click();
+  const candidates = page.getByLabel("模型", { exact: true }).locator("option");
+  assert.ok(
+    (await candidates.allTextContents()).includes("同名模型供应商/同名模型"),
+  );
+  assert.ok(
+    !(await candidates.allTextContents()).includes("另一家供应商/同名模型"),
+  );
+  await page.reload();
+  await open();
+  await hiddenChoice.waitFor();
+  assert.equal(await hiddenChoice.isChecked(), false);
+  assert.ok(await otherChoice.isChecked());
+  await all.check();
+  assert.ok(await hiddenChoice.isChecked());
+  await all.uncheck();
+  assert.equal(await otherChoice.isChecked(), false);
+  await all.check();
+  assert.ok(await otherChoice.isChecked());
   await page.reload();
   await open();
   assert.equal(
     await codex
       .getByLabel("子代理模型", { exact: true })
       .locator("option")
-      .filter({ hasText: /^ChatGPT \/ gpt$/ })
+      .filter({ hasText: /^ChatGPT\/gpt$/ })
       .count(),
     0,
   );
@@ -355,7 +416,7 @@ try {
           layout.aligned && layout.scroll <= layout.width + 1,
           JSON.stringify({ width, theme, scale, layout }),
         );
-        await claude.scrollIntoViewIfNeeded();
+        await claudeModels.scrollIntoViewIfNeeded();
         const size = await page.locator(".settings-body").evaluate((el) => ({
           width: el.clientWidth,
           scroll: el.scrollWidth,
@@ -419,10 +480,10 @@ try {
   await composer.press("Control+Enter");
   const modelDialog = page.getByRole("dialog", { name: "模型与思考强度" });
   await modelDialog
-    .getByRole("button", { name: "Second Model", exact: true })
+    .getByRole("button", { name: /^ChatGPT\/Second Model/ })
     .waitFor();
   assert.equal(
-    await modelDialog.getByRole("button", { name: "gpt", exact: true }).count(),
+    await modelDialog.getByRole("button", { name: /^ChatGPT\/gpt$/ }).count(),
     0,
   );
   assert.deepEqual(errors, []);

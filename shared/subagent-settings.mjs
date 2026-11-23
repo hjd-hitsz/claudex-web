@@ -13,6 +13,8 @@ export function isSubagentSettings(input) {
 
 export function executionBackend(backend) {
   return Object.fromEntries(
-    Object.entries(backend).filter(([key]) => !fields.includes(key)),
+    Object.entries(backend).filter(
+      ([key]) => key !== "hiddenModels" && !fields.includes(key),
+    ),
   );
 }

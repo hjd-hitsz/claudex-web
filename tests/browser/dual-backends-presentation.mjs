@@ -16,7 +16,7 @@ export async function testDualPresentation({
     .allTextContents();
   assert.ok(modelOptions.some((name) => name.includes("第二供应商")));
   assert.equal(
-    modelOptions.some((name) => /^Claude(?: Code)? ·/.test(name)),
+    modelOptions.some((name) => /^Claude(?: Code)?\//.test(name)),
     false,
   );
   await page.waitForFunction(
@@ -126,27 +126,25 @@ export async function testDualPresentation({
     fullPage: true,
   });
   await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
+  await page.locator(".sidebar").waitFor({ state: "hidden" });
+  await page.waitForFunction(() => !document.activeElement.closest(".sidebar"));
   await page.setViewportSize({ width: 1280, height: 900 });
-  const showSidebar = page.getByRole("button", {
-    name: "显示侧栏",
-    exact: true,
-  });
-  if (await showSidebar.isVisible()) await showSidebar.click();
+  await page.locator(".sidebar").waitFor({ state: "visible" });
   await page
     .getByRole("button", { name: "在当前目录新建对话", exact: true })
     .click();
   await page
     .getByLabel("模型", { exact: true })
-    .selectOption({ label: "ChatGPT · GPT Test" });
+    .selectOption({ label: "ChatGPT/GPT Test" });
   await page.waitForFunction(
     () =>
       document.querySelector('select[aria-label="模型"]')?.selectedOptions[0]
-        ?.textContent === "ChatGPT · GPT Test",
+        ?.textContent === "ChatGPT/GPT Test",
   );
   await input().fill("CtrlEnter立即发送");
   await page
     .getByLabel("模型", { exact: true })
-    .selectOption({ label: "测试供应商 · fixture-model" });
+    .selectOption({ label: "测试供应商/fixture-model" });
   await input().press("Control+Enter");
   await completed("CtrlEnter立即发送");
   const keyboardRequests = (server) =>
@@ -164,7 +162,7 @@ export async function testDualPresentation({
     await page
       .getByLabel("模型", { exact: true })
       .locator("option")
-      .filter({ hasText: /^Claude(?: Code)? ·/ })
+      .filter({ hasText: /^Claude(?: Code)?\// })
       .count(),
     0,
   );
@@ -232,16 +230,19 @@ export async function testDualPresentation({
       await page.evaluate(() => {
         document.documentElement.style.zoom = 1;
       });
-      await page.waitForFunction(() => {
-        const button = document.querySelector(
-          ".backend-settings button:not(:disabled)",
-        );
-        return (
-          button &&
-          getComputedStyle(button).color ===
-            getComputedStyle(document.documentElement).color
-        );
-      });
+      const colors = await page
+        .locator(".backend-model-settings .codex-model-option")
+        .first()
+        .evaluate((option) => {
+          const theme = getComputedStyle(document.documentElement);
+          return {
+            scheme: theme.colorScheme,
+            foreground: theme.color,
+            option: getComputedStyle(option).color,
+          };
+        });
+      assert.equal(colors.scheme, theme);
+      assert.equal(colors.option, colors.foreground);
       await page.screenshot({
         animations: "disabled",
         path: join(artifacts, `${width}-${theme}.png`),

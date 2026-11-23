@@ -133,7 +133,7 @@ try {
         .querySelector(".model-select-value")
         .textContent.includes("Extended"),
     );
-    await select.selectOption({ label: "ChatGPT · GPT-6.1-Codex" });
+    await select.selectOption({ label: "ChatGPT/GPT-6.1-Codex" });
     settings = await context.newPage();
     await settings.goto("chrome://settings/appearance");
     const zoom = settings.locator("#zoomLevel");
@@ -179,7 +179,7 @@ try {
                 "GPT-6.1-Codex",
                 "GPT-6.1-Codex-Extended-Context",
               ]) {
-                await select.selectOption({ label: "ChatGPT · " + name });
+                await select.selectOption({ label: "ChatGPT/" + name });
                 const metrics = await page
                   .locator(".model-select-value")
                   .evaluate((label) => {
@@ -312,11 +312,8 @@ try {
             });
             await close.click();
             await page.locator(".sidebar").waitFor({ state: "hidden" });
-            assert.equal(
-              await page
-                .locator(".sidebar")
-                .evaluate((node) => getComputedStyle(node).visibility),
-              "hidden",
+            await page.waitForFunction(
+              () => !document.activeElement.closest(".sidebar"),
             );
           }
         }
@@ -332,7 +329,7 @@ try {
       .getByRole("button", { name: /^新对话/ })
       .first()
       .click();
-    const alias = "示例供应商 · 多语言模型自定义显示名称与完整上下文";
+    const alias = "示例供应商/多语言模型自定义显示名称与完整上下文";
     await select.selectOption({ label: alias });
     assert.equal(await page.locator(".model-select-value").innerText(), alias);
     assert.equal(JSON.parse(await select.inputValue())[2], "team/custom-model");

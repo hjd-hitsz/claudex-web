@@ -6,7 +6,7 @@ import { createCliInstallation } from "./cli-installation.mjs";
 import { join } from "node:path";
 import { readProjectlessDirectories } from "../thread-projects.mjs";
 import { createWorkspace } from "../workspace/service.mjs";
-import { isCodexPreference } from "../../../shared/codex-preferences.mjs";
+import { isBackendPreference } from "../../../shared/backend-preferences.mjs";
 import { hasBackendWork } from "../../../shared/backend-activity.mjs";
 import {
   resourceTarget,
@@ -306,15 +306,14 @@ export function createBackendManager({
     validateBackend(params, config);
     const old = instances.get(params.id);
     const next = validateBackend({ ...old?.backend, ...params }, config);
-    await validateSubagentSettings(next, providers);
+    const preference = isBackendPreference(params);
+    if (!preference) await validateSubagentSettings(next, providers);
     if (
       params.backgroundTerminalEnabled === true &&
       !old?.backend.backgroundTerminalEnabled
     )
       await background.ensure();
-    if (params.hiddenModels !== undefined && params.id !== "codex")
-      throw new Error("模型显示配置仅用于 Codex");
-    if (!prepare && (isCodexPreference(params) || isSubagentSettings(params))) {
+    if (!prepare && (preference || isSubagentSettings(params))) {
       old.backend = await configuration.save(params);
       emitState();
       return { backends: publicBackends() };

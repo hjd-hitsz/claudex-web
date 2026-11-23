@@ -24,12 +24,12 @@ export async function testDualConversation({
   await input().fill("Codex 草稿");
   await page
     .getByLabel("模型", { exact: true })
-    .selectOption({ label: "测试供应商 · fixture-model" });
+    .selectOption({ label: "测试供应商/fixture-model" });
 
   await input().fill("Claude 草稿");
   await page
     .getByLabel("模型", { exact: true })
-    .selectOption({ label: "ChatGPT · GPT Test" });
+    .selectOption({ label: "ChatGPT/GPT Test" });
   await page.waitForFunction(() =>
     document
       .querySelector(".ProseMirror")
@@ -37,7 +37,7 @@ export async function testDualConversation({
   );
   await page
     .getByLabel("模型", { exact: true })
-    .selectOption({ label: "测试供应商 · fixture-model" });
+    .selectOption({ label: "测试供应商/fixture-model" });
   await page.waitForFunction(() =>
     document
       .querySelector(".ProseMirror")
@@ -138,7 +138,7 @@ export async function testDualConversation({
   await testClaudeNativeSkill({ page, input, modelServer, completed });
   await page
     .getByLabel("模型", { exact: true })
-    .selectOption({ label: "第二供应商 · fixture-model" });
+    .selectOption({ label: "第二供应商/fixture-model" });
   await input().fill("继续当前对话");
   await page.getByRole("button", { name: "发送消息", exact: true }).click();
   await page.getByText("供应商切换成功", { exact: true }).first().waitFor();
@@ -218,7 +218,7 @@ export async function testDualConversation({
   await page.waitForFunction(
     () =>
       document.querySelector('select[aria-label="模型"]')?.selectedOptions[0]
-        ?.textContent === "第二供应商 · fixture-model",
+        ?.textContent === "第二供应商/fixture-model",
   );
   await page.getByText("双后端验证通过", { exact: true }).first().waitFor();
 

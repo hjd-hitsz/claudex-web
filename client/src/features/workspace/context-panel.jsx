@@ -25,6 +25,8 @@ import {
   X,
 } from "lucide-react";
 import { onEvent, openSubAgent, rpc, set, useStore } from "../../store.js";
+import { resourceTarget } from "../../../../shared/backend-identity.mjs";
+import { modelChoiceLabel, modelProviderName } from "../../domain/backends.js";
 import {
   agentStatusLabels,
   applyAgentEvent,
@@ -111,7 +113,7 @@ export function ContextCard() {
 }
 
 function SubAgentConversation({ agent }) {
-  const { connected } = useStore();
+  const { connected, modelChoices: choices } = useStore();
   const [attempt, retry] = useState(0);
   const [history, update] = useState({ items: [], turns: [], loading: true });
   const [parentMessages, setParentMessages] = useState([]);
@@ -252,6 +254,20 @@ function SubAgentConversation({ agent }) {
   const turn = history.turns[0];
   const status = turn?.status || agent.status;
   const model = history.thread?.model || agent.model;
+  const { backendId } = resourceTarget(agent.id);
+  const providerId = history.thread?.providerId || "";
+  const choice = choices?.find(
+    (entry) =>
+      entry.backendId === backendId &&
+      entry.providerId === providerId &&
+      (entry.model === model || entry.resolvedModel === model),
+  );
+  const modelLabel = modelChoiceLabel(
+    choice || {
+      model,
+      providerName: modelProviderName(choices, backendId, providerId),
+    },
+  );
   const effort = history.thread?.reasoningEffort || agent.reasoningEffort;
   return (
     <section
@@ -276,7 +292,7 @@ function SubAgentConversation({ agent }) {
           {status === "completed" ? <CheckCircle2 size={13} /> : null}
           {agentStatusLabels[status] || "状态待更新"}
         </span>
-        {model && <span>{model}</span>}
+        {model && <span>{modelLabel}</span>}
         {effort && (
           <span>思考强度 {reasoningEffortLabels[effort] || effort}</span>
         )}

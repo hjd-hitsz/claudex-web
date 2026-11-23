@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useState } from "react";
 import { useStoreSelector, saveBackend } from "../../store.js";
-import { isModelHidden } from "../../domain/backends.js";
+import { isModelHidden, modelChoiceLabel } from "../../domain/backends.js";
 import { reasoningEffortLabels } from "../composer/reasoning-effort.jsx";
 import { Check } from "lucide-react";
 
@@ -22,20 +22,18 @@ export function SubagentModelSettings({ backend, disabled }) {
     () => setEffort(backend.subagentEffort || ""),
     [backend.subagentEffort],
   );
-  const choices = (modelChoices || [])
-    .filter(
-      (entry) =>
-        entry.backendId === backend.id && !isModelHidden(backend, entry.model),
-    )
-    .map((entry) =>
-      backend.id === "claude" && !entry.providerId
-        ? {
-            ...entry,
-            providerId: "@native",
-            model: entry.resolvedModel || entry.model,
-          }
-        : entry,
-    );
+  const catalogue = (modelChoices || [])
+    .filter((entry) => entry.backendId === backend.id)
+    .map((entry) => {
+      const nativeClaude = backend.id === "claude" && !entry.providerId;
+      return {
+        ...entry,
+        hidden: isModelHidden(backend, entry.model, entry.providerId),
+        providerId: nativeClaude ? "@native" : entry.providerId,
+        model: nativeClaude ? entry.resolvedModel || entry.model : entry.model,
+      };
+    });
+  const choices = catalogue.filter((entry) => !entry.hidden);
   const unavailable =
     selection &&
     !choices.some(
@@ -47,12 +45,17 @@ export function SubagentModelSettings({ backend, disabled }) {
   const efforts = selected?.supportedReasoningEfforts || [];
   const invalidEffort =
     effort && !efforts.some((option) => option.reasoningEffort === effort);
-  const hidden = selection && isModelHidden(backend, JSON.parse(selection)[1]);
+  const [providerId, model] = selection ? JSON.parse(selection) : ["", ""];
+  const hidden =
+    isModelHidden(backend, model, providerId === "@native" ? "" : providerId) ||
+    catalogue.some(
+      (entry) =>
+        entry.hidden && choiceKey(entry.providerId, entry.model) === selection,
+    );
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const [providerId, model] = selection ? JSON.parse(selection) : ["", ""];
     try {
       await saveBackend({
         id: backend.id,
@@ -105,7 +108,7 @@ export function SubagentModelSettings({ backend, disabled }) {
               key={choiceKey(entry.providerId, entry.model)}
               value={choiceKey(entry.providerId, entry.model)}
             >
-              {entry.providerName} / {entry.displayName || entry.model}
+              {modelChoiceLabel(entry)}
             </option>
           ))}
         </select>

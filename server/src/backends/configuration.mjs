@@ -78,14 +78,14 @@ export function validateBackend(input, config) {
     backend.url = url.href;
     backend.backgroundTerminalEnabled =
       input.backgroundTerminalEnabled ?? Boolean(config.backgroundTaskDir);
-    if (
-      input.hiddenModels !== undefined &&
-      (!Array.isArray(input.hiddenModels) ||
-        input.hiddenModels.some((id) => typeof id !== "string" || !id.trim()))
-    )
-      throw new Error("隐藏模型列表无效");
-    backend.hiddenModels = [...new Set(input.hiddenModels || [])];
   }
+  if (
+    input.hiddenModels !== undefined &&
+    (!Array.isArray(input.hiddenModels) ||
+      input.hiddenModels.some((id) => typeof id !== "string" || !id.trim()))
+  )
+    throw new Error("隐藏模型列表无效");
+  backend.hiddenModels = [...new Set(input.hiddenModels || [])];
   return backend;
 }
 

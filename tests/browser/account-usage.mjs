@@ -531,10 +531,10 @@ try {
     await evaluate(
       "[...document.querySelectorAll('.settings-navigation button')].find(button => button.textContent.trim() === '后端').click()",
     );
-    await waitFor("document.querySelector('.codex-model-settings input')");
+    await waitFor("document.querySelector('.backend-model-settings input')");
     assert.equal(
       await evaluate(
-        "document.querySelector('.codex-model-settings input').getBoundingClientRect().height > 0",
+        "document.querySelector('.backend-model-settings input').getBoundingClientRect().height > 0",
       ),
       true,
     );

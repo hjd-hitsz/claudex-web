@@ -86,7 +86,10 @@ test("两个后端独立持久保存子代理模型，局部保存保留启停�
       enabled: false,
       ...(id === "codex"
         ? { hiddenModels: ["hidden"] }
-        : { proxy: { mode: "off" } }),
+        : {
+            proxy: { mode: "off" },
+            hiddenModels: [JSON.stringify(["vendor", "hidden"])],
+          }),
     });
     await settings.save({
       id,
@@ -107,6 +110,9 @@ test("两个后端独立持久保存子代理模型，局部保存保留启停�
   );
   assert.deepEqual(restored.backends[0].hiddenModels, ["hidden"]);
   assert.deepEqual(restored.backends[1].proxy, { mode: "off" });
+  assert.deepEqual(restored.backends[1].hiddenModels, [
+    JSON.stringify(["vendor", "hidden"]),
+  ]);
   await settings.save({
     id: "claude",
     type: "claude",

@@ -156,7 +156,7 @@ CLAUDE_EXECUTABLE=/absolute/path/to/claude MODEL_BASE_URL=https://model.example 
 
 子代理模型回归以 `node --import ./tests/helpers/test-console.mjs tests/integration/subagent-models.mjs` 运行真实 Claude CLI 与本机模拟 Messages 服务，覆盖连续轮次、general-purpose 与 Explore、同供应商不同模型、跨供应商同名模型、原生 API Key 与外部供应商的双向路由，以及停用后的失败与恢复。`tests/integration/codex-subagent-models.mjs` 使用真实 Codex app-server 与模拟 Responses 服务，核对未显式指定模型及强度的原生子代理实际使用网页配置。Claude 回归同时检查主代理低强度、子代理高强度到低强度及模型变化在连续轮次中的实际请求，并验证清空后恢复默认。`node tests/integration/claude-subagent-settings-save.mjs` 经过真实管理器、独立执行服务和原生 CLI 完成保存、IPC 重连及连续轮次，核对执行服务与原生主会话 PID 保持、实际请求的新模型和强度以及清空行为；所有原生验证使用临时配置，模型流量只发往本机夹具。原生 OAuth 文件更新和凭据隔离另由 `server/tests/subagent-models.test.mjs` 使用临时文件与模拟端点验证。
 
-构建后使用 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/subagent-models.mjs` 验证两后端同行展示的“供应商 / 模型”及思考强度选择。Codex 显示偏好覆盖代际排序、型号列对齐、缺席型号、键盘勾选及模型候选过滤。子代理配置覆盖独立保存、写入失败保留、重试、刷新恢复与清空。浏览器覆盖深浅主题、桌面与窄屏、80% 至 200% 实际缩放和侧栏收放，证据保存在 `.cache/subagent-models/browser`。
+构建后使用 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/subagent-models.mjs` 验证两后端同行展示的「供应商/模型」及思考强度选择。Codex 显示偏好覆盖代际排序、型号列对齐、缺席型号、键盘勾选及模型候选过滤。Claude Code 回归覆盖同名模型隔离、全选及菜单过滤。子代理配置覆盖独立保存、写入失败保留、重试、刷新恢复与清空。浏览器覆盖深浅主题、桌面与窄屏、80% 至 200% 实际缩放和侧栏收放，证据保存在 `.cache/subagent-models/browser`。
 
 保存性能回归阻塞模型、账户及后端目录读取，验证一次保存请求即可结束并保留当前主模型和草稿，记录完整按钮等待耗时。`client/tests/backend-settings-save.test.js` 与 `server/tests/codex-subagent-settings.test.mjs` 分别检查前端请求边界及真实 Codex 适配器的最新配置读取，配置事务和 IPC 回归覆盖运行任务、写入失败与重连时进程保持。`tests/integration/subagent-models.mjs` 使用真实 Claude CLI 与隔离模型服务验证连续轮次更新模型、强度及清空默认值，并核对主会话实例保持。
 

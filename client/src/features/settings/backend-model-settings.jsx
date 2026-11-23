@@ -1,6 +1,10 @@
 import React, { useEffect, useId, useState } from "react";
-import { useStoreSelector, rpc, set } from "../../store.js";
-import { isModelHidden } from "../../domain/backends.js";
+import { useStoreSelector, rpc, saveBackend } from "../../store.js";
+import {
+  isModelHidden,
+  modelChoiceLabel,
+  modelVisibilityKey,
+} from "../../domain/backends.js";
 
 const tiers = ["Astra", "Sol", "Terra", "Luna"];
 const generationOrder = new Intl.Collator("en", { numeric: true });
@@ -28,18 +32,21 @@ function organizeModels(models) {
   };
 }
 
-export function CodexModelSettings({ backend }) {
+export function BackendModelSettings({ backend }) {
   const cwd = useStoreSelector((state) => state.cwd);
+  const catalogue = useStoreSelector((state) => state.modelChoices);
+  const codex = backend.id === "codex";
   const titleId = useId();
-  const [models, setModels] = useState(null);
+  const [codexModels, setCodexModels] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
+    if (!codex) return;
     let active = true;
     rpc("model/list", { backendId: backend.id, cwd }).then(
       (result) => {
         if (active) {
-          setModels(result.data);
+          setCodexModels(result.data);
           setError("");
         }
       },
@@ -50,46 +57,75 @@ export function CodexModelSettings({ backend }) {
     return () => {
       active = false;
     };
-  }, [backend.id, backend.ready, cwd]);
-  async function toggle(id, shown) {
+  }, [codex, backend.id, backend.ready, cwd]);
+  async function toggle(models, shown) {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
       const hidden = new Set(backend.hiddenModels || []);
-      if (shown) hidden.delete(id);
-      else hidden.add(id);
-      const result = await rpc("lan/backends/save", {
+      for (const model of models) {
+        const key = modelVisibilityKey(model.model, model.providerId);
+        if (shown) hidden.delete(key);
+        else hidden.add(key);
+      }
+      await saveBackend({
         id: backend.id,
         type: backend.type,
         hiddenModels: [...hidden],
       });
-      set({ backends: result.backends });
     } catch (error) {
       setError(error.message);
     } finally {
       setBusy(false);
     }
   }
-  const { generations, otherModels } = organizeModels(models || []);
-  function option(model, label) {
-    const name = model.displayName || model.model;
+  const models = codex
+    ? codexModels
+    : catalogue?.filter((entry) => entry.backendId === backend.id);
+  const { generations, otherModels } = codex
+    ? organizeModels(models || [])
+    : { generations: [], otherModels: models || [] };
+  const shown = (models || []).filter(
+    (model) => !isModelHidden(backend, model.model, model.providerId),
+  ).length;
+  function option(model, showName = false) {
+    const name = modelChoiceLabel(
+      codex ? { ...model, providerName: "ChatGPT" } : model,
+    );
     return (
       <label className="codex-model-option" title={name}>
         <input
           type="checkbox"
           aria-label={name}
           aria-disabled={busy || undefined}
-          checked={!isModelHidden(backend, model.model)}
-          onChange={(event) => toggle(model.model, event.target.checked)}
+          checked={!isModelHidden(backend, model.model, model.providerId)}
+          onChange={(event) => toggle([model], event.target.checked)}
         />
-        {label}
+        {showName && name}
       </label>
     );
   }
   return (
-    <section className="codex-model-settings" aria-labelledby={titleId}>
-      <h3 id={titleId}>显示的模型</h3>
+    <section className="backend-model-settings" aria-labelledby={titleId}>
+      <div className="backend-model-heading">
+        <h3 id={titleId}>显示的模型</h3>
+        {!codex && models?.length > 0 && (
+          <label className="backend-checkbox">
+            <input
+              type="checkbox"
+              checked={shown === models.length}
+              ref={(input) => {
+                if (input)
+                  input.indeterminate = shown > 0 && shown < models.length;
+              }}
+              disabled={busy}
+              onChange={(event) => toggle(models, event.target.checked)}
+            />
+            全选
+          </label>
+        )}
+      </div>
       {generations.length > 0 && (
         <table className="codex-model-generations" aria-labelledby={titleId}>
           <thead>
@@ -136,8 +172,8 @@ export function CodexModelSettings({ backend }) {
           {generations.length > 0 && <h4>其他模型</h4>}
           <ul>
             {otherModels.map((model) => (
-              <li key={model.model}>
-                {option(model, model.displayName || model.model)}
+              <li key={modelVisibilityKey(model.model, model.providerId)}>
+                {option(model, true)}
               </li>
             ))}
           </ul>

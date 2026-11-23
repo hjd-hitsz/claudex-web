@@ -144,7 +144,7 @@ npm install -g @anthropic-ai/claude-code
 
 CLI 自动从当前 Node.js 的安装目录、服务 PATH 和用户 `~/.local/bin` 查找。systemd 服务安装时记录当前 Node.js 和 PATH；更换 Node.js 安装后重新执行 `claudex-web service install` 并在空闲时重启网页服务。Claude Code 复用 `CLAUDE_CONFIG_DIR`（默认 `~/.claude`）中的认证、技能、插件和历史；Codex 沿用 `CODEX_HOME`（默认 `~/.codex`）及既有 app-server 连接。使用原生账户时，先在服务电脑以同一账户完成 CLI 登录。
 
-在「设置 → 模型服务商」点击「添加供应商」，填写名称、API 地址、凭据和模型标识。可在 Claude Code 停用时配置供应商。启用 Claude Code 后，在输入框的模型菜单选择「供应商 · 模型」以新建对话。已有 Claude 对话可在任务结束后更换供应商或模型并继续。
+在「设置 → 模型服务商」点击「添加供应商」，填写名称、API 地址、凭据和模型标识。可在 Claude Code 停用时配置供应商。启用 Claude Code 后，在输入框的模型菜单选择「供应商/模型」以新建对话。已有 Claude 对话可在任务结束后更换供应商或模型并继续。
 
 API 地址需支持 Messages 请求及工具调用，填写服务基地址，例如 `https://model.example`，请求路径会追加 `/v1/messages`；服务有统一路径前缀时将其保留在基地址中。默认选择“Message API”使用原生请求，选择“Message API （兼容）”会将消息中的系统指令合并到顶层 `system`，用于要求这种布局的服务。模型标识和支持的思考强度、速度档位以服务实际配置为准。API Key 保存在服务器，编辑时留空保留原凭据，勾选清除会移除已保存凭据。
 
@@ -164,7 +164,7 @@ Claude Code 的对话、配置和原生账户状态继续保存在本机 CLI 原
 
 ## 配置
 
-在「设置 → 后端」的对应卡片选择子代理模型及思考强度，强度档位随所选模型提供。Codex 子代理候选遵循「显示的模型」偏好。Claude Code 的选项按「供应商 / 模型」排列，可以为子代理选择其他供应商。保存前等待所属后端空闲。选择「原生默认」恢复原生子代理模型规则。
+在「设置 → 后端」的对应卡片选择子代理模型及思考强度，强度档位随所选模型提供。两端的主模型和子代理候选均遵循对应后端的「显示的模型」偏好。Claude Code 可按供应商勾选模型，也可为子代理选择其他供应商。隐藏偏好可在运行中修改。选择「原生默认」恢复原生子代理模型规则。
 
 全局命令从 `~/.config/claudex-web/.env` 读取配置；设置 `XDG_CONFIG_HOME` 时使用其下的 `claudex-web` 目录，设置 `CLAUDEX_WEB_CONFIG_DIR` 时优先使用该目录。外部环境变量优先于 `.env`。执行 `claudex-web config init` 可创建配置并显示路径，已有配置和 npm 升级后的配置均会保留。
 

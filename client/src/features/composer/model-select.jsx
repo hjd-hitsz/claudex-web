@@ -6,7 +6,11 @@ import {
   selectModelChoice,
   report,
 } from "../../store.js";
-import { isModelHidden } from "../../domain/backends.js";
+import {
+  isModelHidden,
+  modelChoiceLabel,
+  modelProviderName,
+} from "../../domain/backends.js";
 
 const key = (choice) =>
   JSON.stringify([choice.backendId, choice.providerId, choice.model]);
@@ -23,34 +27,41 @@ export const ModelSelect = React.memo(function ModelSelect() {
   );
   const locked = useStoreSelector((state) => state.busy || state.loading);
   const backend = backends.find((entry) => entry.id === backendId);
-  const hidden = isModelHidden(backend, modelId);
+  const hidden = isModelHidden(backend, modelId, providerId);
   const choices = (modelChoices || []).filter(
     (choice) =>
       (!inConversation || choice.backendId === backendId) &&
       !isModelHidden(
         backends.find((entry) => entry.id === choice.backendId),
         choice.model,
+        choice.providerId,
       ),
   );
-  const current = choices.find(
+  const selected = modelChoices?.find(
     (choice) =>
       choice.backendId === backendId &&
       choice.providerId === providerId &&
       choice.model === modelId,
   );
+  const current = hidden ? undefined : selected;
+  const providerName = modelProviderName(modelChoices, backendId, providerId);
+  const modelLabel = (model) => modelChoiceLabel({ providerName, ...model });
+  const selectedLabel = selected
+    ? modelChoiceLabel(selected)
+    : modelLabel(
+        models.find((model) => model.model === modelId) || { model: modelId },
+      );
   const unavailable = modelId
     ? hidden
-      ? `当前模型已隐藏：${modelId}`
-      : `当前模型不可用：${modelId}`
+      ? `当前模型已隐藏：${selectedLabel}`
+      : `当前模型不可用：${selectedLabel}`
     : "请选择模型";
   const catalogueAvailable = choices.length > 0 || hidden;
   const label = current
-    ? `${current.providerName} · ${current.displayName || current.model}`
+    ? selectedLabel
     : catalogueAvailable
       ? unavailable
-      : models.find((model) => model.model === modelId)?.displayName ||
-        modelId ||
-        "请选择模型";
+      : selectedLabel || "请选择模型";
   return (
     <label className="select-control model-select">
       <span className="model-select-value" aria-hidden="true">
@@ -86,16 +97,16 @@ export const ModelSelect = React.memo(function ModelSelect() {
                 value={key(choice)}
                 disabled={active && choice.providerId !== providerId}
               >
-                {choice.providerName} · {choice.displayName || choice.model}
+                {modelChoiceLabel(choice)}
               </option>
             ))}
           </>
         ) : (
           models
-            .filter((model) => !isModelHidden(backend, model.model))
+            .filter((model) => !isModelHidden(backend, model.model, providerId))
             .map((model) => (
               <option key={model.id} value={model.model}>
-                {model.displayName || model.model}
+                {modelLabel(model)}
               </option>
             ))
         )}
