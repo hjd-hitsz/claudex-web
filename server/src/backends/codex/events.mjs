@@ -188,7 +188,7 @@ export function createBridgeEvents({
         ...message,
         id: request.id,
         ...(message.result &&
-          streamed.length && {
+          request.includeStreaming && {
             result: { ...message.result, streamingMessages: streamed },
           }),
       });

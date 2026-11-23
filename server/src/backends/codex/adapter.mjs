@@ -58,8 +58,15 @@ export function createCodexAdapter({
     },
     onEvent(message) {
       handoff.event(message);
-      streamingMessages.event(message);
-      events.onEvent(message);
+      const discardedStreamingMessageIds = streamingMessages.event(message);
+      events.onEvent(
+        discardedStreamingMessageIds
+          ? {
+              ...message,
+              params: { ...message.params, discardedStreamingMessageIds },
+            }
+          : message,
+      );
     },
     onResponse: (request, message) => events.onResponse(request, message),
     onSettled: () => subscriptions.releaseUnusedThreads(),

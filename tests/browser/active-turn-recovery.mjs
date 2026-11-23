@@ -8,7 +8,9 @@ import { createStaticHandler } from "../../server/src/http/static.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 
-const output = resolve(".cache/active-turn-recovery/browser");
+const output = resolve(
+  process.env.BROWSER_OUTPUT_DIR || ".cache/active-turn-recovery/browser",
+);
 await mkdir(output, { recursive: true });
 const serveStatic = createStaticHandler(
   process.env.BROWSER_BUILD_DIR || resolve("client/dist"),
@@ -33,6 +35,8 @@ const user = "请继续检查规划器的实现。";
 const prefix = "本轮回答从代价公式开始。";
 const suffix = "接着检查邻域搜索。";
 const tail = "这是切回后产生的新内容。";
+const steer = "先核对新输入的边界，再继续规划。";
+const newProgress = "正在核对补充要求中的边界。";
 const followUp = "再核对窄通道的边界条件。";
 const turnId = "legacy-turn";
 const request = {
@@ -41,10 +45,17 @@ const request = {
   type: "userMessage",
   content: [{ type: "text", text: user }],
 };
+const progress = {
+  id: "new-progress",
+  type: "agentMessage",
+  phase: "commentary",
+  text: newProgress,
+};
 
 try {
   await context.addInitScript(backendFixture, {
     activeTurns: { legacy: turnId },
+    turnStartedAt: Math.floor(Date.now() / 1000) - 12,
     codexItems: [request],
     claudeItems: [],
   });
@@ -120,13 +131,116 @@ try {
   });
   await latest.getByText(prefix + suffix + tail, { exact: true }).waitFor();
   await page.screenshot({ path: join(output, "streaming-after-switch.png") });
+  const editor = page.locator(".markdown-composer .ProseMirror");
+  await editor.fill(steer);
+  await editor.press("Control+Enter");
+  await page.waitForFunction(
+    (turnId) =>
+      window.fixtureRequests.some(
+        ({ method, params }) =>
+          method === "turn/steer" && params.expectedTurnId === turnId,
+      ),
+    turnId,
+  );
+  assert.equal(await latest.getByText(prefix + suffix + tail).count(), 1);
+  const accepted = {
+    ...request,
+    id: "accepted-steer",
+    content: [{ type: "text", text: steer }],
+  };
+  await emit("item/started", {
+    turnId,
+    item: accepted,
+    discardedStreamingMessageIds: ["streamed-answer"],
+  });
+  await emit("item/completed", { turnId, item: accepted });
+  await emit("item/completed", {
+    turnId,
+    item: progress,
+  });
+  const corrected = page.locator(".process-history");
+  await corrected.locator("summary").click();
+  await corrected
+    .locator(".supplemental-preview")
+    .filter({ hasText: steer })
+    .waitFor();
+  await corrected.getByText(newProgress, { exact: true }).waitFor();
+  await page.screenshot({ path: join(output, "interrupted-reply.png") });
+  assert.equal(await page.getByText(prefix + suffix + tail).count(), 0);
+  assert(await page.locator(".working-status").isVisible());
+  const interruptedOffline = "这段正文在网页断开时被打断。";
+  const offlineSteer = "重连后继续采用补充条件。";
+  await emit("item/agentMessage/delta", {
+    turnId,
+    itemId: "offline-answer",
+    delta: interruptedOffline,
+  });
+  await latest.getByText(interruptedOffline, { exact: true }).waitFor();
+  await page.evaluate(
+    ({ request, accepted, progress, turnId, offlineSteer }) => {
+      const send = WebSocket.prototype.send;
+      WebSocket.prototype.send = function (raw) {
+        const { id, method, params } = JSON.parse(raw);
+        if (method !== "thread/items/list" || params.threadId !== "legacy")
+          return send.call(this, raw);
+        const items = [
+          {
+            ...request,
+            id: "offline-steer",
+            content: [{ type: "text", text: offlineSteer }],
+          },
+          progress,
+          accepted,
+          request,
+        ];
+        queueMicrotask(() =>
+          this.onmessage({
+            data: JSON.stringify({
+              id,
+              result: {
+                data: items.map((item) => ({ turnId, item })),
+                streamingMessages: [],
+              },
+            }),
+          }),
+        );
+      };
+      const socket = window.backendSocket;
+      socket.readyState = 3;
+      socket.onclose();
+    },
+    { request, accepted, progress, turnId, offlineSteer },
+  );
+  await page
+    .locator(".user-bubble")
+    .filter({ hasText: offlineSteer })
+    .waitFor();
+  await page.screenshot({
+    path: join(output, "interrupted-reply-reconnected.png"),
+  });
+  assert.equal(await page.getByText(interruptedOffline).count(), 0);
+  await emit("item/started", {
+    turnId,
+    item: {
+      id: "new-answer",
+      type: "agentMessage",
+      phase: "final_answer",
+      text: "",
+    },
+  });
+  await emit("item/agentMessage/delta", {
+    turnId,
+    itemId: "new-answer",
+    delta: "边界检查完毕。",
+  });
+  await latest.getByText("边界检查完毕。", { exact: true }).waitFor();
   await emit("item/completed", {
     turnId,
     item: {
-      id: "streamed-answer",
+      id: "new-answer",
       type: "agentMessage",
       phase: "final_answer",
-      text: prefix + suffix + tail,
+      text: "边界检查完毕。",
     },
   });
   await emit("turn/completed", { turn: { id: turnId, status: "completed" } });
@@ -205,7 +319,7 @@ try {
   });
   assert.deepEqual(errors, []);
   console.log(
-    "PASS 进行中正文前缀恢复并衔接增量，续跑补充在过程中的顺序及气泡",
+    "PASS 流式正文切回恢复、Codex 补充输入后清除中断正文、续跑补充的过程顺序",
   );
 } finally {
   await context.close();

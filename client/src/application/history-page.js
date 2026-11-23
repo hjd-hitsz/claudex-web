@@ -11,15 +11,26 @@ function readHistoryPage(rpc, method, params) {
 
 export function historyPageReader({ rpc, get, set, current, firstPage }) {
   return async (method, params) => {
+    const previous = get().items;
     const page =
       firstPage && method === "thread/items/list" && !params.cursor
         ? await firstPage()
         : await readHistoryPage(rpc, method, params);
-    if (current() && page.streamingMessages?.length) {
+    if (current() && page.streamingMessages) {
       const items = new Map(get().items.map((item) => [item.id, item]));
-      // 快照包含响应前已收到的增量，衔接页面打开期间的流式正文。
-      for (const item of page.streamingMessages) items.set(item.id, item);
-      set({ items: [...items.values()] });
+      const streamingIds = new Set(page.streamingMessages.map(({ id }) => id));
+      // 首屏快照列出当前流式正文，断线前的片段由快照或原生历史接替。
+      for (const item of previous)
+        if (
+          item.streaming &&
+          !streamingIds.has(item.id) &&
+          items.get(item.id) === item
+        )
+          items.delete(item.id);
+      for (const item of page.streamingMessages)
+        items.set(item.id, { ...item, streaming: true });
+      if (items.size !== get().items.length || streamingIds.size)
+        set({ items: [...items.values()] });
     }
     return page;
   };

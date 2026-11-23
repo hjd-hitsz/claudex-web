@@ -7,6 +7,7 @@ import { isCompacting, mergeCompactions } from "../domain/compaction.js";
 import { persist } from "../infrastructure/storage.js";
 import { b64decode } from "../domain/format.js";
 import { appendReasoningSummary } from "../domain/reasoning-summary.js";
+import { resourceTarget } from "../../../shared/backend-identity.mjs";
 export function createEvents({
   get,
   set,
@@ -301,11 +302,21 @@ export function createEvents({
               .map((content) => content.text)
               .join("\n") === text,
         )?.questionId;
-        set({ items: get().items.filter((i) => !i.optimistic) });
+        const discarded = new Set(p.discardedStreamingMessageIds);
+        set({
+          items: get().items.filter(
+            (i) =>
+              !i.optimistic && !(i.turnId === p.turnId && discarded.has(i.id)),
+          ),
+        });
       }
       messages.put({
         ...p.item,
         turnId: p.turnId,
+        ...(p.item.type === "agentMessage" &&
+          resourceTarget(p.threadId).backendId === "codex" && {
+            streaming: method === "item/started",
+          }),
         ...(questionId ? { questionId } : {}),
       });
     }
@@ -315,6 +326,10 @@ export function createEvents({
         type: method === "item/plan/delta" ? "plan" : "agentMessage",
         text: "",
         turnId: p.turnId,
+        ...(method === "item/agentMessage/delta" &&
+          resourceTarget(p.threadId).backendId === "codex" && {
+            streaming: true,
+          }),
       };
       messages.put({ ...i, text: i.text + p.delta });
     }

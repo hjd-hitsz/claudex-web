@@ -22,6 +22,12 @@ export function createStreamingMessages() {
       if (messages?.turnId === turnId) messages.items.delete(item.id);
       return;
     }
+    if (method === "item/started" && item.type === "userMessage") {
+      if (messages?.turnId !== turnId || !messages.items.size) return;
+      // Codex 接收中途输入时，已取消的正文流可能缺少完成事件。
+      threads.delete(threadId);
+      return [...messages.items.keys()];
+    }
     if (
       method !== "item/agentMessage/delta" &&
       !(method === "item/started" && item.type === "agentMessage")
