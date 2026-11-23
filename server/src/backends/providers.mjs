@@ -13,7 +13,9 @@ export function createProviders(configuration) {
       .filter(
         (p) =>
           p.backendId === "claude" &&
-          (!backendId || p.backendId === backendId) &&
+          (!backendId ||
+            p.backendId === backendId ||
+            backendId === "opencode") &&
           (includeDisabled || p.enabled !== false),
       )
       .map(publicProvider);
@@ -21,7 +23,7 @@ export function createProviders(configuration) {
   async function get(backendId, providerId) {
     const providers = configuredProviders(
       await configuration.readProviders(),
-    ).filter((p) => p.backendId === backendId);
+    ).filter((p) => p.backendId === backendId || backendId === "opencode");
     if (providerId == null || providerId === "") return null;
     const provider = providers.find((p) => p.id === providerId);
     if (!provider) throw new Error("供应商已移除，请重新选择");
@@ -32,7 +34,7 @@ export function createProviders(configuration) {
   async function save(input) {
     const preset = providerPresets.find((p) => p.id === input.id);
     if (input.backendId !== "claude")
-      throw new Error("供应商配置仅用于 Claude Code");
+      throw new Error("请通过现有模型服务商配置添加供应商");
     if (preset) input = { ...preset, apiKey: input.apiKey };
     const id = input.id || randomUUID();
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new Error("供应商标识无效");

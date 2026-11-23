@@ -4,7 +4,7 @@ export function backendFixture(data) {
   if (data.retainStorageOnReload)
     sessionStorage.backendFixtureInitialized = "1";
   localStorage.setItem("cx-current", "legacy");
-  localStorage.setItem("cx-theme", JSON.stringify("light"));
+  localStorage.setItem("cx-theme", JSON.stringify(data.theme || "light"));
   const threads = [
     {
       id: "legacy",
@@ -90,10 +90,31 @@ export function backendFixture(data) {
     ],
     "backend:claude:fixture": data.claudeItems,
   };
-  const backends = ["codex", "claude"].map((id) => ({
+  if (data.opencode) {
+    threads.push({
+      id: "backend:opencode:fixture",
+      name: "OpenCode 示例对话",
+      cwd: "/demo/project",
+      model: data.opencodeModels?.[0]?.model || "openai/gpt-6-luna",
+      createdAt: 4,
+    });
+    messages["backend:opencode:fixture"] = [
+      {
+        id: "opencode-message",
+        type: "agentMessage",
+        text: "OpenCode 对话已恢复。",
+        turnId: "human",
+      },
+    ];
+  }
+  const backends = [
+    "codex",
+    "claude",
+    ...(data.opencode ? ["opencode"] : []),
+  ].map((id) => ({
     id,
     type: id,
-    name: id === "codex" ? "Codex" : "Claude Code",
+    name: { codex: "Codex", claude: "Claude Code", opencode: "OpenCode" }[id],
     enabled: true,
     ready: true,
     installation: data.backendInstallations?.[id],
@@ -212,6 +233,8 @@ export function backendFixture(data) {
           {
             ...previous,
             ...p,
+            id: p.id || "provider-added",
+            models: p.models || [],
             ...(previous?.preset && {
               enabled: Boolean(p.apiKey?.trim()),
               hasApiKey: Boolean(p.apiKey?.trim()),
@@ -249,6 +272,8 @@ export function backendFixture(data) {
         });
       if (m.method === "model/list" && p.backendId === "codex")
         result.data.push(...(data.codexModels || []));
+      if (m.method === "model/list" && data.nativeModels?.[p.backendId])
+        result.data = data.nativeModels[p.backendId];
       if (
         (data.providerModelNames || data.providers) &&
         m.method === "model/list" &&
@@ -268,6 +293,25 @@ export function backendFixture(data) {
           })),
         };
       }
+      if (m.method === "model/list" && p.backendId === "opencode")
+        result = {
+          data: data.opencodeModels || [
+            {
+              id: "openai/gpt-6-luna",
+              model: "openai/gpt-6-luna",
+              displayName: "GPT-6 Luna",
+              providerName: "ChatGPT",
+              supportedReasoningEfforts: [],
+            },
+          ],
+        };
+      if (m.method === "account/login/start")
+        result = {
+          loginId: "fixture-login",
+          authUrl: "https://example.org/authorize",
+          userCode: "ABCD-EFGH",
+        };
+      if (m.method === "account/login/status") result = { status: "pending" };
       if (m.method === "fs/readDirectory")
         result = {
           entries: [{ fileName: "notes.md", isFile: true, isDirectory: false }],

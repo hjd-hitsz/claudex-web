@@ -4,8 +4,11 @@ import { validateNetworkProxy } from "./network-proxy.mjs";
 import { subagentSettings } from "../../../shared/subagent-settings.mjs";
 
 export function validateBackend(input, config) {
-  if (!["codex", "claude"].includes(input.id) || input.id !== input.type)
-    throw new Error("仅支持 Codex 与 Claude Code 两个固定后端");
+  if (
+    !["codex", "claude", "opencode"].includes(input.id) ||
+    input.id !== input.type
+  )
+    throw new Error("仅支持 Codex、Claude Code 与 OpenCode 三个固定后端");
   if (
     input.subagentModel !== undefined &&
     (typeof input.subagentModel !== "string" ||
@@ -46,7 +49,9 @@ export function validateBackend(input, config) {
     throw new Error("后台终端 MCP 开关仅接受 Codex 的布尔设置");
   const backend = {
     id: input.id,
-    name: input.type === "codex" ? "Codex" : "Claude Code",
+    name: { codex: "Codex", claude: "Claude Code", opencode: "OpenCode" }[
+      input.type
+    ],
     type: input.type,
     enabled: input.enabled !== false,
     subagentModel: input.subagentModel?.trim() || "",
@@ -55,7 +60,11 @@ export function validateBackend(input, config) {
       subagentProviderId: input.subagentProviderId || "",
     }),
     dataDir: resolve(
-      input.type === "codex" ? config.codexHome : config.claudeHome,
+      input.type === "codex"
+        ? config.codexHome
+        : input.type === "claude"
+          ? config.claudeHome
+          : join(config.configDir, "backends", "opencode"),
     ),
     ...(input.type === "claude" && {
       stateDir: join(config.configDir, "backends", "claude"),
@@ -63,7 +72,10 @@ export function validateBackend(input, config) {
         proxy: validateNetworkProxy(input.proxy),
       }),
     }),
-    executable: input.type === "claude" ? "claude" : "codex",
+    ...(input.type === "opencode" && {
+      stateDir: join(config.configDir, "backends", "opencode"),
+    }),
+    executable: input.type,
     args: [],
   };
   if (input.type === "codex") {
@@ -78,14 +90,14 @@ export function validateBackend(input, config) {
     backend.url = url.href;
     backend.backgroundTerminalEnabled =
       input.backgroundTerminalEnabled ?? Boolean(config.backgroundTaskDir);
-    if (
-      input.hiddenModels !== undefined &&
-      (!Array.isArray(input.hiddenModels) ||
-        input.hiddenModels.some((id) => typeof id !== "string" || !id.trim()))
-    )
-      throw new Error("隐藏模型列表无效");
-    backend.hiddenModels = [...new Set(input.hiddenModels || [])];
   }
+  if (
+    input.hiddenModels !== undefined &&
+    (!Array.isArray(input.hiddenModels) ||
+      input.hiddenModels.some((id) => typeof id !== "string" || !id.trim()))
+  )
+    throw new Error("隐藏模型列表无效");
+  backend.hiddenModels = [...new Set(input.hiddenModels || [])];
   return backend;
 }
 
@@ -135,16 +147,16 @@ export function createBackendConfiguration(config) {
     const ids = new Set();
     for (const backend of data.backends) {
       if (
-        !["codex", "claude"].includes(backend.id) ||
+        !["codex", "claude", "opencode"].includes(backend.id) ||
         backend.type !== backend.id ||
         ids.has(backend.id)
       )
-        throw new Error("配置仅支持一个 Codex 和一个 Claude Code 后端");
+        throw new Error("配置支持 Codex、Claude Code 与 OpenCode 各一个后端");
       ids.add(backend.id);
     }
     return {
       ...data,
-      backends: ["codex", "claude"].map((id) =>
+      backends: ["codex", "claude", "opencode"].map((id) =>
         validateBackend(
           {
             ...data.backends.find((b) => b.id === id),

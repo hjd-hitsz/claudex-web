@@ -31,3 +31,20 @@ export const claudeCapabilities = Object.freeze({
   review: true,
   plugins: true,
 });
+export const opencodeCapabilities = Object.freeze({
+  compact: true,
+  inputMode: "steer",
+  inputRecovery: true,
+  questions: true,
+  fork: true,
+  editHistory: true,
+  subagents: true,
+  skills: true,
+  mcp: true,
+  fileUndo: true,
+  account: true,
+  goal: true,
+  backgroundTerminals: true,
+  review: true,
+  plugins: true,
+});

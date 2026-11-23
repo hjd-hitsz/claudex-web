@@ -17,6 +17,12 @@ export async function referenceInputs(text, backendId, rpc) {
     seen.add(key);
     if (reference.kind === "skill") {
       if (backendId === "claude") nativeSkills.push(reference.name);
+      else if (backendId === "opencode")
+        inputs.push({
+          type: "skill",
+          name: reference.name,
+          path: reference.path,
+        });
       else {
         if (reference.path.startsWith("skill://"))
           throw new Error("请从 Codex 技能列表重新选择此技能。");

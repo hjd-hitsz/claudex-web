@@ -200,3 +200,23 @@
   z-index: 26;
   pointer-events: none;
 }
+
+.backend-switcher {
+  display: flex;
+  flex: none;
+}
+.backend-switcher > button {
+  font-size: 0.923077rem;
+  font-weight: 400;
+  line-height: var(--ui-line-height);
+  padding: 0.25em 0.5em;
+  border: 1px solid var(--border);
+  border-radius: 0.5em;
+  background: var(--subtle);
+}
+.backend-switcher > button > span {
+  display: flex;
+}
+.backend-switcher > button > .switcher-chevron {
+  display: none;
+}

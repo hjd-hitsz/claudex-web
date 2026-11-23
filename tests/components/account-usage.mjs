@@ -352,6 +352,27 @@ export async function testAccountUsage(app, requests, setResponse, emit) {
     assert.match(text(), /正在连接/);
     await act(async () =>
       app.set({
+        current: { id: "backend:opencode:session" },
+        backendId: "opencode",
+        providerId: "",
+        backends: [{ id: "opencode", name: "OpenCode", ready: true }],
+        account: null,
+      }),
+    );
+    assert.match(text(), /OpenCode/);
+    assert.doesNotMatch(text(), /Claude Code/);
+    await act(async () =>
+      app.set({
+        account: {
+          type: "provider",
+          providerName: "Atlas 示例服务",
+          usageSupported: false,
+        },
+      }),
+    );
+    assert.match(text(), /Atlas 示例服务/);
+    await act(async () =>
+      app.set({
         current: null,
         backendId: "codex",
         backends: [],

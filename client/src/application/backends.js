@@ -1,8 +1,12 @@
 import { newDraftKey } from "../infrastructure/backend-storage.js";
+import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { persist, saved } from "../infrastructure/storage.js";
 import { compatibleEffort } from "../domain/model-preferences.js";
 import { backendEnabled } from "../domain/backend-visibility.js";
-import { isCodexPreference } from "../../../shared/codex-preferences.mjs";
+import {
+  isCodexPreference,
+  isModelVisibilityPreference,
+} from "../../../shared/codex-preferences.mjs";
 import { isSubagentSettings } from "../../../shared/subagent-settings.mjs";
 import {
   modelServiceTiers,
@@ -19,6 +23,7 @@ export function createBackends({
 }) {
   let revision = 0;
   let selectionRevision = 0;
+  let catalogueContext;
   const attachments = new Map();
   async function activateBackend(id, choice) {
     if (!get().backends?.length) return;
@@ -44,6 +49,7 @@ export function createBackends({
     }
     const connection = transport?.connection;
     const cwd = get().cwd;
+    catalogueContext = { id, cwd, connection };
     const current = () =>
       epoch === revision &&
       backendEnabled(get().backends, id) &&
@@ -122,6 +128,7 @@ export function createBackends({
       codexResult,
       claudeResult,
       configResult,
+      opencodeResult,
     ] = await Promise.allSettled([
       rpc("model/list", {
         backendId: id,
@@ -142,7 +149,8 @@ export function createBackends({
           ? rpc("model/list", { backendId: "claude", cwd })
           : Promise.resolve(null)
         : rpc("model/list", { backendId: "codex", cwd }),
-      id === "claude"
+      id !== "codex" &&
+      get().backends.some((b) => b.id === "claude" && b.enabled)
         ? rpc("model/list", {
             backendId: "claude",
             providerId: "",
@@ -155,6 +163,10 @@ export function createBackends({
         providerId: get().providerId,
         includeLayers: false,
       }),
+      id !== "opencode" &&
+      get().backends.some((b) => b.id === "opencode" && b.enabled)
+        ? rpc("model/list", { backendId: "opencode", cwd })
+        : Promise.resolve(null),
     ]);
     if (!current()) return;
     if (modelResult.status === "rejected") report(modelResult.reason);
@@ -193,7 +205,7 @@ export function createBackends({
             })),
     }));
     const codex = get().backends.find((b) => b.id === id)?.type === "codex";
-    const providers = codex ? [] : allProviders;
+    const providers = id === "claude" ? allProviders : [];
     const codexModels = codex
       ? nativeModels
       : codexResult.status === "fulfilled"
@@ -206,16 +218,27 @@ export function createBackends({
         providerName: "ChatGPT",
         ...model,
       })),
-      ...((id === "claude" ? claudeResult : codexResult).status === "fulfilled"
-        ? (
-            (id === "claude" ? claudeResult : codexResult).value?.data || []
-          ).map((model) => ({
-            ...model,
-            backendId: "claude",
-            providerId: "",
-            providerName: "Claude",
-          }))
+      ...((id === "codex" ? codexResult : claudeResult).status === "fulfilled"
+        ? ((id === "codex" ? codexResult : claudeResult).value?.data || []).map(
+            (model) => ({
+              ...model,
+              backendId: "claude",
+              providerId: "",
+              providerName: "Claude",
+            }),
+          )
         : []),
+      ...(id === "opencode"
+        ? nativeModels
+        : opencodeResult.status === "fulfilled"
+          ? opencodeResult.value?.data || []
+          : []
+      ).map((model) => ({
+        ...model,
+        backendId: "opencode",
+        providerId: "",
+        providerName: model.providerName || "OpenCode",
+      })),
       ...allProviders.flatMap((provider) =>
         provider.modelRecords.map((model) => ({
           ...model,
@@ -307,6 +330,31 @@ export function createBackends({
         ),
       );
     }
+    if (current() && id === "opencode") onSelectionChanged();
+  }
+  function activateThreadBackend(thread) {
+    const backendId = resourceTarget(thread.id).backendId;
+    if (
+      get().backendId === backendId &&
+      catalogueContext?.id === backendId &&
+      catalogueContext.cwd === get().cwd &&
+      catalogueContext.connection === transport?.connection
+    )
+      return;
+    const providerId = thread.providerId || "";
+    const choices = (get().modelChoices || []).filter(
+      (entry) =>
+        entry.backendId === backendId && entry.providerId === providerId,
+    );
+    activateBackend(backendId, {
+      backendId,
+      providerId,
+      model:
+        thread.model ||
+        choices.find((entry) => entry.isDefault)?.model ||
+        choices[0]?.model ||
+        "",
+    }).catch(report);
   }
   function selectProvider(id, choice) {
     id ??= "";
@@ -352,20 +400,9 @@ export function createBackends({
       choice.providerId !== get().providerId
     )
       return;
-    if (get().current && choice.backendId !== get().backendId) return;
+    if (choice.backendId !== get().backendId) return;
     const selection = ++selectionRevision;
     const threadId = get().current?.id;
-    const draft = get().draft;
-    const attachments = get().attachments;
-    if (choice.backendId !== get().backendId) {
-      const activating = activateBackend(choice.backendId, choice);
-      persist("cx-provider-" + choice.backendId, choice.providerId);
-      models.selectModel(choice);
-      set({ draft, attachments });
-      localStorage.setItem(newDraftKey(choice.backendId), draft);
-      await activating;
-      return;
-    }
     if (
       selection !== selectionRevision ||
       threadId !== get().current?.id ||
@@ -375,6 +412,7 @@ export function createBackends({
     if (choice.backendId === "claude" && choice.providerId !== get().providerId)
       selectProvider(choice.providerId, choice);
     models.selectModel(choice);
+    if (choice.backendId === "opencode") onSelectionChanged();
   }
   async function refreshBackends() {
     const result = await rpc("lan/backends/list");
@@ -386,12 +424,18 @@ export function createBackends({
   async function saveBackend(value) {
     const result = await rpc("lan/backends/save", value);
     set({ backends: result.backends });
-    if (isSubagentSettings(value) || isCodexPreference(value)) return;
+    if (
+      isSubagentSettings(value) ||
+      isCodexPreference(value) ||
+      isModelVisibilityPreference(value)
+    )
+      return;
     await refreshBackends();
   }
   async function saveProvider(value) {
-    await rpc("lan/providers/save", value);
+    const result = await rpc("lan/providers/save", value);
     await activateBackend(get().backendId);
+    return result;
   }
   async function removeProvider(value) {
     const result = await rpc("lan/providers/remove", value);
@@ -405,6 +449,7 @@ export function createBackends({
   return {
     removeProvider,
     activateBackend,
+    activateThreadBackend,
     selectModelChoice,
     selectProvider,
     refreshBackends,

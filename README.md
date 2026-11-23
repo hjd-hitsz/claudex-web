@@ -5,7 +5,7 @@
 <h1 align="center">Claudex Web</h1>
 
 <p align="center">
-  <strong>在浏览器中，继续你的 Codex 与 Claude Code 工作。</strong><br>
+  <strong>在浏览器中，继续你的 Codex、Claude Code 与 OpenCode 工作。</strong><br>
   在电脑上部署，通过电脑、手机或平板访问同一工作环境。
 </p>
 
@@ -95,6 +95,12 @@ claude auth login
 在网页「设置 → 模型服务商」中点击「添加供应商」。
 
 DeepSeek 等预置供应商直接填写 API Key。
+
+## 配置 OpenCode（可选）
+
+OpenCode 默认关闭。在「设置 → 后端」的 OpenCode 卡片点击「一键安装」，完成后启用。点击页面顶部的后端图标选择 OpenCode，再从输入框的模型菜单选择模型。OpenCode 复用现有模型服务商配置，使用 Anthropic Messages 协议；GPT 模型自动使用本机 Codex 的 ChatGPT 登录态，通过 Responses 协议调用。账户登录与切换统一在 Codex 后端管理。每个后端的卡片都可设置显示的模型，隐藏选择分别保存。
+
+OpenCode 保留自己的对话历史、项目指令、技能和工具连接，关闭网页后继续执行已提交的任务。安装位置、原生数据与部署方式见[部署指南](docs/deployment.md#opencode-可选后端)。
 
 ## 命令行用法
 

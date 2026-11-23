@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createBackends } from "../src/application/backends.js";
 
-test("统一模型选择按供应商路由，跨后端选择保留草稿和附件，已有对话保持所属后端", async (t) => {
+test("模型选择限定当前后端，显式后端切换分别保留草稿和附件", async (t) => {
   const saved = new Map();
   const original = globalThis.localStorage;
   globalThis.localStorage = {
@@ -68,12 +68,18 @@ test("统一模型选择按供应商路由，跨后端选择保留草稿和附�
     (choice) => choice.providerId === "two",
   );
   await controller.selectModelChoice(choice);
+  assert.equal(state.backendId, "codex");
+  await controller.activateBackend("claude");
+  await controller.selectModelChoice(choice);
   assert.equal(state.backendId, "claude");
   assert.equal(state.providerId, "two");
   assert.equal(state.model, "same-model");
+  assert.equal(state.draft, "");
+  assert.deepEqual(state.attachments, []);
+  await controller.activateBackend("codex");
   assert.equal(state.draft, "保留这段输入");
   assert.equal(state.attachments[0], attachment);
-  assert.equal(saved.get("cx-draft-new-claude"), "保留这段输入");
+  await controller.activateBackend("claude");
   set({ current: { id: "backend:claude:session" } });
   await controller.selectModelChoice(
     state.modelChoices.find((choice) => choice.backendId === "codex"),
@@ -101,7 +107,7 @@ test("统一模型选择按供应商路由，跨后端选择保留草稿和附�
   assert.equal(state.serviceTier, "fast");
 });
 
-test("跨后端模型选择同步保留完整供应商快照，立即发送及迟到目录读取保持同一归属", async (t) => {
+test("显式后端激活恢复供应商快照，立即发送及迟到目录读取保持同一归属", async (t) => {
   const original = globalThis.localStorage,
     saved = new Map();
   globalThis.localStorage = {
@@ -186,7 +192,8 @@ test("跨后端模型选择同步保留完整供应商快照，立即发送及�
       return { account: null };
     },
   });
-  const switching = controller.selectModelChoice(choice);
+  const switching = controller.activateBackend("claude", choice);
+  set({ draft: "立即发送" });
   assert.equal(state.backendId, "claude");
   assert.equal(state.providerId, "chosen");
   assert.equal(state.model, "same");

@@ -6,7 +6,7 @@ import { createCliInstallation } from "./cli-installation.mjs";
 import { join } from "node:path";
 import { readProjectlessDirectories } from "../thread-projects.mjs";
 import { createWorkspace } from "../workspace/service.mjs";
-import { isCodexPreference } from "../../../shared/codex-preferences.mjs";
+import { isBackendPreference } from "../../../shared/codex-preferences.mjs";
 import { hasBackendWork } from "../../../shared/backend-activity.mjs";
 import {
   resourceTarget,
@@ -20,12 +20,13 @@ import { createProviders } from "./providers.mjs";
 import { isSubagentSettings } from "../../../shared/subagent-settings.mjs";
 import { validateSubagentSettings } from "./subagent-settings.mjs";
 import { createCodexAdapter } from "./codex/adapter.mjs";
+import { createOpenCodeWorkerAdapter } from "./opencode/worker-client.mjs";
 import { createClaudeWorkerAdapter } from "./claude/worker-client.mjs";
 import { mapResult, mapState, nativeParams } from "./identity-mapping.mjs";
-
 const adapterFactories = {
   codex: createCodexAdapter,
   claude: createClaudeWorkerAdapter,
+  opencode: createOpenCodeWorkerAdapter,
 };
 
 export function createBackendManager({
@@ -47,6 +48,7 @@ export function createBackendManager({
   const cli =
     factories.installation ||
     createCliInstallation({
+      configDir: config.configDir,
       changed: () => {
         if (initialized) emitState();
       },
@@ -312,15 +314,15 @@ export function createBackendManager({
       !old?.backend.backgroundTerminalEnabled
     )
       await background.ensure();
-    if (params.hiddenModels !== undefined && params.id !== "codex")
-      throw new Error("模型显示配置仅用于 Codex");
-    if (!prepare && (isCodexPreference(params) || isSubagentSettings(params))) {
+    if (
+      !prepare &&
+      (isBackendPreference(params) || isSubagentSettings(params))
+    ) {
       old.backend = await configuration.save(params);
       emitState();
       return { backends: publicBackends() };
     }
-    const snapshot = old?.adapter?.state().params;
-    if (hasBackendWork(snapshot))
+    if (hasBackendWork(old?.adapter?.state().params))
       throw new Error("请等待此后端的任务结束后修改配置。");
     if (old) old.changing = true;
     try {

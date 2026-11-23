@@ -12,6 +12,12 @@ export function backendReady(state) {
   const backend = state.backends?.find((b) => b.id === currentBackendId(state));
   return backend ? backend.ready : state.connected;
 }
-export function isModelHidden(backend, model) {
-  return backend?.hiddenModels?.includes(model) ?? false;
+export function modelVisibilityKey(model, providerId = "") {
+  return providerId ? JSON.stringify([providerId, model]) : model;
+}
+export function isModelHidden(backend, model, providerId = "") {
+  return (
+    backend?.hiddenModels?.includes(modelVisibilityKey(model, providerId)) ??
+    false
+  );
 }

@@ -7,3 +7,16 @@ export function isCodexPreference(input) {
     )
   );
 }
+
+export function isModelVisibilityPreference(input) {
+  return (
+    "hiddenModels" in input &&
+    Object.keys(input).every((key) =>
+      ["id", "type", "hiddenModels"].includes(key),
+    )
+  );
+}
+
+export function isBackendPreference(input) {
+  return isCodexPreference(input) || isModelVisibilityPreference(input);
+}

@@ -123,7 +123,11 @@ test(
     } while (response.id !== "settings");
     assert.deepEqual(
       response.result.backends.map((entry) => entry.id),
-      ["codex", "claude"],
+      ["codex", "claude", "opencode"],
+    );
+    assert.equal(
+      response.result.backends.find((b) => b.id === "opencode").enabled,
+      false,
     );
 
     await writeFile(join(bin, "codex"), '#!/bin/sh\nprintf "%s\\n" "$*"\n', {

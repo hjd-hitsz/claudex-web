@@ -144,9 +144,18 @@ export function AccountFooter() {
   const credits = quotaCreditsText(s.usage);
   const extraUsage = quotaExtraUsageText(s.usage);
   const plan = quotaPlan(s.account, s.usage);
+  const backendName =
+    s.backends?.find((backend) => backend.id === backendId)?.name ||
+    { codex: "Codex", claude: "Claude Code", opencode: "OpenCode" }[
+      backendId
+    ] ||
+    backendId;
   const name = codex
-    ? s.account?.email?.split("@")[0] || plan || "Codex"
-    : provider?.name || s.account?.email?.split("@")[0] || "Claude Code";
+    ? s.account?.email?.split("@")[0] || plan || backendName
+    : provider?.name ||
+      s.account?.providerName ||
+      s.account?.email?.split("@")[0] ||
+      backendName;
   const apiAccount = s.account && !quotaEnabled;
   const stale =
     (s.usageError || !connected) &&

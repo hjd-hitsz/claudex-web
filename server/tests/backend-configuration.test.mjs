@@ -70,11 +70,11 @@ test("配置恢复、独立凭据及失败写入保留旧配置", async (t) => {
   );
   await assert.rejects(
     settings.save({ id: "second", type: "claude", name: "Second" }),
-    /两个固定后端/,
+    /三个固定后端/,
   );
   await assert.rejects(
     providers.save({ backendId: "codex" }),
-    /仅用于 Claude Code/,
+    /现有模型服务商/,
   );
   await providers.save({
     id: "vendor",
@@ -136,7 +136,7 @@ test("配置恢复、独立凭据及失败写入保留旧配置", async (t) => {
   assert.equal((await stat(config.backendsFile)).mode & 0o777, 0o600);
   assert.equal(
     (await createBackendConfiguration(config).read()).backends.length,
-    2,
+    3,
   );
 });
 
@@ -215,30 +215,34 @@ test("Claude 执行服务的供应商读取独立于 Codex 连接配置", async 
   assert.equal((await providers.get("claude", "vendor")).name, "Renamed");
 });
 
-test("Codex 隐藏模型跨实例恢复，启停保留偏好且非法写入保留原值", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "model-visibility-"));
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const config = {
-    configDir: directory,
-    codexHome: directory,
-    claudeHome: directory,
-    upstreamUrl: "ws://127.0.0.1:8765",
-  };
-  const settings = createBackendConfiguration(config);
-  await settings.save({
-    id: "codex",
-    type: "codex",
-    hiddenModels: ["model-a", "model-a"],
+for (const id of ["codex", "claude", "opencode"])
+  test(`${id} 隐藏模型跨实例恢复，启停保留偏好且非法写入保留原值`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "model-visibility-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const config = {
+      configDir: directory,
+      codexHome: directory,
+      claudeHome: directory,
+      upstreamUrl: "ws://127.0.0.1:8765",
+    };
+    const settings = createBackendConfiguration(config);
+    await settings.save({
+      id,
+      type: id,
+      hiddenModels: ["model-a", "model-a"],
+    });
+    await settings.save({ id, type: id, enabled: false });
+    const restored = await createBackendConfiguration(config).read();
+    assert.deepEqual(restored.backends.find((b) => b.id === id).hiddenModels, [
+      "model-a",
+    ]);
+    assert.equal(restored.backends.find((b) => b.id === id).enabled, false);
+    await assert.rejects(
+      settings.save({ id, type: id, hiddenModels: [42] }),
+      /无效/,
+    );
+    assert.deepEqual(
+      (await settings.read()).backends.find((b) => b.id === id).hiddenModels,
+      ["model-a"],
+    );
   });
-  await settings.save({ id: "codex", type: "codex", enabled: false });
-  const restored = await createBackendConfiguration(config).read();
-  assert.deepEqual(restored.backends[0].hiddenModels, ["model-a"]);
-  assert.equal(restored.backends[0].enabled, false);
-  await assert.rejects(
-    settings.save({ id: "codex", type: "codex", hiddenModels: [42] }),
-    /无效/,
-  );
-  assert.deepEqual((await settings.read()).backends[0].hiddenModels, [
-    "model-a",
-  ]);
-});

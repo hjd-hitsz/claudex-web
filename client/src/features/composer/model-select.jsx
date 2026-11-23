@@ -17,19 +17,19 @@ export const ModelSelect = React.memo(function ModelSelect() {
   const modelId = useStoreSelector((state) => state.model);
   const backendId = useStoreSelector((state) => state.backendId);
   const providerId = useStoreSelector((state) => state.providerId);
-  const inConversation = useStoreSelector((state) => Boolean(state.current));
   const active = useStoreSelector((state) =>
     Boolean(state.active[state.current?.id]),
   );
   const locked = useStoreSelector((state) => state.busy || state.loading);
   const backend = backends.find((entry) => entry.id === backendId);
-  const hidden = isModelHidden(backend, modelId);
+  const hidden = isModelHidden(backend, modelId, providerId);
   const choices = (modelChoices || []).filter(
     (choice) =>
-      (!inConversation || choice.backendId === backendId) &&
+      choice.backendId === backendId &&
       !isModelHidden(
         backends.find((entry) => entry.id === choice.backendId),
         choice.model,
+        choice.providerId,
       ),
   );
   const current = choices.find(
@@ -45,7 +45,7 @@ export const ModelSelect = React.memo(function ModelSelect() {
     : "请选择模型";
   const catalogueAvailable = choices.length > 0 || hidden;
   const label = current
-    ? `${current.providerName} · ${current.displayName || current.model}`
+    ? `${current.providerName}/${current.displayName || current.model}`
     : catalogueAvailable
       ? unavailable
       : models.find((model) => model.model === modelId)?.displayName ||
@@ -86,13 +86,13 @@ export const ModelSelect = React.memo(function ModelSelect() {
                 value={key(choice)}
                 disabled={active && choice.providerId !== providerId}
               >
-                {choice.providerName} · {choice.displayName || choice.model}
+                {choice.providerName}/{choice.displayName || choice.model}
               </option>
             ))}
           </>
         ) : (
           models
-            .filter((model) => !isModelHidden(backend, model.model))
+            .filter((model) => !isModelHidden(backend, model.model, providerId))
             .map((model) => (
               <option key={model.id} value={model.model}>
                 {model.displayName || model.model}

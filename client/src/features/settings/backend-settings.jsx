@@ -2,7 +2,7 @@ import { cliUpdateAvailable } from "../../domain/cli-installation.js";
 import React, { useEffect, useRef, useState } from "react";
 import { useStore, saveBackend, rpc } from "../../store.js";
 import { BackendBadge } from "../backends/backend-badge.jsx";
-import { CodexModelSettings } from "./codex-model-settings.jsx";
+import { BackendModelSettings } from "./backend-model-settings.jsx";
 import { ProxySettings } from "./proxy-settings.jsx";
 import { SubagentModelSettings } from "./subagent-model-settings.jsx";
 
@@ -167,9 +167,11 @@ export function BackendSettings() {
                 <pre>{diagnostic}</pre>
               </details>
             )}
-            <SubagentModelSettings backend={backend} disabled={working} />
-            {backend.type === "codex" && (
-              <CodexModelSettings backend={backend} />
+            {backend.type !== "opencode" && (
+              <SubagentModelSettings backend={backend} disabled={working} />
+            )}
+            {backend.enabled && backend.ready && (
+              <BackendModelSettings backend={backend} />
             )}
             {backend.type === "claude" && (
               <ProxySettings backend={backend} disabled={working} />

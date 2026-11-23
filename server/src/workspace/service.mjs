@@ -8,7 +8,7 @@ import { createCodeLineSearch } from "./code-line-search.mjs";
 function isLocalWorkspace(backend) {
   return (
     !backend ||
-    backend.type === "claude" ||
+    ["claude", "opencode"].includes(backend.type) ||
     ["127.0.0.1", "localhost", "[::1]"].includes(new URL(backend.url).hostname)
   );
 }

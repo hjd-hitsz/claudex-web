@@ -13,7 +13,7 @@ export function BackgroundTaskProvider({ children }) {
   const enabled = useStoreSelector(
     (state) =>
       state.connected &&
-      (state.current?.backendId === "claude" ||
+      (["claude", "opencode"].includes(state.current?.backendId) ||
         state.backends.some(
           (backend) =>
             backend.id === "codex" && backend.backgroundTerminalAvailable,

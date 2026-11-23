@@ -10,6 +10,7 @@ import {
   installCliPackage,
 } from "./cli-package.mjs";
 
+import { createOpenCodeInstallation } from "./opencode/installation.mjs";
 const execute = promisify(execFile);
 const packages = {
   codex: "@openai/codex",
@@ -31,21 +32,28 @@ export async function findCli(id) {
       if (!["ENOENT", "EACCES", "ENOTDIR"].includes(error.code)) throw error;
     }
   }
-  throw new Error(
-    `未找到 ${id}，请点击一键安装，或执行 npm install -g ${packages[id]}`,
+  throw Object.assign(
+    new Error(
+      `未找到 ${id}，请点击一键安装，或执行 npm install -g ${packages[id]}`,
+    ),
+    { code: "ENOENT" },
   );
 }
 
 export function createCliInstallation({
+  configDir,
   run = execute,
   locate = findCli,
   fetchVersion = latestVersion,
   changed = () => {},
 } = {}) {
+  const opencode =
+    configDir && createOpenCodeInstallation({ configDir, run, changed });
   let timer;
   const states = new Map();
   const pending = new Map();
   function state(id) {
+    if (id === "opencode" && opencode) return opencode.state();
     return (
       states.get(id) || {
         checking: true,
@@ -60,6 +68,7 @@ export function createCliInstallation({
     changed();
   }
   function refresh(id) {
+    if (id === "opencode" && opencode) return opencode.refresh();
     if (!packages[id]) throw new Error("未知后端");
     if (pending.has(id)) return pending.get(id);
     const operation = (async () => {
@@ -102,6 +111,7 @@ export function createCliInstallation({
     return operation;
   }
   async function install(id) {
+    if (id === "opencode" && opencode) return opencode.install();
     if (!packages[id]) throw new Error("未知后端");
     patch(id, { installing: true, installError: "", installErrorDetails: "" });
     try {
@@ -129,6 +139,7 @@ export function createCliInstallation({
   function start() {
     if (timer) return;
     const check = () => {
+      opencode?.refresh().catch(() => {});
       for (const id of Object.keys(packages)) refresh(id).catch(() => {});
     };
     timer = setInterval(check, 60 * 60 * 1000);

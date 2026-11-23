@@ -13,6 +13,7 @@ export function HeaderSwitcher({
   current,
   getOptions,
   onSelect,
+  disabled = false,
 }) {
   const [open, setOpen] = useState(false);
   const container = useRef(null);
@@ -80,6 +81,7 @@ export function HeaderSwitcher({
     >
       <button
         type="button"
+        disabled={disabled}
         ref={trigger}
         aria-label={triggerLabel}
         aria-expanded={open}

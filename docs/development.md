@@ -63,6 +63,24 @@ CLI 安装回归使用 `server/tests/cli-package.test.mjs` 验证原生平台包
 
 正文图片布局回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/message-images.mjs`。脚本使用仓库截图与隔离消息、模拟后端和独立浏览器配置，验证消息及文件预览中的图片居中、640 × 480 像素上限、等比缩小、HTML 指定宽度、链接图片、`picture`、大图预览及关闭后的焦点恢复，覆盖深浅主题、窄屏和 80% 至 200% 实际页面缩放。结束时恢复缩放并清理浏览器配置，截图、尺寸测量与构建来源保存在 `.cache/message-images/after`。对照时将生产构建和构建来源保存到 `.cache/message-images/before/dist` 与 `build-info.json`，以 `BROWSER_BEFORE=1` 运行对照。
 
+## OpenCode 开发与验收
+
+OpenCode 的原生依赖按需安装，兼容版本和生命周期契约见[OpenCode 原生适配](architecture/backends.md#opencode-原生适配)。准备隔离 SDK 后运行：
+
+```bash
+npm install --prefix .cache/opencode/runtime @opencode/sdk@2.3.2
+OPENCODE_SDK_ENTRY=.cache/opencode/runtime/node_modules/@opencode/sdk/dist/index.js node --import ./tests/helpers/test-console.mjs tests/integration/opencode-native.mjs
+node --import ./tests/helpers/test-console.mjs tests/integration/opencode-worker.mjs
+```
+
+原生脚本使用临时数据库和本机模拟 Messages 服务验证真实 SDK、流式输出、工具、提问、运行中输入、队列取消、编辑分支、重启历史、目标、计划及整理。执行服务脚本将 systemd 命令置为不可用，验证桥接被强制结束后的同一 worker、后台 shell、重连、单任务停止与忙时保护。原生测试始终使用隔离 XDG 目录。`tests/integration/opencode-subscription.mjs` 使用真实 SDK 与隔离 Responses 流验证基础模型、独立思考强度和速度档位的请求参数、恢复及旧速度别名会话，真实模型调用数为零。
+
+取得用户对本机 ChatGPT 订阅的明确授权后，可设置 `OPENCODE_SDK_ENTRY` 并运行 `node --import ./tests/helpers/test-console.mjs tests/integration/opencode-live.mjs`。脚本通过 Codex 原生账户接口读取登录态，以 `CODEX_VALIDATION_HOME`、`CODEX_HOME` 或默认 Codex 目录定位账户；临时 OpenCode 数据库保存隔离会话。`OPENCODE_LIVE_MODEL` 可指定订阅模型，默认 `gpt-6-luna`；`OPENCODE_LIVE_SERVICE_TIER` 可指定账户支持的速度档位。真实模型在临时项目写入和读取文件，核对原生用量与账户身份，证据保存在忽略目录 `.cache/opencode`。
+
+生产构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/opencode.mjs`，用隔离协议夹具验收后端图标切换、当前后端模型菜单、模型显示偏好及现有供应商配置。覆盖深浅主题、桌面和窄屏以及 80%、100%、125%、150%、200% 实际页面缩放，截图位于 `.cache/opencode/backend-selection`。模拟响应、原生 SDK 和真实订阅模型分别记录验证结果。
+
+展示真实模型目录时，设置 `OPENCODE_SDK_ENTRY` 和 `OPENCODE_PROVIDERS_FILE`，运行 `node --import ./tests/helpers/test-console.mjs tests/integration/opencode-model-catalogue.mjs`。脚本使用本机 Codex 登录态及已配置供应商的公开模型信息，通过隔离的原生 OpenCode SDK 读取目录；供应商凭据不传入运行时，模型推理请求数为零。随后以 `OPENCODE_MODEL_CATALOGUE=.cache/opencode/real-model-catalogue.json` 运行上述浏览器脚本，逐项核对菜单和当前选项仅显示「供应商/模型」，实际目录及截图保存在 `.cache/opencode/real-models` 和对应忽略目录。
+
 ## 双后端开发与验收
 
 网页维护回归使用 `node --import ./tests/helpers/test-console.mjs --test server/tests/service-maintenance*.test.mjs`，覆盖 systemd 命令夹具、真实 HTTPS 普通进程的 HTTP 重启、npm 安装失败、启动失败回滚、进程身份与退出期限。进程环境夹具将 npm 与 systemctl 放在不同目录，维护进程的 PATH 只含 systemctl，验证环境传递及安装、启动失败时的恢复。构建后运行 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/service-maintenance.mjs`，验证更新与重启按钮的点击、错误反馈、重试及进行状态，核对深浅主题、桌面与窄屏在 80% 至 200% 实际页面缩放下的按钮文案单行显示及卡片边界。截图及构建来源保存在 `.cache/service-maintenance/after`；使用 `BROWSER_BEFORE=1` 对照 `.cache/service-maintenance/before/dist` 中的基线构建。
@@ -165,6 +183,8 @@ CLAUDE_EXECUTABLE=/absolute/path/to/claude MODEL_BASE_URL=https://model.example 
 模型名称布局回归在构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/model-select.mjs`。脚本使用隔离模型目录及模拟后端，在桌面、平板竖屏和手机窄屏核对完整名称、键盘选择、两行输入正文完整可见、工具栏控件位于视口内，覆盖深浅主题及 80%～200% 实际页面缩放；结束后恢复缩放并清理浏览器配置。截图与测量记录保存在 `.cache/model-select/after`。对照时将构建复制到 `.cache/model-select/before/dist`，设置 `BROWSER_BEFORE=1` 运行对照。
 
 长对话切换回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/history-performance.mjs`。脚本使用生产构建、独立浏览器和 15 轮、3,210 条记录的隔离历史，每页模拟 50 毫秒往返；记录首屏和完整恢复耗时，验证最近消息及输入先可用、自动完整分页、普通状态更新复用 Markdown、读取期间草稿与实时更新保留、历史前插时的阅读位置、目录跳转和快速切换隔离，覆盖深浅主题、80% 至 200% 缩放及窄屏。证据与构建来源保存在 `.cache/history-performance/after`。对照时的构建及来源分别保存为 `.cache/history-performance-before/dist` 和 `build-info.json`，以 `BROWSER_BEFORE=1` 记录同机对照，耗时用于比较同机行为。单元及组件回归同时验证旧接口完整轮次回退、分页失败后的可读记录与重试、实时结果优先及切换隔离。
+
+跨后端切换回归使用同一浏览器环境运行 `tests/browser/backend-switch-performance.mjs`。三个后端各提供两条同等历史的隔离对话，将模型、账户和配置响应延迟 1.8 秒，交错测量三种同后端及六种跨后端方向的首次与重复切换、正文绘制、输入区就绪和浏览器长任务。结果与截图位于 `.cache/backend-switch-performance/after`；将旧构建和构建身份保存到该目录的同级 `before/dist`、`before/build-info.json`，以 `BROWSER_BEFORE=1` 运行同机对照。`client/tests/backend-thread-navigation.test.js` 同时阻塞辅助请求，验证对话仍能完成恢复，覆盖连续切换工作区、供应商、模型新选择、读取失败及断线隔离。
 
 侧栏收纳回归执行 `SIDEBAR_DENSITY=1 CHROME_PATH=/path/to/chromium node tests/browser/project-pins.mjs`，使用隔离的 Atlas/Beacon 与最近有活动的未分类对话、超过 60 条的后端分页，验证未分类始终位于末尾、固定与未固定的默认收放、每组最新五条、全部展开及收起、刷新重置、键盘操作、深浅主题、80% 至 200% 缩放和手机布局。截图与构建信息保存在 `.cache/sidebar-density-browser/after/`。旧构建及来源位于 `.cache/sidebar-density-before/`，追加 `SIDEBAR_DENSITY_BEFORE=1` 保存旧版全部展开的对照截图。
 
@@ -320,6 +340,8 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 Codex 使用 `client/src/assets/openai.svg` 中的黑色 Blossom 图形，保留原始轮廓，将 `viewBox` 收紧至图形外围，以匹配 Claude Code 标识的绘制范围。图形取自 OpenAI 官方品牌素材，标识归 OpenAI 所有。[OpenAI 品牌素材](https://cdn.openai.com/brand/OpenAI-Logos-2025.zip) · [OpenAI 品牌指南](https://openai.com/brand/)
 
 Claude Code 使用 `client/src/assets/claude.svg` 中取自官方网站页首标志的独立图形路径，标识归 Anthropic 所有。Claudex Web 产品图标使用 `claudex-web.svg`。[Claude 官方网站](https://claude.com/)
+
+OpenCode 使用 `client/src/assets/opencode.svg`，取自[官方品牌页的产品标志](https://opencode.ai/brand/files/opencode-logo-transparent-light.svg)，保留原始图形比例与内部透明度，并沿用主题蒙版。
 
 生产构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/settings-navigation.mjs`。隔离浏览器验证五个设置入口、更新直达、焦点返回、跨页草稿与在途保存、P2P 轮询暂停，以及真实侧栏中的标识绘制范围。桌面和窄屏分别覆盖深浅主题与 80% 至 200% 实际页面缩放，截图保存在 `.cache/settings-navigation/`。
 

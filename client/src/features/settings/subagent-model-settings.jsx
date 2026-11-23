@@ -25,7 +25,8 @@ export function SubagentModelSettings({ backend, disabled }) {
   const choices = (modelChoices || [])
     .filter(
       (entry) =>
-        entry.backendId === backend.id && !isModelHidden(backend, entry.model),
+        entry.backendId === backend.id &&
+        !isModelHidden(backend, entry.model, entry.providerId),
     )
     .map((entry) =>
       backend.id === "claude" && !entry.providerId
@@ -47,7 +48,13 @@ export function SubagentModelSettings({ backend, disabled }) {
   const efforts = selected?.supportedReasoningEfforts || [];
   const invalidEffort =
     effort && !efforts.some((option) => option.reasoningEffort === effort);
-  const hidden = selection && isModelHidden(backend, JSON.parse(selection)[1]);
+  const hidden =
+    selection &&
+    isModelHidden(
+      backend,
+      JSON.parse(selection)[1],
+      JSON.parse(selection)[0] === "@native" ? "" : JSON.parse(selection)[0],
+    );
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
@@ -105,7 +112,7 @@ export function SubagentModelSettings({ backend, disabled }) {
               key={choiceKey(entry.providerId, entry.model)}
               value={choiceKey(entry.providerId, entry.model)}
             >
-              {entry.providerName} / {entry.displayName || entry.model}
+              {entry.providerName}/{entry.displayName || entry.model}
             </option>
           ))}
         </select>

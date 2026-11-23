@@ -105,7 +105,7 @@ test("相同原生会话 ID 按实例路由，单实例故障保留另一实例�
     (await call("thread/read", { threadId: "same" })).thread.id,
     "same",
   );
-  assert.equal((await call("lan/backends/list", {})).backends.length, 2);
+  assert.equal((await call("lan/backends/list", {})).backends.length, 3);
   adapters.get("claude").notify({
     method: "item/completed",
     params: {

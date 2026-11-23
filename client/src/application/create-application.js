@@ -192,9 +192,24 @@ export function createApplication() {
     models,
     records,
     getConnectionRevision: () => connection.revision,
-    activateBackend: backends.activateBackend,
+    activateThreadBackend: backends.activateThreadBackend,
     selectProvider: backends.selectProvider,
   });
+  async function selectBackend(id) {
+    if (
+      get().busy ||
+      get().loading ||
+      get().backendId === id ||
+      !get().backends.some((b) => b.id === id && b.enabled)
+    )
+      return;
+    if (get().current)
+      navigation.newChat(undefined, {
+        reuseDirectory: true,
+        applyModelSelection: false,
+      });
+    await backends.activateBackend(id);
+  }
   const catalog = createThreadCatalog({
     get,
     set,
@@ -299,6 +314,7 @@ export function createApplication() {
     ...goals,
     ...backends,
     ...navigation,
+    selectBackend,
     ...catalog,
     ...messages,
     ...compaction,

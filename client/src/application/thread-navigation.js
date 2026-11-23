@@ -19,7 +19,7 @@ export function createThreadNavigation({
   models,
   records,
   getConnectionRevision,
-  activateBackend = async () => {},
+  activateThreadBackend = () => {},
   selectProvider = () => {},
 }) {
   let opening = 0;
@@ -116,8 +116,6 @@ export function createThreadNavigation({
     });
     try {
       const backendId = resourceTarget(id).backendId;
-      if (get().backendId !== backendId) await activateBackend(backendId);
-      if (epoch !== opening) return;
       const usageSnapshot = { value: get().tokenUsage[id] };
       const created =
         connection === transport.connection &&
@@ -142,7 +140,8 @@ export function createThreadNavigation({
           : get().projectlessRoot,
       );
       getAttachmentDraft();
-      if (backendId === "claude") selectProvider(thread.providerId);
+      if (backendId === get().backendId && backendId === "claude")
+        selectProvider(thread.providerId);
       set({
         ...(isArchivedThread(thread) === get().archived && {
           threads: get().threads.some((t) => t.id === id)
@@ -166,6 +165,7 @@ export function createThreadNavigation({
         items: [],
         draft: localStorage.getItem("cx-draft-" + id) || "",
       });
+      activateThreadBackend(thread);
       localStorage.setItem("cx-current", id);
       const ordering =
         !isArchivedThread(thread) &&

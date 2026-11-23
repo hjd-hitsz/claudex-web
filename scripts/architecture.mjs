@@ -138,12 +138,12 @@ function boundaryError(from, to) {
     to.startsWith("server/src/backends/")
   )
     return "公共桥接规则通过参数取得后端能力";
-  for (const backend of ["codex", "claude"]) {
+  for (const backend of ["codex", "claude", "opencode"]) {
     if (
       from.startsWith(`server/src/backends/${backend}/`) &&
       to.startsWith("server/src/backends/") &&
       !to.startsWith(`server/src/backends/${backend}/`) &&
-      /^server\/src\/backends\/(?:codex|claude)\//.test(to)
+      /^server\/src\/backends\/(?:codex|claude|opencode)\//.test(to)
     )
       return "原生适配器只能依赖所属后端与公共服务";
   }

@@ -13,15 +13,17 @@ export function createAccount({ get, set, rpc, transport }) {
       return Promise.resolve();
     const connection = transport.connection;
     const { backendId, providerId, cwd } = get();
+    const model = backendId === "opencode" ? get().model : undefined;
     if (
       usageRequest?.connection === connection &&
       usageRequest.backendId === backendId &&
       usageRequest.providerId === providerId &&
-      usageRequest.cwd === cwd
+      usageRequest.cwd === cwd &&
+      usageRequest.model === model
     )
       return usageRequest.promise;
     const revision = usageRevision;
-    const request = { connection, backendId, providerId, cwd };
+    const request = { connection, backendId, providerId, cwd, model };
     usageRequest = request;
     const current = () =>
       transport.connection === connection &&
@@ -29,11 +31,12 @@ export function createAccount({ get, set, rpc, transport }) {
       revision === usageRevision &&
       get().backendId === backendId &&
       get().providerId === providerId &&
-      get().cwd === cwd;
+      get().cwd === cwd &&
+      (backendId !== "opencode" || get().model === model);
     set({ usageLoading: true });
     request.promise = rpc(
       "account/rateLimits/read",
-      { backendId, providerId, cwd },
+      { backendId, providerId, cwd, model },
       20000,
     )
       .then((usage) => {
@@ -64,9 +67,15 @@ export function createAccount({ get, set, rpc, transport }) {
       usageRevision++;
       usageRequest = null;
       const connection = transport.connection;
-      const { backendId, providerId, cwd } = get();
+      const { backendId, providerId, cwd, model } = get();
       set({ account: null, usage: null, usageLoading: false, usageError: "" });
-      rpc("account/read", { refreshToken: false, backendId, providerId, cwd })
+      rpc("account/read", {
+        refreshToken: false,
+        backendId,
+        providerId,
+        cwd,
+        model,
+      })
         .then((result) => {
           if (
             transport.connection !== connection ||
@@ -74,7 +83,8 @@ export function createAccount({ get, set, rpc, transport }) {
             revision !== accountRevision ||
             get().backendId !== backendId ||
             get().providerId !== providerId ||
-            get().cwd !== cwd
+            get().cwd !== cwd ||
+            (backendId === "opencode" && get().model !== model)
           )
             return;
           set({ account: result.account });
