@@ -194,6 +194,7 @@ export function createApplication() {
     getConnectionRevision: () => connection.revision,
     activateBackend: backends.activateBackend,
     selectProvider: backends.selectProvider,
+    report,
   });
   const catalog = createThreadCatalog({
     get,

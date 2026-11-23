@@ -1,10 +1,12 @@
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import {
   isArchivedThread,
+  mergeThreadTimes,
   projectGroups,
   PROJECTLESS_SOURCE,
   preserveFailedBackendThreads,
   sortThreads,
+  threadGroupPath,
 } from "../domain/thread-order.js";
 import { nextForkTitle } from "../domain/fork-title.js";
 import { saved, persist } from "../infrastructure/storage.js";
@@ -126,6 +128,14 @@ export function createThreadCatalog({
         ];
     if (!isCurrent()) return;
     const sorted = visibleRecords(hydrated);
+    const state = get();
+    const listed = sorted.find((thread) => thread.id === state.current?.id);
+    const current = listed
+      ? mergeThreadTimes({ ...state.current, ...listed }, state.current)
+      : state.current;
+    const projectlessRoots = state.projectlessRoots?.length
+      ? state.projectlessRoots
+      : state.projectlessRoot;
     listedScope = params;
     set({
       threadListErrors: errors,
@@ -137,9 +147,7 @@ export function createThreadCatalog({
             get().projects,
             get().pins,
             projectless.directories,
-            get().projectlessRoots?.length
-              ? get().projectlessRoots
-              : get().projectlessRoot,
+            projectlessRoots,
           )
             .map(([path]) => path)
             .filter((path) => !get().projectOrder?.includes(path)),
@@ -147,9 +155,15 @@ export function createThreadCatalog({
         ],
       }),
       threads: sorted,
-      current: get().current
-        ? sorted.find((t) => t.id === get().current.id) || get().current
-        : null,
+      current,
+      ...(current && {
+        projectless: !threadGroupPath(
+          current,
+          state.projects,
+          projectless.directories,
+          projectlessRoots,
+        ),
+      }),
     });
   }
   async function rename(thread, name) {

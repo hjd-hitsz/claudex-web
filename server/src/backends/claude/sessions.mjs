@@ -1,5 +1,7 @@
 import { recoverAgents, agentTurns } from "./agent-history.mjs";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { createHistoryPages } from "./history-pages.mjs";
 import {
   createHistoryActions,
   forkHistory,
@@ -20,6 +22,7 @@ export function createClaudeSessions({
   readTokenUsage = async (session) => session.tokenUsage,
 }) {
   runtime.mutating ||= new Set();
+  const history = createHistoryPages(turns, page);
   async function update(id, patch) {
     await storage.update((data) => ({
       ...data,
@@ -68,33 +71,40 @@ export function createClaudeSessions({
   }
   async function turns(id) {
     const s = await session(id);
-    const messages = s.agentId
-      ? await readSession(
+    const dir = s.historySearchAll ? undefined : s.cwd;
+    if (s.agentId)
+      return agentTurns(
+        await readSession(
           "getSubagentMessages",
           s.parentNativeId || s.parentId,
           s.agentId,
-          {
-            dir: s.historySearchAll ? undefined : s.cwd,
-          },
-        )
-      : s.initialized
-        ? await readSession("getSessionMessages", s.nativeSessionId || id, {
-            dir: s.historySearchAll ? undefined : s.cwd,
+          { dir },
+        ),
+      );
+    const nativeId = s.nativeSessionId || id;
+    const [messages, agentIds] = s.initialized
+      ? await Promise.all([
+          readSession("getSessionMessages", nativeId, {
+            dir,
             includeSystemMessages: true,
-          })
-        : [];
-    if (s.agentId) return agentTurns(messages);
+          }),
+          readSession("listSubagents", nativeId, { dir }),
+        ])
+      : [[], []];
     const records = historyTurns(
       visibleSessionMessages(messages, s.internalInputIds),
       s.turns,
       s.turnIds,
       s.inputTurns,
     );
+    const byId = new Map(records.map((turn) => [turn.id, turn]));
     for (const saved of Object.values(s.turns || {}))
-      if (!records.some((t) => t.id === saved.id) && saved.items?.length)
+      if (!byId.has(saved.id) && saved.items?.length) {
         records.push(saved);
+        byId.set(saved.id, saved);
+      }
     for (const item of Object.values(s.extraItems || {})) {
-      const turn = records.find((t) => t.id === item.turnId);
+      const turn = byId.get(item.turnId);
       if (turn && !turn.items.some((i) => i.id === item.id))
         turn.items.push(item);
     }
@@ -103,19 +113,24 @@ export function createClaudeSessions({
         { ...s, running: runtime.running.has(s.id) },
         records,
         readSession,
+        agentIds,
       );
-      await storage.update((data) => {
-        const current = data.sessions[s.id];
-        if (current?.deleted || current?.nativeSessionId !== s.nativeSessionId)
-          return data;
-        return {
-          ...data,
-          sessions: {
-            ...data.sessions,
-            [s.id]: { ...current, agents: { ...agents, ...current.agents } },
-          },
-        };
-      });
+      if (!isDeepStrictEqual(agents, s.agents || {}))
+        await storage.update((data) => {
+          const current = data.sessions[s.id];
+          if (
+            current?.deleted ||
+            current?.nativeSessionId !== s.nativeSessionId
+          )
+            return data;
+          return {
+            ...data,
+            sessions: {
+              ...data.sessions,
+              [s.id]: { ...current, agents: { ...agents, ...current.agents } },
+            },
+          };
+        });
     }
     return records;
   }
@@ -141,8 +156,10 @@ export function createClaudeSessions({
       };
     if (["thread/revert", "thread/rollback"].includes(method)) return revert(p);
     if (method === "thread/list") {
-      const data = await storage.read();
-      const native = await readSession("listSessions", {});
+      const [data, native] = await Promise.all([
+        storage.read(),
+        readSession("listSessions", {}),
+      ]);
       const aliases = new Set(
         Object.values(data.sessions).flatMap((s) => [
           s.id,
@@ -150,9 +167,10 @@ export function createClaudeSessions({
           ...(s.nativeAliases || []),
         ]),
       );
+      const discovered = {};
       for (const n of native)
         if (!aliases.has(n.sessionId))
-          data.sessions[n.sessionId] = {
+          discovered[n.sessionId] = {
             id: n.sessionId,
             name: n.customTitle || n.summary,
             cwd: n.cwd,
@@ -162,10 +180,12 @@ export function createClaudeSessions({
             turns: {},
             queue: [],
           };
-      const merged = await storage.update((current) => ({
-        ...current,
-        sessions: { ...data.sessions, ...current.sessions },
-      }));
+      const merged = Object.keys(discovered).length
+        ? await storage.update((current) => ({
+            ...current,
+            sessions: { ...discovered, ...current.sessions },
+          }))
+        : data;
       return page(
         Object.values(merged.sessions)
           .filter(
@@ -215,14 +235,8 @@ export function createClaudeSessions({
         serviceTier: s.serviceTier ?? null,
       };
     }
-    if (method === "thread/turns/list") return page(await turns(p.threadId), p);
-    if (method === "thread/items/list")
-      return page(
-        (await turns(p.threadId)).flatMap((turn) =>
-          (turn.items || []).map((item) => ({ turnId: turn.id, item })),
-        ),
-        p,
-      );
+    if (["thread/turns/list", "thread/items/list"].includes(method))
+      return history.read(method, p);
     if (
       [
         "thread/name/set",
@@ -328,7 +342,12 @@ export function createClaudeSessions({
       if (runtime.running.has(id) || s.queue?.length || compactions.busy(id))
         throw new Error("请等待此对话任务结束");
       await runtime.releaseSession?.(id);
-      return perform(method, p);
+      const result = await perform(method, p);
+      if (
+        ["thread/revert", "thread/rollback", "thread/delete"].includes(method)
+      )
+        history.invalidate(id);
+      return result;
     })();
     operations.set(id, operation);
     try {
@@ -339,6 +358,7 @@ export function createClaudeSessions({
     }
   }
   return {
+    close: history.close,
     request,
     handles: (method) => methods.has(method),
     session,

@@ -11,6 +11,8 @@ import {
   PROJECTLESS_SOURCE,
 } from "../domain/thread-order.js";
 import { readThreadHistory } from "../domain/thread-history.js";
+import { historyPageReader, prefetchThreadItems } from "./history-page.js";
+import { createThreadAttachmentDrafts } from "./thread-attachment-drafts.js";
 export function createThreadNavigation({
   get,
   set,
@@ -21,23 +23,12 @@ export function createThreadNavigation({
   getConnectionRevision,
   activateBackend = async () => {},
   selectProvider = () => {},
+  report = () => {},
 }) {
   let opening = 0;
   let historyRevision = 0;
-  const attachmentDrafts = new Map();
-  function getAttachmentDraft(id = get().current?.id ?? null) {
-    if (!attachmentDrafts.has(id))
-      attachmentDrafts.set(id, { attachments: [] });
-    const draft = attachmentDrafts.get(id);
-    if (id === (get().current?.id ?? null))
-      draft.attachments = get().attachments;
-    return draft;
-  }
-  function updateAttachmentDraft(draft, update) {
-    const current = getAttachmentDraft();
-    draft.attachments = update(draft.attachments);
-    if (current === draft) set({ attachments: draft.attachments });
-  }
+  const { getAttachmentDraft, updateAttachmentDraft, assignNewThread } =
+    createThreadAttachmentDrafts(get, set);
   function setProjectDirectory(cwd) {
     if (!get().loading) models.rememberModelSelection();
     set({
@@ -96,7 +87,7 @@ export function createThreadNavigation({
   }
   async function openThread(
     id,
-    { preserveServiceTier = false, forkResult } = {},
+    { preserveServiceTier = false, forkResult, refreshMetadata = false } = {},
   ) {
     if (!backendEnabled(get().backends, resourceTarget(id).backendId)) return;
     if (get().current && !get().loading) models.rememberModelSelection();
@@ -116,23 +107,33 @@ export function createThreadNavigation({
     });
     try {
       const backendId = resourceTarget(id).backendId;
-      if (get().backendId !== backendId) await activateBackend(backendId);
-      if (epoch !== opening) return;
+      const switchingBackend = get().backendId !== backendId;
       const usageSnapshot = { value: get().tokenUsage[id] };
       const created =
         connection === transport.connection &&
         connectionRevision === getConnectionRevision()
           ? forkResult
           : undefined;
-      const r =
-        created ||
-        (await rpc("thread/read", { threadId: id, includeTurns: false }));
+      const read =
+        created || rpc("thread/read", { threadId: id, includeTurns: false });
+      const firstPage = prefetchThreadItems(
+        rpc,
+        id,
+        get,
+        records.turnRevisions,
+      );
+      const r = await read;
       if (epoch !== opening || records.deletedThreads.has(id)) return;
       const known = get().threads.find((thread) => thread.id === id);
       const thread = records.preserveThreadName(
         records.threadOrdering.apply(mergeThreadTimes(r.thread, known)),
         revision,
       );
+      const cwd = thread.cwd || r.cwd;
+      const providerId = thread.providerId || "";
+      const model =
+        thread.model || (switchingBackend ? "" : models.defaults.model);
+      const refresh = refreshMetadata || switchingBackend || get().cwd !== cwd;
       const projectless = !threadGroupPath(
         thread,
         get().projects,
@@ -142,7 +143,8 @@ export function createThreadNavigation({
           : get().projectlessRoot,
       );
       getAttachmentDraft();
-      if (backendId === "claude") selectProvider(thread.providerId);
+      if (backendId === "claude" && !switchingBackend)
+        selectProvider(providerId);
       set({
         ...(isArchivedThread(thread) === get().archived && {
           threads: get().threads.some((t) => t.id === id)
@@ -156,16 +158,22 @@ export function createThreadNavigation({
           get().tokenUsage[id] === usageSnapshot.value && {
             tokenUsage: { ...get().tokenUsage, [id]: thread.tokenUsage },
           }),
-        providerId: thread.providerId || "",
+        providerId,
         attachments: getAttachmentDraft(id).attachments,
-        cwd: thread.cwd || r.cwd,
+        cwd,
         projectless,
         projectlessCwd: null,
-        model: thread.model || models.defaults.model,
+        model,
         effort: thread.reasoningEffort || "",
         items: [],
         draft: localStorage.getItem("cx-draft-" + id) || "",
       });
+      if (refresh)
+        activateBackend(backendId, { backendId, providerId, model }).catch(
+          (error) => {
+            if (epoch === opening) report(error);
+          },
+        );
       localStorage.setItem("cx-current", id);
       const ordering =
         !isArchivedThread(thread) &&
@@ -187,6 +195,7 @@ export function createThreadNavigation({
         ...(backendId === "codex" && { forkResult: created }),
       };
       await loadHistory(epoch, {
+        firstPage: r.thread.status?.type === "active" ? undefined : firstPage,
         onFirstPage: () => {
           set({ loading: false });
           access = refreshThreadAccess(accessOptions);
@@ -342,7 +351,7 @@ export function createThreadNavigation({
       .catch(() => {});
     return access.status === "ready";
   }
-  async function loadHistory(epoch = opening, { onFirstPage } = {}) {
+  async function loadHistory(epoch = opening, { onFirstPage, firstPage } = {}) {
     if (!get().current) return;
     const id = get().current.id;
     const connection = transport.connection;
@@ -368,20 +377,7 @@ export function createThreadNavigation({
       for (const item of history)
         if (map.get(item.id) === item) previous.set(item.id, item);
     }
-    const codex = resourceTarget(id).backendId === "codex";
-    async function readPage(method, params) {
-      const page = await rpc(method, {
-        ...params,
-        ...(codex && !params.cursor && { includeStreaming: true }),
-      });
-      if (current() && page.streamingMessages?.length) {
-        const items = new Map(get().items.map((item) => [item.id, item]));
-        // 快照包含响应前已收到的增量，替换页面打开期间累积的后半段。
-        for (const item of page.streamingMessages) items.set(item.id, item);
-        set({ items: [...items.values()] });
-      }
-      return page;
-    }
+    const readPage = historyPageReader({ rpc, get, set, current, firstPage });
     const loaded = await readThreadHistory(readPage, id, {
       current,
       ...(onFirstPage && {
@@ -476,8 +472,7 @@ export function createThreadNavigation({
       throw new Error("对话已切换，请在当前对话重新发送消息。");
     localStorage.setItem("cx-draft-" + r.thread.id, get().draft);
     localStorage.removeItem(newDraftKey(get().backendId));
-    attachmentDrafts.set(r.thread.id, getAttachmentDraft());
-    attachmentDrafts.delete(null);
+    assignNewThread(r.thread.id);
     set({ current: r.thread, mode: get().mode });
     localStorage.setItem("cx-current", r.thread.id);
     return r.thread;

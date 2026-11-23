@@ -359,6 +359,7 @@ export function createClaudeAdapter({
     },
     close() {
       ready = false;
+      sessions.close();
       account.close();
       catalogue.close();
       runtime.close();
