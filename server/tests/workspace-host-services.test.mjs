@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,6 +37,8 @@ test("网页主机服务保存文件、读取目录和执行交互终端命令�
 });
 
 test("三种本机后端均可关联粘贴代码，远端 Codex 保持工作区隔离", async (t) => {
+  if (spawnSync("rg", ["--version"]).error?.code === "ENOENT")
+    return t.skip("需要 ripgrep");
   const root = await mkdtemp(join(tmpdir(), "workspace-backend-code-"));
   const workspace = createWorkspace({ broadcast() {} });
   t.after(() => workspace.close());
