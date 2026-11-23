@@ -3,7 +3,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createP2pWire } from "../../shared/p2p-wire.mjs";
+import {
+  createP2pWire,
+  P2P_STREAM_CREDIT_WINDOW,
+} from "../../shared/p2p-wire.mjs";
 import {
   authenticationFixture,
   enrollFixtureTotp,
@@ -162,6 +165,7 @@ test("直连保留 RPC 文本和文件 Range，并将管理入口留在 LAN", as
   await until(() => received.length === 1);
   const response = received.shift().message;
   assert.equal(response.status, 206);
+  assert.equal(response.creditWindow, P2P_STREAM_CREDIT_WINDOW);
   assert.equal(
     response.headers["content-range"],
     `bytes 1000-150000/${content.length}`,
@@ -180,6 +184,22 @@ test("直连保留 RPC 文本和文件 Range，并将管理入口留在 LAN", as
   await until(() => received.some(({ message }) => message.type === "end"));
   received.shift();
   assert.deepEqual(Buffer.concat(chunks), content.subarray(1000, 150001));
+
+  await browser.send({ type: "request", id: 7, method: "GET", url: fileUrl });
+  await until(() => received.length === 1);
+  received.shift();
+  for (let n = 0; n < P2P_STREAM_CREDIT_WINDOW; n++)
+    await browser.send({ type: "pull", id: 7 });
+  await until(() => received.some(({ message }) => message.type === "end"));
+  assert.deepEqual(
+    Buffer.concat(
+      received
+        .splice(0)
+        .filter(({ message }) => message.type === "data")
+        .map(({ bytes }) => bytes),
+    ),
+    content,
+  );
 
   assert.equal(await status(4, "/api/p2p"), 404);
   assert.equal((await authenticate("logout")).session.authenticated, false);

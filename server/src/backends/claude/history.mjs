@@ -52,14 +52,18 @@ export function createSessionReader(backend) {
 }
 
 export function page(records, params) {
-  const values =
-    params.sortDirection === "asc" ? records : records.toReversed();
   const offset = Number(params.cursor || 0),
     limit = Math.min(100, Math.max(1, Number(params.limit) || 100));
   if (!Number.isSafeInteger(offset) || offset < 0)
     throw new Error("分页位置无效");
+  const end = Math.min(records.length, Math.floor(offset + limit));
   return {
-    data: values.slice(offset, offset + limit),
-    nextCursor: offset + limit < values.length ? String(offset + limit) : null,
+    data:
+      params.sortDirection === "asc"
+        ? records.slice(offset, end)
+        : records
+            .slice(records.length - end, Math.max(0, records.length - offset))
+            .reverse(),
+    nextCursor: end < records.length ? String(end) : null,
   };
 }

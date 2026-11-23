@@ -350,7 +350,20 @@ test(
     const script = await fetch(url + "/app.js");
     assert.equal(script.status, 200);
     assert.ok((await script.text()).includes(version.version));
-    assert.equal((await fetch(url + "/style.css")).status, 200);
+    const style = await fetch(url + "/style.css");
+    assert.equal(style.status, 200);
+    const css = await style.text();
+    const fonts = paths.filter((path) =>
+      /^client\/dist\/font-[\w-]+\.woff2$/.test(path),
+    );
+    assert.ok(fonts.length);
+    const fontName = fonts[0].slice("client/dist/".length);
+    assert.ok(css.includes(fontName));
+    const font = await fetch(url + "/" + fontName);
+    assert.equal(font.status, 200);
+    assert.equal(font.headers.get("content-type"), "font/woff2");
+    assert.match(font.headers.get("cache-control"), /immutable/);
+    assert.ok((await font.arrayBuffer()).byteLength > 0);
     for (const path of paths.filter(
       (path) =>
         path === "client/dist/mermaid.core.js" ||

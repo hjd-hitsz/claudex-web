@@ -1,6 +1,7 @@
 import { allMessages, historyTurns, page, tokenUsage } from "./messages.mjs";
 import { conversationMethods } from "../../../../shared/product-contract.mjs";
 import { resolve } from "node:path";
+import { createHistoryPages } from "../history-pages.mjs";
 import { speedVariant, sessionModelSettings } from "./model-settings.mjs";
 
 export function createOpenCodeSessions({
@@ -11,6 +12,7 @@ export function createOpenCodeSessions({
   config,
 }) {
   const removed = new Set();
+  const history = createHistoryPages(turns, page);
   async function record(id) {
     return (await storage.read()).sessions[id] || { nativeId: id };
   }
@@ -36,7 +38,7 @@ export function createOpenCodeSessions({
     const entries = Object.entries((await storage.read()).sessions);
     return entries.find(([, s]) => s.nativeId === id)?.[0] || id;
   }
-  async function thread(native, id = native.id) {
+  async function thread(native, id = native.id, lookupId = logicalId) {
     return {
       id,
       name: native.title,
@@ -51,7 +53,7 @@ export function createOpenCodeSessions({
       status: { type: active.has(id) ? "active" : "idle" },
       path: native.time.archived ? "/archived_sessions/" : "",
       ...(native.parentID && {
-        parentThreadId: await logicalId(native.parentID),
+        parentThreadId: await lookupId(native.parentID),
       }),
       tokenUsage: tokenUsage(native),
     };
@@ -92,17 +94,11 @@ export function createOpenCodeSessions({
   }
   async function read(id, includeTurns = false) {
     const native = await sdk().sessions.get({ sessionID: await nativeId(id) });
-    const models = await sdk().model.list({ location: native.location });
-    let cursor, last;
-    do {
-      const result = await sdk().message.list({
-        sessionID: native.id,
-        limit: 50,
-        ...(cursor ? { cursor } : { order: "desc" }),
-      });
-      last = result.data.find((m) => m.type === "assistant" && m.tokens);
-      cursor = result.cursor.next;
-    } while (!last && cursor);
+    const [models, last, records] = await Promise.all([
+      sdk().model.list({ location: native.location }),
+      lastAssistantWithTokens(native.id),
+      includeTurns ? turns(id) : null,
+    ]);
     return {
       ...(await thread(native, id)),
       ...sessionModelSettings(native.model, models.data),
@@ -115,8 +111,21 @@ export function createOpenCodeSessions({
         ),
         last,
       ),
-      ...(includeTurns && { turns: await turns(id) }),
+      ...(includeTurns && { turns: records }),
     };
+  }
+  async function lastAssistantWithTokens(sessionID) {
+    let cursor, last;
+    do {
+      const result = await sdk().message.list({
+        sessionID,
+        limit: 50,
+        ...(cursor ? { cursor } : { order: "desc", type: "assistant" }),
+      });
+      last = result.data.find((m) => m.type === "assistant" && m.tokens);
+      cursor = result.cursor.next;
+    } while (!last && cursor);
+    return last;
   }
   async function fork(id, before) {
     return sdk().sessions.fork({
@@ -157,10 +166,15 @@ export function createOpenCodeSessions({
       const hidden = new Set(
         Object.values(sessions).flatMap((s) => s.aliases || []),
       );
+      const logicalIds = new Map();
+      for (const [id, session] of Object.entries(sessions))
+        if (!logicalIds.has(session.nativeId))
+          logicalIds.set(session.nativeId, id);
+      const lookupId = (id) => logicalIds.get(id) || id;
       const data = await Promise.all(
         result.data
           .filter((n) => !hidden.has(n.id))
-          .map(async (n) => thread(n, await logicalId(n.id))),
+          .map((n) => thread(n, lookupId(n.id), lookupId)),
       );
       return { data, nextCursor: result.cursor.next || null };
     }
@@ -174,14 +188,8 @@ export function createOpenCodeSessions({
       };
     }
     if (method === "thread/unsubscribe") return {};
-    if (method === "thread/turns/list") return page(await turns(p.threadId), p);
-    if (method === "thread/items/list")
-      return page(
-        (await turns(p.threadId)).flatMap((turn) =>
-          turn.items.map((item) => ({ turnId: turn.id, item })),
-        ),
-        p,
-      );
+    if (["thread/turns/list", "thread/items/list"].includes(method))
+      return history.read(method, p);
     if (method === "thread/fork") {
       const records = await turns(p.threadId);
       const index = p.turnId
@@ -211,6 +219,7 @@ export function createOpenCodeSessions({
         nativeId: native.id,
         aliases: [...(previous.aliases || []), previous.nativeId || p.threadId],
       });
+      history.invalidate(p.threadId);
       notify("thread/reverted", { threadId: p.threadId });
       return {};
     }
@@ -223,6 +232,7 @@ export function createOpenCodeSessions({
       removed.add(sessionID);
       try {
         await api.remove({ sessionID });
+        history.invalidate(p.threadId);
       } catch (error) {
         removed.delete(sessionID);
         throw error;
@@ -231,6 +241,7 @@ export function createOpenCodeSessions({
     return {};
   }
   return {
+    close: history.close,
     removed,
     record,
     update,

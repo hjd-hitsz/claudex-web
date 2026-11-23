@@ -450,6 +450,7 @@ export function createOpenCodeAdapter({
     async close() {
       closed = true;
       ready = false;
+      sessions.close();
       streamAbort?.abort();
       subscription.close();
       await host?.close();

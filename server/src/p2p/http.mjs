@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { createStaticHandler } from "../http/static.mjs";
+import { createStaticHandler, isStaticAsset } from "../http/static.mjs";
 
 export function fail(message, status) {
   return new Error(message, { cause: status });
@@ -86,7 +86,7 @@ export async function openSignalingServer({
     const path = request.url?.split("?", 1)[0];
     if (request.method === "GET" || request.method === "HEAD") {
       if (path === "/p2p") return serveStatic(request, response, "/");
-      if (path !== "/" && /^\/[\w.-]+\.(js|css|ico|png)$/.test(path || ""))
+      if (isStaticAsset(path || ""))
         return serveStatic(request, response, path);
     }
     if (request.method !== "POST" || path !== "/p2p/offer")

@@ -1,5 +1,8 @@
 import { Readable, Writable } from "node:stream";
-import { P2P_STREAM_CHUNK_BYTES } from "../../shared/p2p-wire.mjs";
+import {
+  P2P_STREAM_CHUNK_BYTES,
+  P2P_STREAM_CREDIT_WINDOW,
+} from "../../shared/p2p-wire.mjs";
 
 class PeerResponse extends Writable {
   constructor(send, id, method) {
@@ -10,6 +13,7 @@ class PeerResponse extends Writable {
     this.headers = {};
     this.headersSent = false;
     this.statusCode = 200;
+    this.credit = 0;
   }
 
   setHeader(name, value) {
@@ -27,14 +31,15 @@ class PeerResponse extends Writable {
       id: this.id,
       status,
       headers: this.headers,
+      creditWindow: P2P_STREAM_CREDIT_WINDOW,
     });
     this.headerSent.catch(() => this.destroy());
     return this;
   }
 
   pull() {
-    if (this.destroyed || this.credit) return;
-    this.credit = true;
+    if (this.destroyed || this.credit >= P2P_STREAM_CREDIT_WINDOW) return;
+    this.credit++;
     this.resumeWrite?.();
   }
 
@@ -54,7 +59,7 @@ class PeerResponse extends Writable {
             });
           this.resumeWrite = null;
           if (this.destroyed) break;
-          this.credit = false;
+          this.credit--;
           await this.send(
             { type: "data", id: this.id },
             chunk.subarray(offset, offset + P2P_STREAM_CHUNK_BYTES),

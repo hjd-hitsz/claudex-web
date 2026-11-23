@@ -31,6 +31,7 @@ test("单个后端恢复触发所属对话后台恢复，其余后端的状态�
       state = { ...state, ...patch };
     };
   const calls = [];
+  const auxiliary = Promise.withResolvers();
   const connection = createConnection({
     get,
     set,
@@ -45,7 +46,12 @@ test("单个后端恢复触发所属对话后台恢复，其余后端的状态�
       loadHistory: async () => calls.push("history"),
       refreshThreadAccess: async (options) => calls.push(options),
     },
-    catalog: { loadThreads: async () => calls.push("list") },
+    catalog: {
+      async loadThreads() {
+        calls.push("list");
+        await auxiliary.promise;
+      },
+    },
     messages: {},
     account: { revision: 0, reset: () => calls.push("reset") },
     compaction: {},
@@ -55,7 +61,10 @@ test("单个后端恢复触发所属对话后台恢复，其余后端的状态�
       throw e;
     },
     loadSkills: async () => {},
-    activateBackend: async (id) => calls.push(id),
+    async activateBackend(id) {
+      calls.push(id);
+      await auxiliary.promise;
+    },
   });
   const snapshot = (codex, claude) =>
     connection.onNotification({
@@ -76,6 +85,7 @@ test("单个后端恢复触发所属对话后台恢复，其余后端的状态�
   assert.equal(state.draft, "保留草稿");
   assert.deepEqual(state.items, [{ id: "saved" }]);
   assert.deepEqual(state.usage, { remaining: 50 });
+  auxiliary.resolve();
   calls.length = 0;
   snapshot(true, false);
   snapshot(true, true);

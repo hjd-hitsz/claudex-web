@@ -11,6 +11,8 @@ import {
   PROJECTLESS_SOURCE,
 } from "../domain/thread-order.js";
 import { readThreadHistory } from "../domain/thread-history.js";
+import { prefetchThreadItems, readHistoryPage } from "./history-page.js";
+import { createThreadAttachmentDrafts } from "./thread-attachment-drafts.js";
 export function createThreadNavigation({
   get,
   set,
@@ -24,20 +26,8 @@ export function createThreadNavigation({
 }) {
   let opening = 0;
   let historyRevision = 0;
-  const attachmentDrafts = new Map();
-  function getAttachmentDraft(id = get().current?.id ?? null) {
-    if (!attachmentDrafts.has(id))
-      attachmentDrafts.set(id, { attachments: [] });
-    const draft = attachmentDrafts.get(id);
-    if (id === (get().current?.id ?? null))
-      draft.attachments = get().attachments;
-    return draft;
-  }
-  function updateAttachmentDraft(draft, update) {
-    const current = getAttachmentDraft();
-    draft.attachments = update(draft.attachments);
-    if (current === draft) set({ attachments: draft.attachments });
-  }
+  const { getAttachmentDraft, updateAttachmentDraft, assignNewThread } =
+    createThreadAttachmentDrafts(get, set);
   function setProjectDirectory(cwd) {
     if (!get().loading) models.rememberModelSelection();
     set({
@@ -122,9 +112,16 @@ export function createThreadNavigation({
         connectionRevision === getConnectionRevision()
           ? forkResult
           : undefined;
-      const r =
-        created ||
-        (await rpc("thread/read", { threadId: id, includeTurns: false }));
+      const read =
+        created || rpc("thread/read", { threadId: id, includeTurns: false });
+      const turnRevision = records.turnRevisions.get(id);
+      const firstPage = prefetchThreadItems(
+        rpc,
+        id,
+        () =>
+          !get().active?.[id] && records.turnRevisions.get(id) === turnRevision,
+      );
+      const r = await read;
       if (epoch !== opening || records.deletedThreads.has(id)) return;
       const known = get().threads.find((thread) => thread.id === id);
       const thread = records.preserveThreadName(
@@ -187,6 +184,7 @@ export function createThreadNavigation({
         ...(backendId === "codex" && { forkResult: created }),
       };
       await loadHistory(epoch, {
+        firstPage: r.thread.status?.type === "active" ? undefined : firstPage,
         onFirstPage: () => {
           set({ loading: false });
           access = refreshThreadAccess(accessOptions);
@@ -342,7 +340,7 @@ export function createThreadNavigation({
       .catch(() => {});
     return access.status === "ready";
   }
-  async function loadHistory(epoch = opening, { onFirstPage } = {}) {
+  async function loadHistory(epoch = opening, { onFirstPage, firstPage } = {}) {
     if (!get().current) return;
     const id = get().current.id;
     const connection = transport.connection;
@@ -368,12 +366,11 @@ export function createThreadNavigation({
       for (const item of history)
         if (map.get(item.id) === item) previous.set(item.id, item);
     }
-    const codex = resourceTarget(id).backendId === "codex";
     async function readPage(method, params) {
-      const page = await rpc(method, {
-        ...params,
-        ...(codex && !params.cursor && { includeStreaming: true }),
-      });
+      const page =
+        firstPage && method === "thread/items/list" && !params.cursor
+          ? await firstPage()
+          : await readHistoryPage(rpc, method, params);
       if (current() && page.streamingMessages?.length) {
         const items = new Map(get().items.map((item) => [item.id, item]));
         // 快照包含响应前已收到的增量，替换页面打开期间累积的后半段。
@@ -476,8 +473,7 @@ export function createThreadNavigation({
       throw new Error("对话已切换，请在当前对话重新发送消息。");
     localStorage.setItem("cx-draft-" + r.thread.id, get().draft);
     localStorage.removeItem(newDraftKey(get().backendId));
-    attachmentDrafts.set(r.thread.id, getAttachmentDraft());
-    attachmentDrafts.delete(null);
+    assignNewThread(r.thread.id);
     set({ current: r.thread, mode: get().mode });
     localStorage.setItem("cx-current", r.thread.id);
     return r.thread;

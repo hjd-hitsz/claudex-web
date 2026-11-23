@@ -2,6 +2,7 @@ importScripts("/notification-worker.js");
 
 const requestTimeout = 20000;
 const maximumRequestBytes = 512 * 1024;
+const maximumCreditWindow = 8;
 const forwardedPath =
   /^\/api\/(?:files|media|translate|translation|maintenance(?:\/(?:check|update|restart))?)$/;
 
@@ -18,6 +19,7 @@ function failure(message, status = 503) {
 function requestFromPage(client, request, url, body) {
   const { port1: port, port2: remotePort } = new MessageChannel();
   let timer, stream, resolveResponse, resolveDone, finished;
+  let outstanding = 0;
   const response = new Promise((resolve) => (resolveResponse = resolve));
   const done = new Promise((resolve) => (resolveDone = resolve));
 
@@ -40,6 +42,7 @@ function requestFromPage(client, request, url, body) {
     stop("文件或业务请求已取消。");
   }
   function waitForMessage() {
+    clearTimeout(timer);
     timer = setTimeout(
       () => stop("等待电脑响应超时，请检查 P2P 连接后重试。"),
       requestTimeout,
@@ -52,21 +55,32 @@ function requestFromPage(client, request, url, body) {
       case "response": {
         const noBody =
           request.method === "HEAD" || [204, 205, 304].includes(data.status);
+        const creditWindow = Number.isSafeInteger(data.creditWindow)
+          ? Math.max(1, Math.min(maximumCreditWindow, data.creditWindow))
+          : 1;
         const content = noBody
           ? null
-          : new ReadableStream({
-              start(controller) {
-                stream = controller;
+          : new ReadableStream(
+              {
+                start(controller) {
+                  stream = controller;
+                },
+                pull(controller) {
+                  // Each credit reserves one slot in the stream's read-ahead buffer.
+                  const available = controller.desiredSize;
+                  while (outstanding < available) {
+                    port.postMessage("pull");
+                    outstanding++;
+                  }
+                  if (outstanding) waitForMessage();
+                },
+                cancel() {
+                  port.postMessage("cancel");
+                  finish();
+                },
               },
-              pull() {
-                port.postMessage("pull");
-                waitForMessage();
-              },
-              cancel() {
-                port.postMessage("cancel");
-                finish();
-              },
-            });
+              { highWaterMark: creditWindow },
+            );
         resolveResponse(new Response(content, data));
         if (noBody) {
           port.postMessage("cancel");
@@ -75,7 +89,9 @@ function requestFromPage(client, request, url, body) {
         break;
       }
       case "data":
+        outstanding--;
         stream?.enqueue(data.bytes);
+        if (outstanding > 0) waitForMessage();
         break;
       case "end":
         stream?.close();

@@ -1,10 +1,7 @@
 import { historyTurns } from "./messages.mjs";
 
-export async function recoverAgents(parent, records, readSession) {
+export async function recoverAgents(parent, records, readSession, ids) {
   const nativeId = parent.nativeSessionId || parent.id;
-  const ids = await readSession("listSubagents", nativeId, {
-    dir: parent.historySearchAll ? undefined : parent.cwd,
-  });
   const agents = { ...parent.agents };
   for (const agentId of ids) {
     const id = `agent/${parent.id}/${agentId}`;

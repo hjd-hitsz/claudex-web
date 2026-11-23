@@ -113,10 +113,16 @@ export function page(data, params = {}) {
   if (!Number.isSafeInteger(offset) || offset < 0)
     throw new Error("分页位置无效");
   const limit = Math.max(1, Math.min(params.limit || 50, 200));
-  const items = params.sortDirection === "desc" ? data.slice().reverse() : data;
+  if (Number.isNaN(limit)) return { data: [], nextCursor: null };
+  const end = Math.min(data.length, Math.floor(offset + limit));
   return {
-    data: items.slice(offset, offset + limit),
-    nextCursor: offset + limit < items.length ? String(offset + limit) : null,
+    data:
+      params.sortDirection === "desc"
+        ? data
+            .slice(data.length - end, Math.max(0, data.length - offset))
+            .reverse()
+        : data.slice(offset, end),
+    nextCursor: end < data.length ? String(end) : null,
   };
 }
 export async function allMessages(sdk, sessionID) {

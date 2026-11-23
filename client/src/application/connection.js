@@ -230,9 +230,11 @@ export function createConnection({
       localStorage.getItem("cx-current");
     const current = () => revision === bootRevision && get().connected;
     try {
+      let metadata;
       if (get().backends.length) {
-        await activateBackend(backendId);
-        if (!current()) return;
+        metadata = activateBackend(backendId).catch((error) => {
+          if (current() && epoch === navigation.opening) report(error);
+        });
         set({ booting: false });
       } else {
         const [modelList, accountResult, config] = await Promise.all([
@@ -274,7 +276,9 @@ export function createConnection({
           });
         } else set({ booting: false });
       }
-      await catalog.loadThreads();
+      const listing = catalog.loadThreads().catch((error) => {
+        if (current() && epoch === navigation.opening) report(error);
+      });
       if (!current()) return;
       // 初始化只恢复启动时的选择，保留期间新建、发送和切换的对话。
       if (epoch === navigation.opening && !get().busy) {
@@ -289,16 +293,20 @@ export function createConnection({
             navigation.refreshThreadAccess({ background: true }),
           ]);
         else if (id) await navigation.openThread(id);
-        else if (!get().current)
+        else if (!get().current) {
+          await metadata;
+          if (!current() || epoch !== navigation.opening || get().busy) return;
           set({
             draft: localStorage.getItem(newDraftKey(get().backendId)) || "",
           });
+        }
       }
       if (!current()) return;
       if (!initialized) {
         initialized = true;
         loadSkills().catch(() => {});
       }
+      await Promise.all([listing, metadata]);
     } catch (e) {
       if (!current()) return;
       set({ booting: false });
