@@ -15,8 +15,13 @@ export function createOpenCodeEvents({
     const turn = turns.at(-1);
     if (!turn) return;
     if (!finished) active.set(threadId, turn.id);
-    for (const item of turn.items)
-      notify("item/completed", { threadId, turnId: turn.id, item });
+    for (const item of turn.items) {
+      const method =
+        item.type === "commandExecution" && item.status === "inProgress"
+          ? "item/started"
+          : "item/completed";
+      notify(method, { threadId, turnId: turn.id, item });
+    }
     if (finished) notify("turn/completed", { threadId, turn });
   }
   async function event(event) {

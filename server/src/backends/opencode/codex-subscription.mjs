@@ -1,6 +1,10 @@
 import { subscriptionVariants } from "./model-settings.mjs";
+import { searchCodexWeb } from "./codex-web-search.mjs";
 const baseURL = "https://chatgpt.com/backend-api/codex";
-export function createCodexSubscription(source) {
+export function createCodexSubscription(
+  source,
+  { fetch = globalThis.fetch } = {},
+) {
   let current = null;
   const contexts = new Set();
   async function sync() {
@@ -115,6 +119,17 @@ export function createCodexSubscription(source) {
     plugin,
     sync,
     read: () => source.read(),
+    async search({ model, query, sessionID, signal }) {
+      const url = `${baseURL}/responses`;
+      return searchCodexWeb({
+        url,
+        headers: await headers(url, sessionID),
+        model,
+        query,
+        signal,
+        fetch,
+      });
+    },
     close: () => source.close(),
   };
 }

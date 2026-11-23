@@ -47,6 +47,11 @@ export function validateBackend(input, config) {
       typeof input.backgroundTerminalEnabled !== "boolean")
   )
     throw new Error("后台终端 MCP 开关仅接受 Codex 的布尔设置");
+  if (
+    input.workspaceTools !== undefined &&
+    (input.type !== "opencode" || typeof input.workspaceTools !== "boolean")
+  )
+    throw new Error("工具调用优化仅接受 OpenCode 的布尔设置");
   const backend = {
     id: input.id,
     name: { codex: "Codex", claude: "Claude Code", opencode: "OpenCode" }[
@@ -68,12 +73,14 @@ export function validateBackend(input, config) {
     ),
     ...(input.type === "claude" && {
       stateDir: join(config.configDir, "backends", "claude"),
+      ...(config.claudeBatchRead && { claudeBatchRead: true }),
       ...(input.proxy !== undefined && {
         proxy: validateNetworkProxy(input.proxy),
       }),
     }),
     ...(input.type === "opencode" && {
       stateDir: join(config.configDir, "backends", "opencode"),
+      workspaceTools: input.workspaceTools === true,
     }),
     executable: input.type,
     args: [],

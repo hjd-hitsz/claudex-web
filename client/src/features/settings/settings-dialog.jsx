@@ -4,7 +4,7 @@ import productIcon from "../../assets/claudex-web.svg";
 import { useStoreSelector } from "../../store.js";
 import { IconButton } from "../../ui/primitives.jsx";
 import { ServiceMaintenanceSettings } from "./service-maintenance.jsx";
-import { BackgroundTerminalSetting } from "./background-terminal-setting.jsx";
+import { BackendToggleSetting } from "./backend-toggle-setting.jsx";
 import { BackendSettings } from "./backend-settings.jsx";
 import { ProviderSettings } from "./provider-settings.jsx";
 import { TranslationSettings } from "./translation-settings.jsx";
@@ -126,6 +126,9 @@ function GeneralSettings() {
   const codex = useStoreSelector((state) =>
     state.backends.find((backend) => backend.id === "codex"),
   );
+  const opencode = useStoreSelector((state) =>
+    state.backends.find((backend) => backend.id === "opencode"),
+  );
   return (
     <section
       className="settings-group settings-preferences"
@@ -133,7 +136,21 @@ function GeneralSettings() {
     >
       <NotificationSettings />
       <TranslationSettings />
-      <BackgroundTerminalSetting backend={codex} />
+      <BackendToggleSetting
+        id="settings-background-terminal"
+        label="Codex 后台终端"
+        backend={codex}
+        preference="backgroundTerminalEnabled"
+        available={codex?.backgroundTerminalAvailable === true}
+      />
+      {opencode && (
+        <BackendToggleSetting
+          id="settings-opencode-workspace-tools"
+          label="为 OpenCode 优化工具调用"
+          backend={opencode}
+          preference="workspaceTools"
+        />
+      )}
     </section>
   );
 }

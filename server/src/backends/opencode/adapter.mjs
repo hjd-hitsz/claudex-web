@@ -16,6 +16,7 @@ import { createOpenCodeGoals } from "./goals.mjs";
 import { createOpenCodeAccount } from "./account.mjs";
 import { resolveOpenCode } from "./installation.mjs";
 import { loadOpenCode } from "./runtime.mjs";
+import { startWorkspaceTools } from "./workspace-tools.mjs";
 import { createCodexAccountSource } from "./codex-account.mjs";
 import { createCodexSubscription } from "./codex-subscription.mjs";
 
@@ -27,6 +28,7 @@ export function createOpenCodeAdapter({
   broadcast,
   createHost,
   readCodexAccount,
+  fetchCodexSearch,
 }) {
   const storage = createStorage(join(backend.stateDir, "index.json"), {
     sessions: {},
@@ -51,6 +53,7 @@ export function createOpenCodeAdapter({
       codexHome: config.codexHome,
       read: readCodexAccount,
     }),
+    { fetch: fetchCodexSearch },
   );
   const sessions = createOpenCodeSessions({
     sdk,
@@ -326,6 +329,7 @@ export function createOpenCodeAdapter({
     if (result !== undefined) return result;
     throw new Error(`OpenCode 操作尚未实现：${method}`);
   }
+  let workspaceTools;
   async function connect() {
     try {
       await catalogue.sync();
@@ -335,13 +339,40 @@ export function createOpenCodeAdapter({
         (
           await loadOpenCode(
             backend.sdkEntry || (await resolveOpenCode(config.configDir)).entry,
+            { workspaceTools: backend.workspaceTools },
           )
         ).create;
+      if (backend.workspaceTools)
+        workspaceTools ??= await startWorkspaceTools({
+          async hostedSearch({ sessionID, messageID, ...search }) {
+            const {
+              data: [assistant],
+            } = await sdk().message.list({
+              sessionID,
+              type: "assistant",
+              order: "desc",
+              limit: 1,
+            });
+            if (assistant?.id !== messageID)
+              throw new Error("无法确认当前网页搜索调用的模型。");
+            if (assistant.model.providerID === "openai")
+              return subscription.search({
+                ...search,
+                sessionID,
+                model: assistant.model.id,
+              });
+          },
+        });
       host = await create({
         database: { path: process.env.OPENCODE_DB || "opencode.db" },
         config: { file: catalogue.file },
         events: { persist: true },
-        plugins: [goals.plugin, catalogue.plugin, subscription.plugin],
+        plugins: [
+          goals.plugin,
+          catalogue.plugin,
+          subscription.plugin,
+          ...(workspaceTools ? [workspaceTools.plugin] : []),
+        ],
       });
       streamAbort = new AbortController();
       stream = (async () => {
@@ -453,8 +484,12 @@ export function createOpenCodeAdapter({
       sessions.close();
       streamAbort?.abort();
       subscription.close();
-      await host?.close();
-      await stream;
+      try {
+        await host?.close();
+        await stream;
+      } finally {
+        await workspaceTools?.close();
+      }
       sessions.removed.clear();
       workspace.close();
     },

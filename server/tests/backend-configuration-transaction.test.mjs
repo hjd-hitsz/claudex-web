@@ -14,17 +14,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBackendManager } from "../src/backends/manager.mjs";
 
-async function fixture(t, shutdown = async () => {}, installation) {
+async function fixture(
+  t,
+  shutdown = async () => {},
+  installation,
+  id = "claude",
+) {
   const directory = await mkdtemp(join(tmpdir(), "backend-transaction-"));
   const settingsDirectory = join(directory, "settings");
   await mkdir(settingsDirectory);
   const path = join(settingsDirectory, "backends.json");
   const initial = {
-    id: "claude",
-    type: "claude",
+    id,
+    type: id,
     enabled: true,
-    executable: "claude",
-    dataDir: join(directory, "claude"),
+    executable: id,
+    dataDir: join(directory, id),
     args: [],
   };
   await writeFile(
@@ -43,13 +48,14 @@ async function fixture(t, shutdown = async () => {}, installation) {
     events.push(`construct:${generation}`);
     assert.equal(
       JSON.parse(readFileSync(path, "utf8")).backends.find(
-        (item) => item.id === "claude",
+        (item) => item.id === id,
       ).executable,
       backend.executable,
     );
     const adapter = {
       ready: false,
       capabilities: {},
+      backend,
       readSubagentSettings,
       releaseClient() {},
       snapshot: { activeTurns: {}, compactions: {}, questions: [] },
@@ -95,7 +101,7 @@ async function fixture(t, shutdown = async () => {}, installation) {
     broadcast(message) {
       updates.emit("state", message);
     },
-    factories: { claude: factory, ...(installation && { installation }) },
+    factories: { [id]: factory, ...(installation && { installation }) },
   });
   t.after(async () => {
     await manager.close();
@@ -225,6 +231,35 @@ test("代理保存先保护运行任务，无效端口保持实例，空闲后�
     result.backends.find((b) => b.id === "claude").proxy,
     input.proxy,
   );
+  assert.equal(f.adapters.length, 2);
+});
+
+test("OpenCode 工具开关在空闲时切换执行配置，忙时保留旧值", async (t) => {
+  const f = await fixture(t, undefined, undefined, "opencode");
+  const input = { id: "opencode", type: "opencode", workspaceTools: true };
+  const save = (params) => f.call("lan/backends/save", params);
+  const openCode = ({ backends }) => backends.find((b) => b.id === "opencode");
+  assert.equal(f.adapters[0].backend.workspaceTools, false);
+  await assert.rejects(save({ ...input, workspaceTools: "true" }), /布尔设置/);
+  await assert.rejects(
+    save({ ...input, id: "claude", type: "claude" }),
+    /OpenCode/,
+  );
+  f.adapters[0].snapshot.activeTurns.thread = "turn";
+  await assert.rejects(save(input), /任务结束/);
+  assert.equal(await readFile(f.path, "utf8"), f.originalBytes);
+  assert.deepEqual(f.events, []);
+  f.adapters[0].snapshot.activeTurns = {};
+  assert.equal(openCode(await save(input)).workspaceTools, true);
+  assert.equal(f.adapters[1].backend.workspaceTools, true);
+  const persisted = () =>
+    readFile(f.path, "utf8").then(JSON.parse).then(openCode);
+  assert.equal((await persisted()).workspaceTools, true);
+  await f.call("lan/backends/disable", { id: "opencode" });
+  const disabled = openCode(await save({ ...input, workspaceTools: false }));
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.workspaceTools, false);
+  assert.equal((await persisted()).workspaceTools, false);
   assert.equal(f.adapters.length, 2);
 });
 

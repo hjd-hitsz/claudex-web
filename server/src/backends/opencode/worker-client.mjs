@@ -15,6 +15,7 @@ export function createOpenCodeWorkerAdapter(options) {
       "OPENCODE_CONFIG",
       "OPENCODE_CONFIG_DIR",
       "OPENCODE_DB",
+      "OPENCODE_FLAGS",
     ],
     prepareBackend: async (backend) => ({
       ...backend,

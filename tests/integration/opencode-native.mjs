@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { EventEmitter } from "node:events";
 import { messagesServer } from "../helpers/claude-messages-server.mjs";
 import { createOpenCodeAdapter } from "../../server/src/backends/opencode/adapter.mjs";
+import { loadOpenCode } from "../../server/src/backends/opencode/runtime.mjs";
 
 const entry = process.env.OPENCODE_SDK_ENTRY;
 assert.ok(entry, "OPENCODE_SDK_ENTRY must identify the installed SDK entry");
@@ -16,7 +16,12 @@ Object.assign(process.env, {
   XDG_STATE_HOME: join(root, "state"),
   XDG_CACHE_HOME: join(root, "cache"),
 });
-const { OpenCode } = await import(pathToFileURL(resolve(entry)).href);
+const workspaceTools = process.env.OPENCODE_WORKSPACE_TOOLS === "1";
+const OpenCode = await loadOpenCode(resolve(entry), { workspaceTools });
+const shell = workspaceTools ? "claudex_shell" : "shell";
+const command =
+  "printf native > tool-output.txt; while [ ! -f .finish-fixture ]; do sleep 0.05; done; printf 'fixture finished\\n'";
+const evidence = `.cache/opencode/${workspaceTools ? "optimized" : "native"}`;
 const events = [];
 const bus = new EventEmitter();
 const provider = {
@@ -40,7 +45,7 @@ const upstream = await messagesServer(async (input) => {
   if (!input.tools?.length) return [{ type: "text", text: "隔离测试标题" }];
   await mkdir(".cache/opencode", { recursive: true });
   await writeFile(
-    ".cache/opencode/native-tools.json",
+    `${evidence}-tools.json`,
     JSON.stringify(input.tools, null, 2),
   );
   if (scenario === "complete" && goalStep++ === 0)
@@ -59,9 +64,9 @@ const upstream = await messagesServer(async (input) => {
       {
         type: "tool_use",
         id: "tool_native_shell",
-        name: "shell",
+        name: shell,
         input: {
-          command: "printf native > tool-output.txt; sleep 2",
+          command,
           workdir: root,
         },
       },
@@ -96,6 +101,7 @@ const create = () =>
     backend: {
       id: "opencode",
       type: "opencode",
+      workspaceTools,
       stateDir: join(root, "bridge-state"),
     },
     config: {
@@ -212,12 +218,15 @@ try {
     model: model.model,
     input: [{ type: "text", text: "请验证当前项目指令并回答。" }],
   });
-  await waitFor(
+  const running = await waitFor(
     (e) =>
-      e.method === "item/completed" &&
-      e.params.item?.tool === "shell" &&
-      e.params.item.status === "inProgress",
+      e.method === "item/started" && e.params.item?.id === "tool_native_shell",
   );
+  assert.equal(running.params.item.type, "commandExecution");
+  assert.equal(running.params.item.command, command);
+  assert.equal(running.params.item.cwd, root);
+  assert.equal(running.params.item.status, "inProgress");
+  assert.equal(running.params.item.aggregatedOutput, "");
   const additional = await call("turn/steer", {
     threadId: thread.id,
     input: [{ type: "text", text: "保留这条补充输入" }],
@@ -236,6 +245,7 @@ try {
     threadId: thread.id,
     id: cancelled.inputId,
   });
+  await writeFile(join(root, ".finish-fixture"), "");
   const question = await waitFor(
     (e) =>
       e.method === "item/tool/requestUserInput" &&
@@ -254,6 +264,13 @@ try {
     threadId: thread.id,
     includeTurns: true,
   });
+  const savedCommand = history.thread.turns
+    .flatMap((t) => t.items)
+    .find((item) => item.id === running.params.item.id);
+  assert.equal(savedCommand.command, command);
+  assert.equal(savedCommand.status, "completed");
+  assert.equal(savedCommand.exitCode, 0);
+  assert.equal(savedCommand.aggregatedOutput, "fixture finished\n");
   assert.ok(
     history.thread.turns
       .flatMap((t) => t.items)
@@ -391,10 +408,7 @@ try {
     "completed",
   );
   await mkdir(".cache/opencode", { recursive: true });
-  await writeFile(
-    ".cache/opencode/native-events.json",
-    JSON.stringify(events, null, 2),
-  );
+  await writeFile(`${evidence}-events.json`, JSON.stringify(events, null, 2));
   console.log(
     JSON.stringify({
       sdk: "2.3.2",
@@ -407,9 +421,10 @@ try {
   );
 } finally {
   await writeFile(
-    ".cache/opencode/native-last-events.json",
+    `${evidence}-last-events.json`,
     JSON.stringify(events, null, 2),
   );
+  await writeFile(join(root, ".finish-fixture"), "");
   await adapter?.close();
   await upstream.close();
   await rm(root, { recursive: true, force: true });

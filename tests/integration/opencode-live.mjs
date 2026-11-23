@@ -159,8 +159,8 @@ try {
       (i) =>
         i.status === "completed" &&
         (["write", "patch"].includes(i.tool) ||
-          (i.tool === "shell" &&
-            i.arguments.command?.includes("validation.txt"))),
+          (i.type === "commandExecution" &&
+            i.command?.includes("validation.txt"))),
     ),
   );
   assert.ok(items.some((i) => i.tool === "read" && i.status === "completed"));

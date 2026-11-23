@@ -1,3 +1,13 @@
+function shellInput(input) {
+  if (typeof input !== "string") return input;
+  if (!input) return null;
+  try {
+    return JSON.parse(input);
+  } catch {
+    return null;
+  }
+}
+
 export function messageItems(message) {
   if (
     message.type === "user" ||
@@ -50,6 +60,41 @@ export function messageItems(message) {
     const output = (state.content || [])
       .map((entry) => entry.text || "")
       .join("\n");
+    const error =
+      state.status === "error"
+        ? {
+            message:
+              state.error?.message || String(state.error || "工具执行失败"),
+          }
+        : null;
+    const status =
+      state.status === "completed"
+        ? "completed"
+        : state.status === "error"
+          ? "failed"
+          : "inProgress";
+    if (part.name === "shell" || part.name === "claudex_shell") {
+      const input = shellInput(state.input);
+      const command = typeof input?.command === "string" ? input.command : "";
+      if (state.status === "streaming" && !command) return [];
+      const exitCode = state.metadata?.exit;
+      const failed =
+        (typeof exitCode === "number" && exitCode !== 0) ||
+        state.metadata?.signal ||
+        state.metadata?.timeout ||
+        state.metadata?.killed;
+      return {
+        id: part.id,
+        type: "commandExecution",
+        command,
+        cwd: typeof input?.workdir === "string" ? input.workdir : "",
+        aggregatedOutput: error
+          ? [output, error.message].filter(Boolean).join("\n")
+          : output,
+        exitCode,
+        status: failed ? "failed" : status,
+      };
+    }
     return {
       id: part.id,
       type: "mcpToolCall",
@@ -57,19 +102,8 @@ export function messageItems(message) {
       tool: part.name,
       arguments: state.input || {},
       result: state.status === "completed" ? { content: state.content } : null,
-      error:
-        state.status === "error"
-          ? {
-              message:
-                state.error?.message || String(state.error || "工具执行失败"),
-            }
-          : null,
-      status:
-        state.status === "completed"
-          ? "completed"
-          : state.status === "error"
-            ? "failed"
-            : "inProgress",
+      error,
+      status,
       output,
     };
   });

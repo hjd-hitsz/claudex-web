@@ -73,13 +73,19 @@ OPENCODE_SDK_ENTRY=.cache/opencode/runtime/node_modules/@opencode/sdk/dist/index
 node --import ./tests/helpers/test-console.mjs tests/integration/opencode-worker.mjs
 ```
 
-原生脚本使用临时数据库和本机模拟 Messages 服务验证真实 SDK、流式输出、工具、提问、运行中输入、队列取消、编辑分支、重启历史、目标、计划及整理。执行服务脚本将 systemd 命令置为不可用，验证桥接被强制结束后的同一 worker、后台 shell、重连、单任务停止与忙时保护。原生测试始终使用隔离 XDG 目录。`tests/integration/opencode-subscription.mjs` 使用真实 SDK 与隔离 Responses 流验证基础模型、独立思考强度和速度档位的请求参数、恢复及旧速度别名会话，真实模型调用数为零。
+原生脚本使用临时数据库和本机模拟 Messages 服务验证真实 SDK、流式输出、工具、提问、运行中输入、队列取消、编辑分支、重启历史、目标、计划及整理。命令测试在进程结束前检查原始命令，在历史中核对同一条记录的输出和退出码。设置 `OPENCODE_WORKSPACE_TOOLS=1` 重跑原生脚本可验证替代工具。执行服务脚本将 systemd 命令置为不可用，验证桥接被强制结束后的同一 worker、后台 shell、重连、单任务停止与忙时保护。原生测试始终使用隔离 XDG 目录。`tests/integration/opencode-subscription.mjs` 使用真实 SDK 与隔离 Responses 流验证基础模型、思考强度、速度档位、会话恢复和订阅搜索的请求及引用回传。用 `OPENCODE_SEARCH_FIXTURE=default`、`configured`、`disabled`、`failure` 分别运行 `tests/integration/opencode-workspace-tools.mjs`，核对默认 Exa、配置供应商、禁用和失败分支。上述测试均通过本机夹具完成模型交互。
 
 取得用户对本机 ChatGPT 订阅的明确授权后，可设置 `OPENCODE_SDK_ENTRY` 并运行 `node --import ./tests/helpers/test-console.mjs tests/integration/opencode-live.mjs`。脚本通过 Codex 原生账户接口读取登录态，以 `CODEX_VALIDATION_HOME`、`CODEX_HOME` 或默认 Codex 目录定位账户；临时 OpenCode 数据库保存隔离会话。`OPENCODE_LIVE_MODEL` 可指定订阅模型，默认 `gpt-6-luna`；`OPENCODE_LIVE_SERVICE_TIER` 可指定账户支持的速度档位。真实模型在临时项目写入和读取文件，核对原生用量与账户身份，证据保存在忽略目录 `.cache/opencode`。
 
 生产构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/opencode.mjs`，用隔离协议夹具验收后端图标切换、当前后端模型菜单、模型显示偏好及现有供应商配置。覆盖深浅主题、桌面和窄屏以及 80%、100%、125%、150%、200% 实际页面缩放，截图位于 `.cache/opencode/backend-selection`。模拟响应、原生 SDK 和真实订阅模型分别记录验证结果。
 
 展示真实模型目录时，设置 `OPENCODE_SDK_ENTRY` 和 `OPENCODE_PROVIDERS_FILE`，运行 `node --import ./tests/helpers/test-console.mjs tests/integration/opencode-model-catalogue.mjs`。脚本使用本机 Codex 登录态及已配置供应商的公开模型信息，通过隔离的原生 OpenCode SDK 读取目录；供应商凭据不传入运行时，模型推理请求数为零。随后以 `OPENCODE_MODEL_CATALOGUE=.cache/opencode/real-model-catalogue.json` 运行上述浏览器脚本，逐项核对菜单和当前选项仅显示「供应商/模型」，实际目录及截图保存在 `.cache/opencode/real-models` 和对应忽略目录。
+
+工作区工具使用 `tests/integration/opencode-workspace-tools.mjs` 和 `tests/integration/claude-workspace-tools.mjs` 运行实际 SDK 和 CLI。OpenCode 脚本沿用上面的 `OPENCODE_SDK_ENTRY`，两条命令均预加载 `tests/helpers/test-console.mjs`。模型使用本地模拟 Messages 服务，网页使用隔离 HTTP 夹具。回归核对模型工具清单、合并读取、文件级拒绝，以及 OpenCode 的外部技能引用、媒体、批量技能、命令、定向网页和多文件补丁。网页夹具覆盖 Markdown 摘录、HTML 导航、连接中断后的重试和重定向，以及 HTTP 404。
+
+`tests/integration/opencode-workspace-prompt.mjs` 使用相同 SDK 入口和本地模型夹具捕获实际模型请求，核对五类原生模板中的工具指引、技能目录、项目和自定义代理提示，以及关闭优化时的原生提示。升级 OpenCode SDK 时运行此回归，核对工具与提示词的一致性。
+
+生产构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/settings-layout.mjs`，验证「通用」的工具开关、键盘操作、忙时保留及重新打开设置后的状态。桌面和窄屏覆盖深浅主题与 80% 至 200% 实际缩放，截图位于 `.cache/settings-layout/dual`。
 
 ## 双后端开发与验收
 

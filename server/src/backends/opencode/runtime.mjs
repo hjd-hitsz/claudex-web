@@ -1,7 +1,11 @@
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
-export async function loadOpenCode(entry) {
+export async function loadOpenCode(entry, { workspaceTools = false } = {}) {
+  if (workspaceTools)
+    process.env.OPENCODE_FLAGS = [process.env.OPENCODE_FLAGS, "-full_codemode"]
+      .filter(Boolean)
+      .join(",");
   const url = entry.startsWith("file:") ? entry : pathToFileURL(entry).href;
   const sdk = await import(url);
   // The SDK's Undici has its own dispatcher and replaces Node's environment

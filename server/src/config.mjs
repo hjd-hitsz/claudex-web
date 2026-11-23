@@ -41,6 +41,7 @@ export function readConfig(env = process.env) {
   if (!/^[a-zA-Z0-9_-]+$/.test(pamService))
     throw new Error("AUTH_PAM_SERVICE 必须是 PAM 服务名称");
   return {
+    claudeBatchRead: env.CLAUDEX_CLAUDE_BATCH_READ === "1",
     backgroundTaskDir: env.CLAUDEX_BACKGROUND_TASKS_DIR
       ? resolve(env.CLAUDEX_BACKGROUND_TASKS_DIR)
       : null,

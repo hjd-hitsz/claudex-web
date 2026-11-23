@@ -11,6 +11,7 @@ import { settingsPage } from "../helpers/settings-navigation.mjs";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const main = process.env.UI_MAIN === "1";
 const before = process.env.UI_BEFORE === "1";
+const generalBefore = process.env.UI_GENERAL_BEFORE === "1";
 const build = process.env.UI_BUILD_DIR || join(root, "client/dist");
 const output = join(
   root,
@@ -20,6 +21,7 @@ const output = join(
 await mkdir(output, { recursive: true });
 const data = {
   main,
+  opencode: !main,
   markdown: "模型别名测试",
   claudeItems: [],
   providerModelNames: true,
@@ -71,7 +73,7 @@ const context = await chromium.launchPersistentContext(profile, {
   viewport: { width: 1440, height: 1000 },
   executablePath: process.env.CHROME_PATH,
   headless: true,
-  args: ["--no-sandbox", "--no-proxy-server"],
+  args: ["--no-sandbox", "--disable-gpu", "--no-proxy-server"],
 });
 try {
   const page = await context.newPage();
@@ -83,13 +85,59 @@ try {
     .first()
     .click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  if (process.env.PROXY_BEFORE === "1") {
+  if (generalBefore) {
+    assert.equal(await page.getByLabel("为 OpenCode 优化工具调用").count(), 0);
+    await page.screenshot({ path: join(output, "general-before.png") });
+  } else if (process.env.PROXY_BEFORE === "1") {
     await page.screenshot({ path: join(output, "proxy-before.png") });
   } else if (before) {
     await page.getByText("模型与服务配置", { exact: true }).click();
     await page.getByText("供应商与模型", { exact: true }).click();
     await page.screenshot({ path: join(output, "desktop.png") });
   } else {
+    if (data.opencode) {
+      const toggle = page.getByLabel("为 OpenCode 优化工具调用");
+      assert.equal(await toggle.isChecked(), false);
+      await page.evaluate(() => {
+        const original = window.backendSocket.send.bind(window.backendSocket);
+        window.backendSocket.send = (raw) => {
+          const request = JSON.parse(raw);
+          if (
+            request.method === "lan/backends/save" &&
+            request.params.workspaceTools === true
+          ) {
+            window.backendSocket.send = original;
+            window.backendSocket.onmessage({
+              data: JSON.stringify({
+                id: request.id,
+                error: { message: "请等待此后端的任务结束后修改配置。" },
+              }),
+            });
+          } else original(raw);
+        };
+      });
+      await toggle.click();
+      await page.getByRole("alert").filter({ hasText: "任务结束" }).waitFor();
+      assert.equal(await toggle.isChecked(), false);
+      await toggle.focus();
+      await page.keyboard.press("Space");
+      await page
+        .locator("#settings-opencode-workspace-tools:checked:enabled")
+        .waitFor();
+      const write = await page.evaluate(() =>
+        window.fixtureRequests.find((r) => r.params?.workspaceTools === true),
+      );
+      assert.deepEqual(write.params, {
+        id: "opencode",
+        type: "opencode",
+        workspaceTools: true,
+      });
+      await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
+      await toggle.waitFor({ state: "hidden" });
+      await page.getByRole("button", { name: "设置", exact: true }).click();
+      assert.equal(await toggle.isChecked(), true);
+      await toggle.uncheck();
+    }
     assert.equal(await page.locator("details.backend-settings").count(), 0);
     assert.equal(
       await page.getByText("供应商与模型", { exact: true }).count(),
@@ -164,7 +212,9 @@ try {
       0,
     );
     const writes = await page.evaluate(() =>
-      window.fixtureRequests.filter((r) => r.method === "lan/backends/save"),
+      window.fixtureRequests.filter(
+        (r) => r.method === "lan/backends/save" && r.params.id === "codex",
+      ),
     );
     assert.deepEqual(Object.keys(writes[0].params).sort(), [
       "enabled",
@@ -251,6 +301,28 @@ try {
           });
           if (await openSidebar.isVisible()) await openSidebar.click();
           await page.getByRole("button", { name: "设置", exact: true }).click();
+          await page.emulateMedia({ colorScheme: theme });
+          if (data.opencode) {
+            const toggle = page.getByLabel("为 OpenCode 优化工具调用");
+            await toggle.check();
+            await page
+              .locator("#settings-opencode-workspace-tools:checked:enabled")
+              .waitFor();
+            const inside = await toggle.evaluate((el) => {
+              const row = el.parentElement.getBoundingClientRect();
+              const control = el.getBoundingClientRect();
+              return (
+                row.right <= innerWidth &&
+                control.right < row.right &&
+                control.width >= 16
+              );
+            });
+            assert.equal(inside, true, JSON.stringify({ width, theme, scale }));
+            await page.screenshot({
+              path: join(output, `general-${width}-${theme}-${scale}.png`),
+              animations: "disabled",
+            });
+          }
           await settingsPage(page, "后端").click();
           const proxy = page.getByRole("form", {
             name: "Claude Code 网络代理",
@@ -259,7 +331,6 @@ try {
             .getByLabel("网络代理", { exact: true })
             .selectOption("http");
           await proxy.getByLabel("代理端口").fill("8080");
-          await page.emulateMedia({ colorScheme: theme });
           await proxy.scrollIntoViewIfNeeded();
           const metrics = await page
             .locator(".settings-body")
@@ -285,7 +356,9 @@ try {
     await zoom.selectOption("1");
     await settings.close();
   }
-  console.log("PASS 独立设置页、代理保存、实际浏览器缩放、深浅主题与窄屏");
+  console.log(
+    "PASS 独立设置页、工具开关、代理保存、实际浏览器缩放、深浅主题与窄屏",
+  );
 } finally {
   await context.close();
   server.closeAllConnections();

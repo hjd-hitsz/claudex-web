@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { createRunHooks } from "./hooks.mjs";
+import { workspaceToolsForClaude } from "./workspace-tools.mjs";
 import { createInputStream } from "./input-stream.mjs";
 import { convertMessage } from "./messages.mjs";
 import { createTokenUsage } from "./token-usage.mjs";
@@ -125,6 +126,12 @@ export async function createExecutionSession({
     prompt: input,
     options: {
       cwd: session.cwd,
+      ...(backend.claudeBatchRead && {
+        mcpServers: workspaceToolsForClaude({
+          cwd: session.cwd,
+          readFile: (path, options) => process.query.readFile(path, options),
+        }),
+      }),
       env: providerRuntimeEnvironment(provider, backend, {
         proxy,
         model,
@@ -158,7 +165,14 @@ export async function createExecutionSession({
       perTaskStopAffordance: true,
       forwardSubagentText: true,
       persistSession: true,
-      systemPrompt: { type: "preset", preset: "claude_code" },
+      systemPrompt: {
+        type: "preset",
+        preset: "claude_code",
+        ...(backend.claudeBatchRead && {
+          append:
+            "When collecting text across files, use mcp__claudex__read when available. Use Read for media and directories.",
+        }),
+      },
       settingSources: ["user", "project", "local"],
       canUseTool: async (name, toolInput) =>
         current()?.turn.mode === "plan" || current()?.queued.review

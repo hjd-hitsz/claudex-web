@@ -14,7 +14,9 @@ Object.assign(process.env, {
   XDG_STATE_HOME: join(root, "state"),
   XDG_CACHE_HOME: join(root, "cache"),
 });
-const OpenCode = await loadOpenCode(resolve(process.env.OPENCODE_SDK_ENTRY));
+const OpenCode = await loadOpenCode(resolve(process.env.OPENCODE_SDK_ENTRY), {
+  workspaceTools: true,
+});
 const model = "gpt-6.1-sol";
 const record = {
   model,
@@ -30,11 +32,19 @@ const record = {
   ],
 };
 const requests = [],
-  events = [];
+  events = [],
+  searches = [];
+const query = "Isolated search for Node.js release notes";
+const citation = "https://nodejs.org/en/about/previous-releases";
 let host,
   sequence = 0;
 const adapter = createOpenCodeAdapter({
-  backend: { id: "opencode", type: "opencode", stateDir: join(root, "web") },
+  backend: {
+    id: "opencode",
+    type: "opencode",
+    stateDir: join(root, "web"),
+    workspaceTools: true,
+  },
   config: { configDir: join(root, "web"), codexHome: root, defaultCwd: root },
   providers: { list: async () => [], get: async () => null },
   readCodexAccount: async () => ({
@@ -44,6 +54,44 @@ const adapter = createOpenCodeAdapter({
     models: [model, "gpt-fixture-new"],
     modelCatalogue: [record, { ...record, model: "gpt-fixture-new" }],
   }),
+  async fetchCodexSearch(url, options) {
+    assert.equal(url, "https://chatgpt.com/backend-api/codex/responses");
+    assert.equal(options.headers.authorization, "Bearer isolated-token");
+    assert.equal(options.headers["chatgpt-account-id"], "isolated-account");
+    assert.equal(options.redirect, "error");
+    const body = JSON.parse(options.body);
+    searches.push(body);
+    const output = [
+      {
+        type: "web_search_call",
+        status: "completed",
+        action: { type: "search", query },
+      },
+      {
+        type: "message",
+        content: [
+          {
+            type: "output_text",
+            text: "Release documentation",
+            annotations: [
+              {
+                type: "url_citation",
+                title: "Node.js releases",
+                url: citation,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const event = JSON.stringify({
+      type: "response.completed",
+      response: { output },
+    });
+    return new Response(`data: ${event}\n\n`, {
+      headers: { "content-type": "text/event-stream" },
+    });
+  },
   send: (client, message) => client.deliver(message),
   broadcast: (event) => events.push(event),
   createHost: async (options) =>
@@ -72,19 +120,34 @@ const adapter = createOpenCodeAdapter({
           bytes = zstdDecompressSync(bytes);
         const body = JSON.parse(bytes);
         requests.push(body);
-        const item = {
-          id: `msg_${requests.length}`,
-          type: "message",
-          role: "assistant",
-          status: "completed",
-          content: [
-            {
-              type: "output_text",
-              text: "subscription settings verified",
-              annotations: [],
-            },
-          ],
-        };
+        const search =
+          body.tools?.some(({ name }) => name === "claudex_web_search") &&
+          body.input.some(({ content }) =>
+            content?.some?.(({ text }) => text === query),
+          ) &&
+          !body.input.some(({ type }) => type === "function_call_output");
+        const item = search
+          ? {
+              id: "fc_search",
+              type: "function_call",
+              call_id: "call_search",
+              name: "claudex_web_search",
+              arguments: JSON.stringify({ query }),
+              status: "completed",
+            }
+          : {
+              id: `msg_${requests.length}`,
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "subscription settings verified",
+                  annotations: [],
+                },
+              ],
+            };
         const response = {
           id: `resp_${requests.length}`,
           object: "response",
@@ -102,15 +165,24 @@ const adapter = createOpenCodeAdapter({
           {
             type: "response.output_item.added",
             output_index: 0,
-            item: { ...item, status: "in_progress", content: [] },
+            item: search
+              ? { ...item, arguments: "", status: "in_progress" }
+              : { ...item, status: "in_progress", content: [] },
           },
-          {
-            type: "response.output_text.delta",
-            output_index: 0,
-            content_index: 0,
-            item_id: item.id,
-            delta: "subscription settings verified",
-          },
+          search
+            ? {
+                type: "response.function_call_arguments.delta",
+                output_index: 0,
+                item_id: item.id,
+                delta: item.arguments,
+              }
+            : {
+                type: "response.output_text.delta",
+                output_index: 0,
+                content_index: 0,
+                item_id: item.id,
+                delta: "subscription settings verified",
+              },
           { type: "response.output_item.done", output_index: 0, item },
           { type: "response.completed", response },
         ]
@@ -157,7 +229,12 @@ try {
       model: `openai/${model}`,
       effort,
       serviceTier,
-      input: [{ type: "text", text: `Check ${effort} ${serviceTier}` }],
+      input: [
+        {
+          type: "text",
+          text: effort === "high" ? query : `Check ${effort} ${serviceTier}`,
+        },
+      ],
     });
     const deadline = Date.now() + 20000;
     while (
@@ -186,6 +263,33 @@ try {
     assert.equal(forked.serviceTier, serviceTier);
     await call("thread/delete", { threadId: forked.thread.id });
   }
+  assert.equal(searches.length, 1);
+  assert.equal(searches[0].model, model);
+  assert.deepEqual(searches[0].input, [
+    { role: "user", content: [{ type: "input_text", text: query }] },
+  ]);
+  assert.deepEqual(searches[0].tools, [
+    {
+      type: "web_search",
+      external_web_access: true,
+      search_context_size: "low",
+    },
+  ]);
+  assert.equal(searches[0].store, false);
+  assert.ok(
+    requests.some(({ input }) =>
+      input.some(
+        ({ type, output }) =>
+          type === "function_call_output" &&
+          JSON.stringify(output).includes(citation),
+      ),
+    ),
+  );
+  assert.ok(
+    requests.every(
+      ({ tools }) => !tools?.some(({ name }) => name === "websearch"),
+    ),
+  );
   const legacy = await host.sessions.create({
     location: { directory: root },
     model: { providerID: "openai", id: `${model}-fast`, variant: "high" },
@@ -211,6 +315,7 @@ try {
       passed: true,
       sdk: "2.3.2",
       actualModelRequests: 0,
+      hostedWebSearch: "isolated Responses request verified",
       requests: proof,
       legacyRestored: true,
     }),
