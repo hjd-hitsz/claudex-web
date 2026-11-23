@@ -249,3 +249,48 @@
 .document-reference.ProseMirror-selectednode {
   background: var(--hover);
 }
+.markdown-composer
+  .milkdown
+  .ProseMirror
+  :is(
+    code.pasted-code-line,
+    code:has(.pasted-code-line),
+    code:has(.pasted-code-indent),
+    .pasted-code-line code
+  ) {
+  padding-inline: 0;
+  background: transparent;
+}
+.pasted-code-indent {
+  white-space: normal;
+}
+.markdown-composer .milkdown .pasted-code-source {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  line-height: 1;
+  color: var(--muted);
+  font-size: 0.75em;
+  margin-inline: 0.16em;
+  vertical-align: super;
+  cursor: pointer;
+}
+.markdown-composer .milkdown .pasted-code-source:hover {
+  color: var(--link);
+}
+.markdown-composer .milkdown .ProseMirror .pasted-code-entry > code {
+  padding: 0;
+  background: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: inherit;
+}
+.markdown-composer
+  .milkdown
+  .ProseMirror
+  .pasted-code-entry.ProseMirror-selectednode {
+  outline: none;
+  background: var(--selected);
+}

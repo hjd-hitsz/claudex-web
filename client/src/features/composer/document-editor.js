@@ -31,6 +31,20 @@ import { documentList } from "./document-list.js";
 import { documentMathInput } from "./document-math-input.js";
 import { documentPaste } from "./document-clipboard.js";
 import {
+  documentCodeLine,
+  removeCodeSource,
+  restoreCodeSources,
+} from "./document-code-line.js";
+import {
+  deletePastedCode,
+  pastedCodeSchema,
+  pastedCodeView,
+} from "./document-pasted-code.js";
+import {
+  configureInlineCodeSources,
+  pastedCodeMarkdown,
+} from "./pasted-code-markdown.js";
+import {
   documentMathParser,
   documentMathSchema,
 } from "./document-math-schema.js";
@@ -46,11 +60,11 @@ function serializeDraft(doc, serialize) {
     trailing++;
   }
   if (!size) return "";
+  const last = doc.child(doc.childCount - trailing - 1);
+  const tail = last.isTextblock ? last.lastChild?.text : undefined;
   return (
     serialize(doc.copy(doc.content.cut(0, size))).replace(/\s+$/, "") +
-    (doc
-      .child(doc.childCount - trailing - 1)
-      .textContent.match(/[ \t]+$/)?.[0] || "") +
+    (tail?.match(/[ \t]+$/)?.[0] || "") +
     "\n".repeat(trailing)
   );
 }
@@ -78,6 +92,8 @@ export async function createDocumentEditor(
     configure,
     referenceSkills,
     onOpenReference,
+    findCodeLine,
+    onCodeSourcesChange,
   },
 ) {
   let suppressed = false;
@@ -118,6 +134,7 @@ export async function createDocumentEditor(
   });
   crepe.editor
     .config((ctx) => {
+      if (!file) configureInlineCodeSources(ctx);
       ctx.update(linkSchema.key, (schema) => (ctx) => ({
         ...schema(ctx),
         inclusive: false,
@@ -126,9 +143,15 @@ export async function createDocumentEditor(
       ctx.update(editorViewOptionsCtx, (previous) => ({
         ...previous,
         ...mathInput,
+        ...(!file && {
+          handleKeyDown: (view, event) =>
+            deletePastedCode(view, event) ||
+            mathInput.handleKeyDown(view, event),
+        }),
         handlePaste: documentPaste(ctx, {
           mathPaste: mathInput.handlePaste,
           inlineCode: !file,
+          findCodeLine: onCodeSourcesChange && findCodeLine,
         }),
         clipboardTextSerializer: file
           ? (slice, view) =>
@@ -157,6 +180,10 @@ export async function createDocumentEditor(
       .use(documentMathParser)
       .use(documentReferenceSchema)
       .use(references.plugin)
+      .use(documentCodeLine(onCodeSourcesChange))
+      .use(pastedCodeMarkdown)
+      .use(pastedCodeSchema)
+      .use(pastedCodeView)
       .use(documentReferenceKeys)
       .use(documentMathSchema)
       .use(documentMathView);
@@ -235,6 +262,12 @@ export async function createDocumentEditor(
     },
     setReferenceSkills(skills) {
       references?.setSkills(skills);
+    },
+    removeCodeSource(id) {
+      return references && removeCodeSource(view, id);
+    },
+    restoreCodeSources(attachments) {
+      return references ? restoreCodeSources(view, attachments) : [];
     },
     setAttributes(attributes) {
       view.setProps({ attributes });

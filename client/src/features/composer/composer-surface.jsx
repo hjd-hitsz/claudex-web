@@ -50,7 +50,7 @@ export function ComposerSurface({ expanded, onClose, children }) {
             expanded &&
             event.key === "Escape" &&
             !event.currentTarget.querySelector(
-              '.shortcut-popover, .language-button[data-expanded="true"]',
+              '.shortcut-popover, .language-button[data-expanded="true"], .code-file-preview',
             )
           ) {
             event.preventDefault();

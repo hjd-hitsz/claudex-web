@@ -4,6 +4,11 @@ import {
 } from "./inline-references.js";
 import { planApprovalLabel } from "./plans.js";
 import { parseAnnotations } from "./annotations.js";
+import {
+  codeLineAttachment,
+  codeLineKey,
+  readCodeLineAttachment,
+} from "./code-line-reference.js";
 
 export function fileReferenceInput(file) {
   return {
@@ -18,11 +23,26 @@ export function parseUserMessage(content = []) {
   const texts = [],
     annotations = [],
     references = [],
+    codeAttachments = new Map(),
     attachments = [];
   const inline = content
     .filter((part) => part.type === "text")
     .flatMap((part) => textReferences(part.text || ""));
-  for (const part of content) {
+  for (const [index, part] of content.entries()) {
+    const codeAttachment = readCodeLineAttachment(part, index);
+    if (codeAttachment) {
+      const key = codeLineKey(codeAttachment);
+      const prior = codeAttachments.get(key);
+      codeAttachments.set(
+        key,
+        prior
+          ? codeLineAttachment(prior.code, prior.matches, prior.id, [
+              ...new Set([...prior.anchors, ...codeAttachment.anchors]),
+            ])
+          : codeAttachment,
+      );
+      continue;
+    }
     if (part.type !== "text") {
       attachments.push(part);
       continue;
@@ -92,11 +112,24 @@ export function parseUserMessage(content = []) {
     references.push(...files);
     if (text.trim()) texts.push(text.trimEnd());
   }
-  return { text: texts.join("\n"), annotations, references, attachments };
+  return {
+    text: texts.join("\n"),
+    annotations,
+    references,
+    ...(codeAttachments.size && {
+      codeAttachments: [...codeAttachments.values()],
+    }),
+    attachments,
+  };
 }
 
 export function userMessageText(content, quote) {
-  const { text, annotations, references } = parseUserMessage(content);
+  const {
+    text,
+    annotations,
+    references,
+    codeAttachments = [],
+  } = parseUserMessage(content);
   return [
     planApprovalLabel(text),
     ...annotations.map((entry, index) => {
@@ -114,6 +147,9 @@ export function userMessageText(content, quote) {
     ...references
       .filter((file) => !text.includes("@" + file.name))
       .map((file) => "@" + file.name),
+    ...codeAttachments.map(({ matches }) =>
+      matches.map(({ path, line }) => `${path}:${line}`).join("\n"),
+    ),
   ]
     .filter(Boolean)
     .join(quote && annotations.length ? "\n\n" : "\n");

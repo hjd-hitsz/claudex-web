@@ -92,6 +92,10 @@ export function createGoals({ get, set, rpc, navigation, onEvent }) {
       if (get().current?.id !== thread.id) return false;
       let objective = s.draft.trim();
       for (const attachment of s.attachments) {
+        if (attachment.kind === "code-line") {
+          objective += "\n\n" + attachment.input.text;
+          continue;
+        }
         if (!attachment.path) {
           const result = await rpc("fs/uploadAttachment", {
             name: attachment.name,

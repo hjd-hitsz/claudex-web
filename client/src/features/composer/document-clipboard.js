@@ -2,6 +2,9 @@ import { Fragment, Slice } from "@milkdown/kit/prose/model";
 import { closeHistory } from "@milkdown/kit/prose/history";
 import { parserCtx } from "@milkdown/kit/core";
 import { syncDocumentSelection } from "./editor-selection.js";
+import { resolvePastedCodeLine } from "./document-code-line.js";
+import { pastedCodeText } from "./pasted-code-markdown.js";
+import { isCodeLineSnippet } from "../../../../shared/code-line-reference.mjs";
 
 // 直接插入解析后的块节点，保留代码围栏及正文两侧的插入边界。
 export function insertDocumentMarkdown(view, doc, text) {
@@ -40,13 +43,14 @@ export function insertDocumentMarkdown(view, doc, text) {
   return true;
 }
 
-export function documentPaste(ctx, { mathPaste, inlineCode }) {
+export function documentPaste(ctx, { mathPaste, inlineCode, findCodeLine }) {
   return (view, event, slice) => {
     const clipboard = event.clipboardData;
     if (!clipboard || !view.editable) return false;
     syncDocumentSelection(view);
     const text = clipboard.getData("text/plain").replace(/\r\n?/g, "\n");
-    if (!text && !clipboard.getData("text/html")) return false;
+    const html = clipboard.getData("text/html");
+    if (!text && !html) return false;
     const { $from } = view.state.selection;
     if (
       $from.parent.type.spec.code ||
@@ -61,38 +65,77 @@ export function documentPaste(ctx, { mathPaste, inlineCode }) {
     }
     if (mathPaste?.(view, event)) return true;
     const metadata = clipboard.getData("vscode-editor-data");
-    let language;
+    let editorData;
     try {
-      language = metadata ? JSON.parse(metadata).mode : null;
+      editorData = metadata ? JSON.parse(metadata) : null;
     } catch {
       // 无效的编辑器元数据沿用剪贴板中的正文。
     }
-    if (text && typeof language === "string" && language) {
+    const language = editorData?.mode;
+    const hasLanguage = typeof language === "string" && language.length > 0;
+    const codeLanguage =
+      hasLanguage && !["plaintext", "markdown"].includes(language);
+    if (text && (codeLanguage || (!inlineCode && hasLanguage))) {
       const { schema } = view.state;
-      const line = text.replace(/\n$/, "");
-      const code =
-        inlineCode && line.trim() && !line.includes("\n")
-          ? schema.nodes.paragraph.create(
-              null,
-              schema.text(line, [schema.marks.inlineCode.create()]),
-            )
-          : schema.nodes.code_block.create({ language }, schema.text(text));
-      return insertDocumentMarkdown(
-        view,
-        schema.topNodeType.create(null, code),
-        text,
+      if (!inlineCode) {
+        const block = schema.nodes.code_block.create(
+          { language },
+          schema.text(text),
+        );
+        return insertDocumentMarkdown(
+          view,
+          schema.topNodeType.create(null, block),
+          text,
+        );
+      }
+      const code = pastedCodeText(text);
+      const multiline = code.includes("\n");
+      const snippet = multiline
+        ? schema.nodes.pasted_code.create({ text: code, language })
+        : schema.text(
+            code || text,
+            code.trim() ? [schema.marks.inlineCode.create()] : [],
+          );
+      view.dispatch(
+        closeHistory(view.state.tr)
+          .replaceSelectionWith(snippet, false)
+          .setMeta("paste", true)
+          .setMeta("uiEvent", "paste")
+          .scrollIntoView(),
       );
+      view.dispatch(closeHistory(view.state.tr));
+      if (
+        findCodeLine &&
+        !editorData.isBlock &&
+        !editorData.multicursorText &&
+        isCodeLineSnippet(code)
+      )
+        void resolvePastedCodeLine(view, code, findCodeLine);
+      return true;
     }
     // 网页富文本的原生副本保留引用节点及原选区结构。
-    if (clipboard.getData("text/html") && slice?.size) {
+    if (html && slice?.size) {
       view.dispatch(
         closeHistory(view.state.tr).replaceSelection(slice).scrollIntoView(),
       );
       view.dispatch(closeHistory(view.state.tr));
-      return true;
+    } else {
+      if (!text) return false;
+      const doc = ctx.get(parserCtx)(text);
+      if (!doc) return false;
+      insertDocumentMarkdown(view, doc, text);
     }
-    if (!text) return false;
-    const doc = ctx.get(parserCtx)(text);
-    return doc ? insertDocumentMarkdown(view, doc, text) : false;
+    const code = pastedCodeText(text);
+    if (
+      inlineCode &&
+      findCodeLine &&
+      language !== "markdown" &&
+      !editorData?.isBlock &&
+      !editorData?.multicursorText &&
+      !code.includes("\n") &&
+      isCodeLineSnippet(code)
+    )
+      void resolvePastedCodeLine(view, code, findCodeLine, true);
+    return true;
   };
 }

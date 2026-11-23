@@ -95,7 +95,15 @@ export async function checkComposerBlocks(page, output) {
   await clear();
   const codeSource = "const value = 42;\nconsole.log(value);";
   await paste(codeSource, "", "javascript");
-  assert((await draft()).includes("```javascript\n" + codeSource + "\n```"));
+  assert(
+    (await draft()).includes(
+      "```javascript claudex-paste\n" + codeSource + "\n```",
+    ),
+  );
+  assert.equal(
+    await field.locator(".pasted-code-entry > code").textContent(),
+    codeSource,
+  );
   await page.keyboard.insertText("代码后正文");
   assert((await draft()).endsWith("代码后正文"));
   await clear();

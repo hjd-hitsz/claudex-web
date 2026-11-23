@@ -11,6 +11,7 @@ import { MessageImage } from "../markdown/message-image.jsx";
 import { UserAnnotations } from "../annotations/user-annotations.jsx";
 import { planApprovalLabel } from "../../domain/plans.js";
 import { parseUserMessage } from "../../domain/user-message.js";
+import { CodeFileAttachments } from "../composer/code-file-attachments.jsx";
 export function Content({ content, cwd }) {
   const parsed = parseUserMessage(content);
   parsed.text = planApprovalLabel(parsed.text);
@@ -26,6 +27,7 @@ export function Content({ content, cwd }) {
           />
         </div>
       )}
+      <CodeFileAttachments attachments={parsed.codeAttachments} />
       <UserAnnotations annotations={parsed.annotations} cwd={cwd} />
       {parsed.attachments.map((c, i) =>
         c.type === "image" || c.type === "localImage" ? (

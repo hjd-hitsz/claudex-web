@@ -12,12 +12,14 @@ import { isCompacting } from "../../domain/compaction.js";
 import { Content } from "./user-content.jsx";
 import { ReferenceEditor } from "../composer/reference-editor.jsx";
 import { annotationQuote } from "../annotations/annotation-selection.js";
+import { CodeFileAttachments } from "../composer/code-file-attachments.jsx";
 
 function MessageEditor({ item, threadId, onCancel }) {
   const s = useStore();
   const [parsed] = useState(() => parseUserMessage(item.content));
   const [text, setText] = useState(parsed.text);
   const [attachments, setAttachments] = useState(() => [
+    ...(parsed.codeAttachments ?? []),
     ...parsed.references.map((file) => ({
       name: file.name,
       input: fileReferenceInput(file),
@@ -28,6 +30,8 @@ function MessageEditor({ item, threadId, onCancel }) {
     })),
   ]);
   const [annotations, setAnnotations] = useState(parsed.annotations);
+  const codeAttachments = attachments.filter((a) => a.kind === "code-line");
+  const regularAttachments = attachments.filter((a) => a.kind !== "code-line");
   const [pending, setPending] = useState(false);
   const input = useRef();
   const edit = useRef({ item, threadId });
@@ -78,32 +82,49 @@ function MessageEditor({ item, threadId, onCancel }) {
         )
           return;
         if (event.key === "Enter" && event.ctrlKey) submit(event);
-        if (event.key === "Escape") {
+        if (
+          event.key === "Escape" &&
+          !event.target.closest(".code-location[aria-describedby]")
+        ) {
           event.preventDefault();
           cancel();
         }
       }}
     >
       <div inert={pending}>
+        <CodeFileAttachments
+          attachments={codeAttachments}
+          onRemove={(id) => {
+            if (!input.current?.removeCodeSource?.(id))
+              setAttachments((entries) => entries.filter((a) => a.id !== id));
+          }}
+        />
         <ReferenceEditor
           fill
           value={text}
           inputRef={input}
+          codeAttachments={codeAttachments}
+          onCodeSourcesChange={(active) =>
+            setAttachments((entries) => [
+              ...entries.filter((a) => a.kind !== "code-line"),
+              ...active,
+            ])
+          }
           theme={s.theme}
           aria-label="编辑消息"
           onChange={(event) => setText(event.target.value)}
         />
       </div>
-      {attachments.length > 0 && (
+      {regularAttachments.length > 0 && (
         <div className="inline-edit-attachments">
-          {attachments.map((entry, index) => (
+          {regularAttachments.map((entry, index) => (
             <button
               type="button"
               key={index}
               title={`移除 ${entry.name}`}
               disabled={pending}
               onClick={() =>
-                setAttachments(attachments.filter((_, i) => i !== index))
+                setAttachments(attachments.filter((a) => a !== entry))
               }
             >
               {entry.name} ×

@@ -31,6 +31,7 @@ export const {
   notice,
   listThreads,
   rpc,
+  findCodeLine,
   refreshUsage,
   setThinkingTranslation,
   setCompletionNotifications,

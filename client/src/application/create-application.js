@@ -141,6 +141,38 @@ export function createApplication() {
     navigation: { ensureThread: () => navigation.ensureThread() },
     onEvent,
   });
+  const codeLineRequests = new Map();
+  let codeLineConnection;
+  async function findCodeLine(line) {
+    const { cwd, backendId, providerId, current } = get();
+    const connection = transport.connection;
+    if (!cwd) return [];
+    if (codeLineConnection !== connection) {
+      codeLineRequests.clear();
+      codeLineConnection = connection;
+    }
+    const key = JSON.stringify([cwd, backendId, providerId, current?.id, line]);
+    let request = codeLineRequests.get(key);
+    if (!request) {
+      request = rpc(
+        "lan/workspace/codeLine",
+        { cwd, backendId, ...(current?.id && { threadId: current.id }), line },
+        2500,
+      ).finally(() => {
+        if (codeLineRequests.get(key) === request) codeLineRequests.delete(key);
+      });
+      codeLineRequests.set(key, request);
+    }
+    const result = await request;
+    const state = get();
+    return transport.connection === connection &&
+      state.cwd === cwd &&
+      state.backendId === backendId &&
+      state.providerId === providerId &&
+      state.current?.id === current?.id
+      ? result?.matches
+      : [];
+  }
   const models = createModelPreferences({ get, set, rpc, transport, report });
   const backends = createBackends({
     transport,
@@ -248,6 +280,7 @@ export function createApplication() {
     store,
     rpc,
     onEvent,
+    findCodeLine,
     report,
     trackFeedback: feedback.track,
     notice,

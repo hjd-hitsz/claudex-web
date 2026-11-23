@@ -14,6 +14,9 @@ export function MarkdownEditor({
   configure,
   referenceSkills,
   onOpenReference,
+  codeAttachments,
+  findCodeLine,
+  onCodeSourcesChange,
   ...inputProps
 }) {
   const label = inputProps["aria-label"] || "消息";
@@ -33,10 +36,33 @@ export function MarkdownEditor({
   const pendingSelection = useRef();
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  latest.current = { value, props, referenceSkills, onOpenReference };
+  latest.current = {
+    value,
+    props,
+    referenceSkills,
+    onOpenReference,
+    codeAttachments,
+    onCodeSourcesChange,
+  };
   useEffect(() => {
     let disposed = false;
     let instance;
+    let restoringSources = false;
+    function restoreSources() {
+      if (!latest.current.onCodeSourcesChange) return;
+      const attached = latest.current.codeAttachments ?? [];
+      restoringSources = true;
+      try {
+        const active = instance.restoreCodeSources(attached);
+        if (
+          active.length !== attached.length ||
+          active.some((entry, index) => entry !== attached[index])
+        )
+          latest.current.onCodeSourcesChange(active);
+      } finally {
+        restoringSources = false;
+      }
+    }
     import("./document-editor.js")
       .then(async ({ createDocumentEditor }) => {
         if (disposed) return;
@@ -48,6 +74,13 @@ export function MarkdownEditor({
           file,
           configure,
           referenceSkills: latest.current.referenceSkills,
+          findCodeLine,
+          onCodeSourcesChange: onCodeSourcesChange
+            ? (attachments) => {
+                if (!disposed && !restoringSources)
+                  latest.current.onCodeSourcesChange?.(attachments);
+              }
+            : undefined,
           onOpenReference(reference) {
             if (!disposed) latest.current.onOpenReference?.(reference);
           },
@@ -77,6 +110,7 @@ export function MarkdownEditor({
             instance.replaceText(text, start, end),
           insertReference: (reference, start, end) =>
             instance.insertReference(reference, start, end),
+          removeCodeSource: (id) => instance.removeCodeSource(id),
           setSelectionRange: (start, end) => instance.setCursor(start, end),
           get value() {
             return rendered.current;
@@ -89,6 +123,7 @@ export function MarkdownEditor({
           },
         };
         inputRef.current = exposed.current;
+        restoreSources();
         if (focused) pendingSelection.current = { cursor, end };
         setReady(true);
       })

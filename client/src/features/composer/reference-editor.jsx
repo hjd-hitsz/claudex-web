@@ -1,5 +1,5 @@
 import React from "react";
-import { set, useStoreSelector } from "../../store.js";
+import { findCodeLine, set, useStoreSelector } from "../../store.js";
 import { MarkdownEditor } from "./markdown-editor.jsx";
 
 function openReference({ kind, path }) {
@@ -13,6 +13,7 @@ export function ReferenceEditor(props) {
       {...props}
       referenceSkills={skills}
       onOpenReference={openReference}
+      findCodeLine={findCodeLine}
     />
   );
 }

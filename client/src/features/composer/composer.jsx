@@ -31,6 +31,7 @@ import {
 import {
   useStore,
   useDraft,
+  get,
   set,
   setDraft,
   archive,
@@ -52,6 +53,7 @@ import { CompactionStatus } from "./compaction-status.jsx";
 import { ReferenceEditor } from "./reference-editor.jsx";
 import { AttachmentPreview } from "./attachment-preview.jsx";
 import { ComposerSurface } from "./composer-surface.jsx";
+import { CodeFileAttachments } from "./code-file-attachments.jsx";
 export function Composer({ inputRef }) {
   const backgroundTaskCount = useContext(BackgroundTasks).tasks.length;
   const [preview, setPreview] = useState(null);
@@ -64,6 +66,10 @@ export function Composer({ inputRef }) {
   const focusAfterOpen = useRef(null);
   useEffect(() => setEnlarged(false), [s.current?.id, s.backendId, s.modal]);
   const annotationDrafts = useAnnotationDrafts(s.current?.id);
+  const codeAttachments = s.attachments.filter((a) => a.kind === "code-line");
+  const regularAttachments = s.attachments.filter(
+    (a) => a.kind !== "code-line",
+  );
   const shortcuts = useComposerShortcuts(area);
   const active = s.active[s.current?.id];
   const compaction = s.compactions[s.current?.id];
@@ -179,15 +185,24 @@ export function Composer({ inputRef }) {
           }}
         >
           <ComposerAnnotations />
+          <CodeFileAttachments
+            attachments={codeAttachments}
+            onRemove={(id) => {
+              if (!area.current?.removeCodeSource?.(id))
+                set({
+                  attachments: get().attachments.filter((a) => a.id !== id),
+                });
+            }}
+          />
           {preview && s.attachments.includes(preview) && (
             <AttachmentPreview
               attachment={preview}
               onClose={() => setPreview(null)}
             />
           )}
-          {s.attachments.length > 0 && (
+          {regularAttachments.length > 0 && (
             <div className="attachment-list">
-              {s.attachments.map((a) => (
+              {regularAttachments.map((a) => (
                 <div className="attachment" key={a.id}>
                   <button
                     type="button"
@@ -218,6 +233,15 @@ export function Composer({ inputRef }) {
           <ReferenceEditor
             key={s.current?.id || "new-" + s.backendId}
             inputRef={area}
+            codeAttachments={codeAttachments}
+            onCodeSourcesChange={(active) =>
+              set({
+                attachments: [
+                  ...get().attachments.filter((a) => a.kind !== "code-line"),
+                  ...active,
+                ],
+              })
+            }
             theme={s.theme}
             enlarged={enlarged}
             onEnlargedChange={setEnlarged}
