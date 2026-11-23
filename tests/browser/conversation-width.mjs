@@ -17,6 +17,8 @@ const build = process.env.BROWSER_BUILD_DIR || resolve("client/dist");
 await mkdir(output, { recursive: true });
 
 const terms = Array.from({ length: 28 }, (_, index) => "x_{" + index + "}");
+const rows = terms.map((term) => `${term}&=\\frac{1}{1+${term}^2}`);
+const tallMath = String.raw`\left[\begin{aligned}${rows.join(String.raw`\\`)}\end{aligned}\right]+\underbrace{${terms.join("+")}}_{k}`;
 const text = [
   "手机阅读时，消息应从左侧完整显示。",
   "$$\n" + terms.join(" + ") + "\n$$",
@@ -30,6 +32,8 @@ const text = [
     " |\n| " +
     terms.map(() => "数据内容").join(" | ") +
     " |",
+  "多行公式",
+  "$$\n" + tallMath + "\n$$",
   "正文末尾可以继续纵向滚动。",
   "[预览笔记](./notes.md)",
   "阅读记录\n\n" + "这段正文用于核对手势后仍可上下阅读。\n\n".repeat(18),
@@ -69,7 +73,13 @@ const context = await chromium.launchPersistentContext(profile, {
   executablePath: process.env.CHROME_PATH,
   headless: true,
   viewport: { width: 390, height: 844 },
-  args: ["--no-sandbox", "--no-proxy-server", "--disable-gpu"],
+  ignoreDefaultArgs: ["--hide-scrollbars"],
+  args: [
+    "--no-sandbox",
+    "--no-proxy-server",
+    "--disable-gpu",
+    "--disable-overlay-scrollbar",
+  ],
 });
 const page = await context.newPage();
 page.setDefaultTimeout(10_000);
@@ -78,7 +88,8 @@ page.on("pageerror", (error) => errors.push(error.message));
 const origin = "http://127.0.0.1:" + server.address().port;
 const conversation = page.locator(".conversation");
 const answer = conversation.locator(".assistant-message .markdown");
-const formula = answer.locator(".katex-display");
+const formula = answer.locator(".katex-display").first();
+const tallFormula = answer.locator(".katex-display").last();
 const inline = answer.locator("p > .katex").first();
 const prose = answer.getByText("手机阅读时，消息应从左侧完整显示。");
 const code = answer.locator(".code-block pre");
@@ -96,6 +107,13 @@ async function inspect() {
     const display = element.querySelector(".katex-display");
     const inline = element.querySelector("p > .katex");
     const short = Array.from(element.querySelectorAll("p > .katex")).slice(1);
+    const scrollableFormulas = Array.from(
+      element.querySelectorAll(".katex-display, .katex-scroll"),
+      (formula) => ({
+        verticalOverflow: formula.scrollHeight - formula.clientHeight,
+        overflowY: getComputedStyle(formula).overflowY,
+      }),
+    );
     return {
       viewport: innerWidth,
       dpr: devicePixelRatio,
@@ -118,6 +136,7 @@ async function inspect() {
         overflowX: getComputedStyle(formula).overflowX,
         overflowY: getComputedStyle(formula).overflowY,
       })),
+      scrollableFormulas,
     };
   });
 }
@@ -141,6 +160,52 @@ function assertConversationFits(metrics) {
       overflowY: "visible",
     })),
   );
+  for (const formula of metrics.scrollableFormulas) {
+    assert.equal(formula.overflowY, "hidden", JSON.stringify(formula));
+    assert.equal(formula.verticalOverflow, 0, JSON.stringify(formula));
+  }
+}
+
+async function readPastFormula(surface, locator, screenshot) {
+  const metrics = await locator.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+    const scrollLeft = element.scrollLeft;
+    element.scrollLeft = 0;
+    element.scrollTop = element.scrollHeight;
+    return {
+      height: element.clientHeight,
+      viewport: innerHeight,
+      scrollLeft,
+      verticalOverflow: element.scrollHeight - element.clientHeight,
+      scrollTop: element.scrollTop,
+    };
+  });
+  assert(metrics.height > metrics.viewport, JSON.stringify(metrics));
+  assert(metrics.scrollLeft > 0, JSON.stringify(metrics));
+  assert.equal(metrics.verticalOverflow, 0, JSON.stringify(metrics));
+  assert.equal(metrics.scrollTop, 0, JSON.stringify(metrics));
+  const heading = surface.getByText("多行公式", { exact: true });
+  await heading.evaluate((element) =>
+    element.scrollIntoView({ block: "start" }),
+  );
+  const box = await locator.boundingBox();
+  assert(box && box.y >= 0 && box.y < metrics.viewport);
+  await page.mouse.move(box.x + box.width / 2, box.y + 30);
+  await page.mouse.wheel(0, box.height - metrics.viewport / 2);
+  const following = surface.getByText("正文末尾可以继续纵向滚动。", {
+    exact: true,
+  });
+  await page.waitForFunction(
+    (element) => {
+      const viewport = element.closest(".conversation, .file-markdown-preview");
+      const bounds = viewport.getBoundingClientRect();
+      const text = element.getBoundingClientRect();
+      return text.top >= bounds.top && text.bottom <= bounds.bottom;
+    },
+    await following.elementHandle(),
+  );
+  await page.screenshot({ path: join(output, screenshot) });
+  return metrics;
 }
 
 async function localScrolling(locator) {
@@ -328,6 +393,9 @@ try {
       await zoom.selectOption("1");
       await settings.close();
     }
+    results.push({
+      tallChat: await readPastFormula(answer, tallFormula, "chat-math-end.png"),
+    });
     await page.getByRole("link", { name: "预览笔记" }).click();
     await preview.locator("table").waitFor();
     const file = await preview.evaluate((element) => ({
@@ -346,6 +414,13 @@ try {
     );
     await page.screenshot({ path: join(output, "mobile-file-preview.png") });
     results.push({ file });
+    results.push({
+      tallFile: await readPastFormula(
+        preview,
+        preview.locator(".katex-display").last(),
+        "file-math-end.png",
+      ),
+    });
   }
   assert.deepEqual(errors, []);
   await writeFile(

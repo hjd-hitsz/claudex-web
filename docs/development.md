@@ -255,7 +255,7 @@ Mermaid 回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/
 
 ### 消息区滚动
 
-构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/conversation-width.mjs`。隔离对话包含普通及超宽行内公式、块公式、代码块与表格。脚本模拟手机触控，核对普通公式随正文排版、宽内容可局部横向滚动及正文纵向滚动，并检查窄屏侧栏焦点、文件预览和五档浏览器页面缩放。截图和测量结果保存在 `.cache/conversation-width/after`，可用 `BROWSER_BEFORE=1 BROWSER_BUILD_DIR=/path/to/previous/dist` 对照整页仍可横向滚动的构建。
+构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/conversation-width.mjs`。隔离对话包含普通及超宽行内公式、块公式、代码块与表格。脚本模拟手机触控，核对普通公式随正文排版、宽内容可局部横向滚动，并在聊天和文件预览中滚动浏览超高公式及后续正文。检查覆盖深浅主题、窄屏侧栏收放与焦点，以及五档浏览器页面缩放。截图和测量结果保存在 `.cache/conversation-width/after`，可用 `BROWSER_BEFORE=1 BROWSER_BUILD_DIR=/path/to/previous/dist` 对照整页仍可横向滚动的构建。
 
 ### 活动对话恢复
 
