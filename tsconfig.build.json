@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "noEmit": false,
+    "noCheck": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["server/src/**/*.mts", "shared/**/*.mts"]
+}

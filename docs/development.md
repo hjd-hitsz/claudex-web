@@ -43,6 +43,8 @@ npm run dev
 
 验证生产构建时，执行 `npm run build`，再通过网页桥接地址访问，默认 `https://127.0.0.1:8766`。生产服务直接读取 `client/dist`，前端更新后重新构建并刷新网页即可；桥接代码更新后需要重启网页服务。
 
+后端和共享目录中的 `.mts` 按现有模块路径生成同名 `.mjs`。源码安装、完整构建和单元测试会生成运行文件；修改 `.mts` 后，单独运行 Node.js 脚本或服务之前可执行 `npm run build:server`。新增或迁移模块时保留 `.mjs` 导入路径，在 `.gitignore` 中登记生成文件，架构检查将该引用解析到 `.mts` 源码。运行 `npm run typecheck` 检查 TypeScript 和带 `@ts-check` 的服务端 JavaScript。
+
 ## 项目结构
 
 源码目录及职责见[架构设计](architecture.md#模块与依赖)。
@@ -405,7 +407,7 @@ npm run check
 npm pack
 ```
 
-`npm pack` 的 `prepack` 会重新构建网页并生成 `claudex-web-X.Y.Z.tgz`，其中 `X.Y.Z` 为根包版本。`package.json` 的 `files` 白名单包含命令行入口、前端构建资源、构建来源、桥接代码与运行脚本；开发源码、测试、聊天数据和实际环境配置在包外。运行依赖由目标机器上的 npm 安装。
+`npm pack` 的 `prepack` 会构建 Node.js 运行模块和网页资源，生成 `claudex-web-X.Y.Z.tgz`，其中 `X.Y.Z` 为根包版本。`package.json` 的 `files` 白名单包含命令行入口、构建资源、构建来源、桥接代码与运行脚本。目标机器通过 npm 安装运行依赖，直接执行包内 JavaScript。
 
 正式版本、工作流、定时发布及 npm OIDC 发布见[版本管理](versioning.md)。发布准备时在实际标签的 `GITHUB_REF_NAME` 环境执行完整检查，版本测试的临时仓库显式使用对应标签。
 

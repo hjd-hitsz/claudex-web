@@ -187,6 +187,7 @@ export function createGoals({
     });
     if (exhausted && message.type !== "result") await interrupt(id);
   }
+  /** @returns {ReturnType<import("@anthropic-ai/claude-agent-sdk").HookCallback>} */
   async function beforeTool(id) {
     const goal = await read(id);
     if (goal?.status !== "budgetLimited" || running.get(id)?.goalId !== goal.id)

@@ -776,9 +776,11 @@ try {
     3,
     "启动工具、结束本轮与自动续跑共三次模型请求\n" + diagnostics,
   );
-  assert.equal(nativeRequests.get("enabled"), 3);
-  assert.equal(nativeRequests.get("disabled"), 2);
-  assert.equal(nativeRequests.get("cancelled"), 2);
+  assert.deepEqual(
+    Object.fromEntries(nativeRequests),
+    { enabled: 3, disabled: 2, cancelled: 2 },
+    "原生终端模型请求数量应与执行、工具回执及唤醒轮次对应\n" + diagnostics,
+  );
   assert.deepEqual(wakeRequests, [true, true]);
   await mkdir(output, { recursive: true });
   await writeFile(

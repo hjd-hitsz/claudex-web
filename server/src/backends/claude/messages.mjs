@@ -283,19 +283,3 @@ export function historyTurns(
   }
   return turns;
 }
-export function inputMessage(input) {
-  return input.map((part) => {
-    if (part.type === "text") return { type: "text", text: part.text };
-    if (part.type === "image") {
-      const match = /^data:([^;]+);base64,(.+)$/s.exec(part.url);
-      if (!match) throw new Error("Claude 图片需要内嵌图片数据");
-      return {
-        type: "image",
-        source: { type: "base64", media_type: match[1], data: match[2] },
-      };
-    }
-    if (part.type === "skill")
-      throw new Error("请移除旧技能附件，并从技能菜单重新选择原生命令。");
-    throw new Error(`Claude 暂不支持此附件类型：${part.type}`);
-  });
-}

@@ -69,7 +69,7 @@ try {
     join(artifacts, "install.log"),
     installed.stdout + installed.stderr,
   );
-  const packageRoot = join(prefix, "node_modules", "claudex-web");
+  const packageRoot = join(prefix, "node_modules", manifest.name);
   await assert.rejects(access(join(packageRoot, ".git")));
   await assert.rejects(access(join(packageRoot, "package-lock.json")));
   const { createClaudeWorkerAdapter } = await import(

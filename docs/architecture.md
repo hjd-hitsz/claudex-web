@@ -42,9 +42,9 @@ flowchart LR
 
 ## 构建与验证
 
-根 npm workspaces 使用单一锁文件。生产桥接读取 `client/dist`，根包 `files` 白名单控制发行内容。`style.css` 按顺序导入职责样式；Vite 交付根部 JavaScript 分块、单一 CSS 和带内容哈希的字体。按需加载保持样式顺序和编辑缓冲区生命周期。新增运行模块或资源同时验证生产路由和安装包。
+根 npm workspaces 使用单一锁文件。后端和共享模块可以使用 TypeScript，源码安装和构建将 `.mts` 转为同路径的 `.mjs`。生产桥接读取 `client/dist`，npm 包包含 Node.js 运行模块和 Vite 构建的前端资源。`style.css` 按顺序导入职责样式；Vite 交付根部 JavaScript 分块、单一 CSS 和带内容哈希的字体。按需加载保持样式顺序和编辑缓冲区生命周期。
 
-`npm run architecture:check` 检查源码行数、导入存在性、循环和分层方向；`npm run check` 依次检查版本、架构、格式、单元与组件、构建及发行包安装。测试命令和适用场景由开发指南维护，模块或状态边界变化同步更新相应约束与回归。
+`npm run architecture:check` 检查源码行数、导入存在性、循环和分层方向；`npm run check` 依次检查版本、类型、架构、格式、单元与组件、构建及发行包安装。编译和验证入口见[开发者指南](development.md#本地环境与源码启动)。
 
 ## 专题导航
 

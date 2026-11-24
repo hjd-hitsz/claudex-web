@@ -1,0 +1,137 @@
+import type { CodexClient, createUpstream } from "./upstream.mjs";
+import type { CallResult } from "./native-protocol.d.mts";
+
+type ResumeOptions = { cwd?: string | null; inheritPermissions?: boolean };
+
+type SubscriptionDependencies = {
+  transport: Pick<
+    ReturnType<typeof createUpstream>,
+    "call" | "ready" | "pending"
+  >;
+  compactions: { busy(threadId: string): boolean };
+  activeTurns: { has(threadId: string): boolean };
+  activeThreads: Set<string>;
+  backgroundHandoffPending?: (threadId: string) => boolean;
+};
+
+export function createSubscriptions({
+  transport,
+  compactions,
+  activeTurns,
+  activeThreads,
+  backgroundHandoffPending = () => false,
+}: SubscriptionDependencies) {
+  const subscriptions = new Map<string, Set<CodexClient>>(),
+    releasing = new Map<string, Promise<CallResult<"thread/unsubscribe">>>(),
+    resuming = new Map<string, Promise<void>>(),
+    retained = new Map<string, Set<symbol>>();
+  const unwrittenThreads = new Set<string>();
+  const activeGoals = new Set<string>();
+  function updateGoal(threadId: string, goal: { status?: string } | null) {
+    if (goal?.status === "active") activeGoals.add(threadId);
+    else activeGoals.delete(threadId);
+  }
+  async function resumeForWrite(
+    threadId: string,
+    { cwd, inheritPermissions = false }: ResumeOptions = {},
+  ) {
+    if (subscriptions.has(threadId)) return;
+    if (!resuming.has(threadId)) {
+      const resume = transport
+        .call("thread/resume", {
+          threadId,
+          ...(cwd && { cwd }),
+          excludeTurns: true,
+          ...(!inheritPermissions && {
+            approvalPolicy: "never",
+            sandbox: "danger-full-access",
+          }),
+          config: { thread_unload_delay_secs: 0 },
+        })
+        .then(({ thread }) => {
+          if (!subscriptions.has(thread.id))
+            subscriptions.set(thread.id, new Set());
+          if (thread.status?.type === "active") activeThreads.add(thread.id);
+        })
+        .finally(() => resuming.delete(threadId));
+      resuming.set(threadId, resume);
+    }
+    await resuming.get(threadId);
+  }
+  function releaseUnusedThreads() {
+    for (const [threadId, owners] of subscriptions) {
+      if (
+        !transport.ready ||
+        compactions.busy(threadId) ||
+        activeGoals.has(threadId) ||
+        (unwrittenThreads.has(threadId) && owners.size) ||
+        activeTurns.has(threadId) ||
+        activeThreads.has(threadId) ||
+        backgroundHandoffPending(threadId) ||
+        retained.has(threadId) ||
+        resuming.has(threadId) ||
+        releasing.has(threadId) ||
+        [...transport.pending.values()].some(
+          (request) => request.threadId === threadId,
+        )
+      )
+        continue;
+      // 原生确认仅释放本连接；其他订阅者仍可持有会话。
+      const release = transport
+        .call(
+          "thread/unsubscribe",
+          { threadId },
+          { trackThread: false, timeoutMessage: "取消对话订阅超时" },
+        )
+        .then((result) => {
+          if (subscriptions.get(threadId) === owners) {
+            subscriptions.delete(threadId);
+            unwrittenThreads.delete(threadId);
+          }
+          return result;
+        })
+        .catch((error) => {
+          console.error("Thread unsubscribe:", error.message);
+          throw error;
+        })
+        .finally(() => {
+          if (releasing.get(threadId) === release) releasing.delete(threadId);
+        });
+      release.catch(() => {});
+      releasing.set(threadId, release);
+    }
+  }
+  return {
+    subscriptions,
+    releasing,
+    resuming,
+    unwrittenThreads,
+    updateGoal,
+    resumeForWrite,
+    releaseUnusedThreads,
+    retainThread(threadId: string) {
+      const leases = retained.get(threadId) ?? new Set<symbol>();
+      retained.set(threadId, leases);
+      const lease = Symbol();
+      leases.add(lease);
+      return () => {
+        leases.delete(lease);
+        if (!leases.size && retained.get(threadId) === leases)
+          retained.delete(threadId);
+        releaseUnusedThreads();
+      };
+    },
+    releaseClient(client: CodexClient) {
+      for (const owners of subscriptions.values()) owners.delete(client);
+      releaseUnusedThreads();
+    },
+    reset() {
+      subscriptions.clear();
+      releasing.clear();
+      resuming.clear();
+      retained.clear();
+      unwrittenThreads.clear();
+      activeGoals.clear();
+    },
+  };
+}

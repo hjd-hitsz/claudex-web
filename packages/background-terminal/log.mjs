@@ -1,5 +1,7 @@
+// @ts-check
 import { open } from "node:fs/promises";
 
+/** @param {string} path @param {number | null | undefined} offset */
 export async function readTaskLog(path, offset, limit = 32768) {
   const file = await open(path, "r");
   try {

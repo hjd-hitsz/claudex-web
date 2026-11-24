@@ -5,6 +5,9 @@ const instructions = `你负责为对话生成简洁、具体的标题。输入 
 用用户消息的语言概括核心任务，中文通常 6 到 16 字，英文通常 3 到 8 个词，最多 70 个字符。
 直接描述主题，省略“用户要求”“新对话”等套话。只返回符合 JSON Schema 的标题，整个任务仅需文字概括。`;
 
+/**
+ * @param {{url: string, version: string, text?: string, model?: string, modelProvider?: string, signal?: AbortSignal, timeout?: number}} options
+ */
 export async function generateThreadName({
   url,
   version,

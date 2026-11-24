@@ -135,15 +135,16 @@ export function providerSettingsEnvironment(provider, backend, options) {
     ...networkProxyEnvironment(backend.proxy),
     ...Object.fromEntries(
       Object.entries(env).filter(
-        ([key]) =>
-          key.startsWith("ANTHROPIC_") ||
-          key.startsWith("CLAUDE_CODE_SUBAGENT_MODEL") ||
-          key === "CLAUDE_CODE_SUBAGENT_EFFORT" ||
-          [
-            "CLAUDE_CODE_MODEL_CAPABILITIES",
-            "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
-            "CLAUDE_CODE_EFFORT_LEVEL",
-          ].includes(key),
+        ([key, value]) =>
+          typeof value === "string" &&
+          (key.startsWith("ANTHROPIC_") ||
+            key.startsWith("CLAUDE_CODE_SUBAGENT_MODEL") ||
+            key === "CLAUDE_CODE_SUBAGENT_EFFORT" ||
+            [
+              "CLAUDE_CODE_MODEL_CAPABILITIES",
+              "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+              "CLAUDE_CODE_EFFORT_LEVEL",
+            ].includes(key)),
       ),
     ),
   };

@@ -1,7 +1,12 @@
 const fields = ["subagentModel", "subagentProviderId", "subagentEffort"];
 
+/** @param {{subagentModel?: string, subagentProviderId?: string, subagentEffort?: string}} backend */
 export function subagentSettings(backend) {
-  return Object.fromEntries(fields.map((key) => [key, backend[key] || ""]));
+  return {
+    subagentModel: backend.subagentModel || "",
+    subagentProviderId: backend.subagentProviderId || "",
+    subagentEffort: backend.subagentEffort || "",
+  };
 }
 
 export function isSubagentSettings(input) {

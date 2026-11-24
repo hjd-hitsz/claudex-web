@@ -184,6 +184,12 @@ test(
       "server/src/auth-login.mjs",
       "server/src/auth-totp.mjs",
       "server/src/backends/codex/adapter.mjs",
+      "server/src/backends/codex/upstream.mjs",
+      "server/src/backends/codex/resume-lifecycle.mjs",
+      "server/src/backends/claude/input-stream.mjs",
+      "server/src/backends/claude/runtime.mjs",
+      "server/src/backends/claude/native-control.mjs",
+      "server/src/backends/claude/worker-server.mjs",
       "server/src/bridge/product-methods.mjs",
       "server/src/bridge/conversation-policy.mjs",
       "shared/backend-activity.mjs",
@@ -205,7 +211,7 @@ test(
     assert.ok(
       paths.every((path) => !/(^|\/)(tests|node_modules|\.git)\//.test(path)),
     );
-    assert.ok(paths.every((path) => !/\.(onnx|data|so)$/.test(path)));
+    assert.ok(paths.every((path) => !/\.(onnx|data|so|mts)$/.test(path)));
     assert.ok(!paths.includes(".env"));
     assert.ok(!paths.includes("client/src/main.jsx"));
     const prefix = join(dir, "prefix");

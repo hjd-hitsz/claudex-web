@@ -1,3 +1,4 @@
+// @ts-check
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
@@ -13,8 +14,10 @@ import { createHash } from "node:crypto";
 const execute = promisify(execFile);
 export const runtimeVersion = "1.30.0";
 
+/** @param {string} directory @param {AbortSignal} signal */
 export async function installCpuRuntime(directory, signal) {
   const temporary = await mkdtemp(join(directory, ".cpu-runtime-"));
+  /** @type {Record<string, string>} */
   const hashes = {};
   try {
     for (const name of ["onnxruntime-node", "onnxruntime-common"]) {
@@ -31,6 +34,7 @@ export async function installCpuRuntime(directory, signal) {
         ],
         { signal, maxBuffer: 1024 * 1024 },
       );
+      /** @type {{ filename: string, files: { path: string }[] }[]} */
       const [pack] = JSON.parse(stdout);
       const archive = join(temporary, pack.filename);
       const files = pack.files

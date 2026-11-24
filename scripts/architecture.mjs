@@ -13,7 +13,8 @@ const sourceRoots = [
   "packages/translation-engine/src",
   "packages/translation-engine/native",
 ];
-const sourceExtension = /\.(?:js|jsx|mjs|css)$/;
+const sourceExtension = /\.(?:js|jsx|mjs|cjs|ts|tsx|mts|cts|css)$/;
+const typescriptExtension = /\.(?:ts|tsx|mts|cts)$/;
 export const MAX_SOURCE_LINES = 500;
 
 async function sourceFiles(directory) {
@@ -23,6 +24,9 @@ async function sourceFiles(directory) {
       throw error;
     },
   );
+  const entriesByName = new Set(
+    entries.filter((entry) => entry.isFile()).map((entry) => entry.name),
+  );
   return (
     await Promise.all(
       entries
@@ -31,7 +35,11 @@ async function sourceFiles(directory) {
           const path = join(directory, entry.name);
           return entry.isDirectory()
             ? sourceFiles(path)
-            : sourceExtension.test(path)
+            : sourceExtension.test(path) &&
+                !(
+                  entry.name.endsWith(".mjs") &&
+                  entriesByName.has(entry.name.replace(/\.mjs$/, ".mts"))
+                )
               ? [path]
               : [];
         }),
@@ -63,13 +71,25 @@ function importSources(source, path) {
       else if (value && typeof value === "object") visit(value);
     }
   }
-  visit(parsers.babel.parse(source));
+  visit(
+    (typescriptExtension.test(path)
+      ? parsers["babel-ts"]
+      : parsers.babel
+    ).parse(source),
+  );
   return imports;
 }
 
 async function resolveImport(path, specifier) {
   const base = resolve(dirname(path), specifier.split("?")[0]);
-  for (const candidate of [base, base + ".js", base + ".jsx", base + ".mjs"]) {
+  const source = base.replace(/\.mjs$/, ".mts");
+  for (const candidate of new Set([
+    source,
+    base,
+    ...[".js", ".jsx", ".ts", ".tsx", ".mts", ".mjs", ".cts", ".cjs"].map(
+      (extension) => base + extension,
+    ),
+  ])) {
     if (
       await stat(candidate).then(
         (entry) => entry.isFile(),
@@ -82,6 +102,7 @@ async function resolveImport(path, specifier) {
 }
 
 function boundaryError(from, to) {
+  const serverEntry = /^server\/src\/(?:application|server)\.m[jt]s$/.test(to);
   if (
     from.startsWith("packages/background-terminal/") &&
     !to.startsWith("packages/background-terminal/")
@@ -121,16 +142,13 @@ function boundaryError(from, to) {
     from.startsWith("server/src/http/") &&
     (to.startsWith("server/src/bridge/") ||
       to.startsWith("server/src/backends/") ||
-      to === "server/src/application.mjs" ||
-      to === "server/src/server.mjs")
+      serverEntry)
   )
     return "HTTP 处理器通过参数取得运行状态";
   if (
     (from.startsWith("server/src/bridge/") ||
       from.startsWith("server/src/backends/")) &&
-    (to.startsWith("server/src/http/") ||
-      to === "server/src/application.mjs" ||
-      to === "server/src/server.mjs")
+    (to.startsWith("server/src/http/") || serverEntry)
   )
     return "桥接业务不能依赖 HTTP 或进程入口";
   if (

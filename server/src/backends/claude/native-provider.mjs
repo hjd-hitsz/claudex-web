@@ -25,9 +25,10 @@ export async function nativeProviderHeaders(backend) {
   };
 }
 
+/** @param {{dataDir: string}} backend */
 export const nativeSubagentProvider = (backend) => ({
   id: "@native",
-  native: true,
+  native: /** @type {const} */ (true),
   dataDir: backend.dataDir,
   baseUrl: process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com",
   protocol: "anthropic",

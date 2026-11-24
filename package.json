@@ -29,7 +29,9 @@
     "packages/translation-engine/bin/",
     "packages/translation-engine/package.json",
     "packages/translation-engine/LICENSE",
-    "packages/translation-engine/README.md"
+    "packages/translation-engine/README.md",
+    "!server/src/**/*.mts",
+    "!shared/**/*.mts"
   ],
   "workspaces": [
     "client",
@@ -38,13 +40,16 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace @claudex-web/client",
-    "build": "npm run build --workspace @claudex-web/translation-engine && npm run build --workspace @claudex-web/client",
+    "build": "npm run build:server && npm run build --workspace @claudex-web/translation-engine && npm run build --workspace @claudex-web/client",
+    "build:server": "tsc -p tsconfig.build.json",
     "icons:generate": "node scripts/generate-icons.mjs",
     "prepack": "npm run build",
+    "prepare": "npm run build:server",
     "start": "node --env-file-if-exists=.env server/src/server.mjs",
     "start:backend": "node --env-file-if-exists=.env scripts/start-backend.mjs",
     "auth": "node --env-file-if-exists=.env bin/claudex-web.mjs auth",
     "test": "npm run test:unit && npm run test:components",
+    "pretest:unit": "npm run build:server",
     "test:unit": "node --import ./tests/helpers/test-console.mjs --test client/tests/*.test.js server/tests/*.test.mjs tests/architecture.test.mjs tests/version.test.mjs tests/release.test.mjs tests/auto-release.test.mjs tests/npm-release.test.mjs tests/test-console.test.mjs packages/translation-engine/tests/*.test.mjs",
     "test:components": "node scripts/test-components.mjs",
     "test:package": "npm run build && node --import ./tests/helpers/test-console.mjs --test tests/package.test.mjs",
@@ -54,7 +59,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "architecture:check": "node scripts/architecture.mjs",
-    "check": "npm run version:check && npm run architecture:check && npm run format:check && npm test && npm run test:package",
+    "typecheck": "tsc",
+    "check": "npm run version:check && npm run typecheck && npm run architecture:check && npm run format:check && npm test && npm run test:package",
     "service:install": "node --env-file-if-exists=.env scripts/install-services.mjs",
     "service:restart": "systemctl --user restart claudex-web.service",
     "service:status": "systemctl --user status claudex-web.service codex-app-server.service --no-pager",
@@ -64,10 +70,13 @@
     "test:codex:live": "node tests/integration/codex-native-lifecycle.mjs"
   },
   "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/ws": "8.18.2",
     "esbuild": "0.28.2",
     "prettier": "3.9.10",
     "react": "19.3.1",
-    "react-test-renderer": "19.3.1"
+    "react-test-renderer": "19.3.1",
+    "typescript": "6.0.3"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.318",
