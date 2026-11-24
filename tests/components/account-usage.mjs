@@ -305,6 +305,7 @@ export async function testAccountUsage(app, requests, setResponse, emit) {
     );
     await act(async () =>
       app.set({
+        providers: [{ id: "deepseek", name: "DeepSeek", icon: "deepseek" }],
         providerId: "deepseek",
         account: { type: "provider", usageSupported: true },
         usage: null,
@@ -312,6 +313,17 @@ export async function testAccountUsage(app, requests, setResponse, emit) {
     );
     assert.equal(toggle().props["aria-expanded"], false);
     assert.match(text(), /¥12\.50/);
+    assert.match(
+      view.root.findByType("img").props.src,
+      /^data:image\/svg\+xml/,
+    );
+    assert.match(
+      toggle()
+        .findByProps({ className: "quota-ring quota-ring-outline" })
+        .findByType("svg").props.className,
+      /lucide-wallet/,
+    );
+    assert.equal(view.root.findAllByProps({ role: "progressbar" }).length, 0);
     await act(async () => toggle().props.onClick());
     assert.match(text(), /账户余额/);
     assert.match(text(), /赠金余额/);

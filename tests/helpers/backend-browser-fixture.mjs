@@ -275,7 +275,27 @@ export function backendFixture(data) {
       if (m.method === "fs/readFile")
         result = { dataBase64: btoa("# Notes\n\nFile reference fixture.") };
       if (m.method === "config/read") result = { config: {} };
-      if (m.method === "account/read") result = { account: null };
+      const balance = data.providerBalances?.[p.providerId];
+      if (m.method === "account/read")
+        result = {
+          account: balance
+            ? {
+                type: "provider",
+                providerId: p.providerId,
+                usageSupported: true,
+              }
+            : null,
+        };
+      if (m.method === "account/rateLimits/read" && balance)
+        result = {
+          rateLimits: {
+            limitId: p.providerId,
+            windows: [],
+            balances: [balance],
+            balanceAvailable: true,
+          },
+          providerId: p.providerId,
+        };
       if (m.method.startsWith("lan/projectModels/")) result = { projects: {} };
       if (["thread/read", "thread/resume"].includes(m.method))
         result = { thread, cwd: thread.cwd, model: thread.model || "gpt" };

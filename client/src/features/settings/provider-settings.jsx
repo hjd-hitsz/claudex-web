@@ -5,6 +5,7 @@ import { ProviderModels } from "./provider-models.jsx";
 import { PresetProviderForm } from "./preset-provider-form.jsx";
 import { rpc, saveProvider, removeProvider } from "../../store.js";
 import { contextWindowTokens } from "../../domain/provider-context-window.js";
+import { providerBrandIcons } from "../../assets/providers/brand-icons.js";
 
 const providerBackendId = "claude";
 
@@ -265,15 +266,10 @@ export function ProviderSettings({ actionTarget }) {
             <div className="provider-entry" key={p.id}>
               <div className="backend-heading">
                 <span className="provider-identity">
-                  {p.preset && (
+                  {p.preset && providerBrandIcons.has(p.icon) && (
                     <img
                       className="provider-brand-symbol"
-                      src={
-                        new URL(
-                          `../../assets/providers/${p.icon}.svg`,
-                          import.meta.url,
-                        ).href
-                      }
+                      src={providerBrandIcons.get(p.icon)}
                       alt={`${p.name} 标识`}
                     />
                   )}

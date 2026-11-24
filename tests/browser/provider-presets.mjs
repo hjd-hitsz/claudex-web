@@ -23,6 +23,14 @@ const data = {
   main,
   markdown: "模型别名测试",
   claudeItems: [],
+  providerBalances: {
+    deepseek: {
+      currency: "CNY",
+      total_balance: "1.41",
+      granted_balance: "0.41",
+      topped_up_balance: "1.00",
+    },
+  },
   providers: configuredProviders([
     {
       id: "custom",
@@ -91,6 +99,7 @@ const context = await chromium.launchPersistentContext(profile, {
   ignoreDefaultArgs: ["--disable-extensions"],
   args: [
     "--no-sandbox",
+    "--disable-gpu",
     "--no-proxy-server",
     `--disable-extensions-except=${extension}`,
     `--load-extension=${extension}`,
@@ -112,6 +121,12 @@ try {
       { url: page.url(), zoom },
     );
     assert.equal(actual, zoom);
+    await page.waitForFunction(
+      ({ zoom, width }) =>
+        Math.abs(devicePixelRatio - zoom) < 0.02 &&
+        Math.abs(innerWidth - width / zoom) < 2,
+      { zoom, width: page.viewportSize().width },
+    );
   };
   await page.locator(".composer .ProseMirror").waitFor();
   await page
@@ -214,6 +229,146 @@ try {
       o.textContent.includes("DeepSeek"),
     ),
   );
+  if (!before) {
+    const logoSource = await logo.getAttribute("src");
+    await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByLabel("模型", { exact: true }).selectOption({
+      label: "DeepSeek/DeepSeek Flash",
+    });
+    const footer = page.locator(".account-card");
+    const brand = footer.locator(".avatar img");
+    const balance = footer.getByRole("button", {
+      name: /^(展开|收起)额度详情/,
+    });
+    const drawerOpener = page.getByRole("button", {
+      name: "显示侧栏",
+      exact: true,
+    });
+    const details = page.getByRole("region", { name: "账户额度" });
+    const layouts = [];
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const theme of ["light", "dark"]) {
+        await page.evaluate((theme) => {
+          document.documentElement.dataset.theme = theme;
+        }, theme);
+        for (const zoom of [0.8, 1, 1.25, 1.5, 2]) {
+          await setZoom(zoom);
+          const drawer = await drawerOpener.isVisible();
+          if (drawer) await drawerOpener.click();
+          await balance.getByText("¥1.41", { exact: true }).waitFor();
+          assert.equal(await brand.getAttribute("src"), logoSource);
+          assert(
+            await brand.evaluate((img) => img.complete && img.naturalWidth > 0),
+          );
+          assert.equal(
+            await balance.locator(".quota-ring .lucide-wallet").count(),
+            1,
+          );
+          assert.equal(await balance.getByRole("progressbar").count(), 0);
+          assert.equal(await balance.getAttribute("aria-expanded"), "false");
+          const layout = await balance.evaluate((button) => {
+            const row = button.closest(".account-row");
+            const circle = button.querySelector(".quota-ring");
+            const ring = circle.getBoundingClientRect();
+            const icon = circle.querySelector("svg").getBoundingClientRect();
+            const amount = button.querySelector(".quota-number");
+            const label = amount.getBoundingClientRect();
+            const centerX = (rectangle) =>
+              (rectangle.left + rectangle.right) / 2;
+            const centerY = (rectangle) =>
+              (rectangle.top + rectangle.bottom) / 2;
+            return {
+              dpr: devicePixelRatio,
+              viewport: innerWidth,
+              fits:
+                row.scrollWidth <= row.clientWidth &&
+                amount.scrollWidth <= amount.clientWidth,
+              ringSize: ring.width,
+              walletCentered:
+                getComputedStyle(circle).borderTopLeftRadius === "50%" &&
+                Math.abs(ring.width - ring.height) < 1 &&
+                icon.width < ring.width &&
+                Math.abs(centerX(ring) - centerX(icon)) < 1 &&
+                Math.abs(centerY(ring) - centerY(icon)) < 1,
+              amountBelow:
+                label.top >= ring.bottom &&
+                Math.abs(centerX(ring) - centerX(label)) < 1,
+              overflow: document.documentElement.scrollWidth > innerWidth,
+            };
+          });
+          layouts.push({ width, theme, zoom, ...layout });
+          assert(Math.abs(layout.dpr - zoom) < 0.02, JSON.stringify(layout));
+          assert(
+            Math.abs(layout.viewport - width / zoom) < 2,
+            JSON.stringify(layout),
+          );
+          assert(
+            layout.fits &&
+              layout.walletCentered &&
+              layout.amountBelow &&
+              !layout.overflow,
+            JSON.stringify(layout),
+          );
+          const filename = `balance-${width}-${theme}-${zoom}`;
+          if (zoom === 1) {
+            await balance.blur();
+            await page.mouse.move(0, 0);
+            await footer.screenshot({ path: join(output, `${filename}.png`) });
+          }
+          if (width === 390 && zoom === 1) {
+            await page.screenshot({
+              path: join(output, `${filename}-drawer.png`),
+            });
+          }
+          if (zoom === 1) await balance.click();
+          else await balance.press("Enter");
+          await details.getByText("赠金余额").waitFor();
+          assert.match(
+            await details.innerText(),
+            /账户余额\s*¥1\.41\s*赠金余额\s*¥0\.41\s*充值余额\s*¥1\.00/,
+          );
+          if (zoom === 1) {
+            await details.screenshot({
+              path: join(output, `${filename}-expanded.png`),
+            });
+            if (width === 390) {
+              await page.screenshot({
+                path: join(output, `${filename}-drawer-expanded.png`),
+              });
+            }
+          }
+          await balance.press("Escape");
+          await details.waitFor({ state: "hidden" });
+          assert(
+            await balance.evaluate(
+              (button) => button === document.activeElement,
+            ),
+          );
+          if (drawer) {
+            await page
+              .getByRole("button", { name: "收起侧栏", exact: true })
+              .click();
+            await balance.waitFor({ state: "hidden" });
+            assert(
+              await drawerOpener.evaluate(
+                (button) => button === document.activeElement,
+              ),
+            );
+          }
+        }
+      }
+    }
+    await writeFile(
+      join(output, "balance-layouts.json"),
+      JSON.stringify(layouts, null, 2),
+    );
+    await setZoom(1);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await settingsPage(page, "模型服务商").click();
+  }
   await row.getByRole("button", { name: "编辑", exact: true }).click();
   assert.equal(await key.inputValue(), "");
   assert.equal(await page.locator('input[name="clearKey"]').count(), 0);
@@ -231,7 +386,7 @@ try {
   );
   assert.equal(saved.apiKey, "");
   console.log(
-    "PASS 默认供应商展示、Key启停、模型菜单同步、主题、视口与窄屏（隔离传输）",
+    "PASS 默认供应商展示、Key 启停、模型菜单同步、DeepSeek 页脚标识和余额、深浅主题与桌面和手机缩放（隔离传输）",
   );
 } finally {
   await context.close();

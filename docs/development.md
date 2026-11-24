@@ -341,9 +341,9 @@ Claude Code 使用 `client/src/assets/claude.svg` 中取自官方网站页首标
 
 默认供应商统一在 `server/src/backends/provider-presets.mjs` 登记稳定标识、协议、地址与模型，凭据沿用受限的供应商配置存储。`server/tests/provider-presets.test.mjs` 使用临时配置验证空凭据停用、填写启用、持久恢复、运行时环境、清空撤销及公开响应隐藏凭据。
 
-构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/provider-presets.mjs`，通过隔离传输验证默认项展示、仅提供 Key 编辑、Key 保存与清空、模型菜单同步、深浅主题、80%、100%、125%、150% 与 200% 实际浏览器页面缩放及窄屏。截图保存在 `.cache/provider-presets/dual`。缩放通过隔离扩展调用浏览器页面缩放接口，并核对实际缩放值、DPR 与视口。真实 DeepSeek 推理调用需使用显式提供的有效凭据。
+构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/provider-presets.mjs`，通过隔离传输验证默认项展示、仅提供 Key 编辑、Key 保存与清空以及模型菜单同步。选择 DeepSeek 模型后检查侧栏品牌标识、圆环内的钱包图标、圆环下方的金额、明细收放和焦点恢复。设置与侧栏覆盖深浅主题、80%、100%、125%、150% 与 200% 实际浏览器页面缩放及窄屏。缩放通过隔离扩展调用浏览器页面缩放接口，并核对实际缩放值、DPR 与视口。截图和侧栏布局记录保存在 `.cache/provider-presets/dual`。真实 DeepSeek 推理验证使用显式提供的有效凭据。
 
-默认供应商品牌图标必须在统一定义中提供 `icon` 标识，对应 SVG 位于 `client/src/assets/providers`，配置测试核对每个默认供应商的图标存在及默认项置顶顺序。DeepSeek 图标原样取自 [DeepSeek 官方品牌素材 ICON.svg](https://github.com/deepseek-ai/awesome-deepseek-integration/blob/main/docs/_logo%20svg/ICON.svg)，标识归 DeepSeek 所有，使用遵循该目录的品牌素材规范。浏览器回归核对实际品牌图标加载与列表顺序。
+默认供应商使用统一定义中的 `icon` 标识，设置与侧栏通过 `client/src/assets/providers/brand-icons.js` 读取对应 SVG。配置测试核对每个默认供应商的图标存在及默认项置顶顺序，浏览器回归核对图标在两个入口的实际加载。DeepSeek 标识沿用官方素材，使用遵循素材目录中的品牌规范。[DeepSeek 官方品牌素材 ICON.svg](https://github.com/deepseek-ai/awesome-deepseek-integration/blob/main/docs/_logo%20svg/ICON.svg)
 
 ### 窗口尺寸回归
 

@@ -45,7 +45,7 @@
   font-size: 0.692308rem;
   line-height: 1;
 }
-.quota-ring svg {
+.quota-ring:not(.quota-ring-outline) > svg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -60,9 +60,13 @@
   stroke: var(--quota-fill);
   stroke-linecap: round;
 }
-.quota-ring-empty {
+.quota-ring-outline {
   border: 0.153846rem solid var(--border-strong);
   border-radius: 50%;
+}
+.quota-ring-outline > svg {
+  width: 1.076923rem;
+  height: 1.076923rem;
 }
 .quota-number {
   font-size: 0.769231rem;
@@ -176,6 +180,11 @@
   color: var(--fg);
   font-weight: 600;
   flex: none;
+}
+.avatar img {
+  width: 1.692308rem;
+  height: 1.692308rem;
+  object-fit: contain;
 }
 .account-button > span:nth-child(2) {
   text-align: left;

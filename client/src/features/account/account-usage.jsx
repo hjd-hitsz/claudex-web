@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from "react";
-import { Settings } from "lucide-react";
+import { Settings, Wallet } from "lucide-react";
 import { useStore, set, refreshUsage } from "../../store.js";
+import { providerBrandIcons } from "../../assets/providers/brand-icons.js";
 import {
   quotaSnapshot,
   quotaCreditsText,
@@ -73,9 +74,8 @@ export function AccountFooter() {
   const quotaEnabled = codex
     ? !s.account || s.account.type === "chatgpt"
     : s.account?.usageSupported === true;
-  const provider = s.providers?.find(
-    (provider) => provider.id === s.providerId,
-  );
+  const provider = !codex && s.providers?.find(({ id }) => id === s.providerId);
+  const brandIcon = providerBrandIcons.get(provider?.icon);
   const [expanded, setExpanded] = useState(false);
   const footer = useRef(null);
   const toggle = useRef(null);
@@ -256,7 +256,13 @@ export function AccountFooter() {
           }}
           aria-label="账户与设置"
         >
-          <span className="avatar">{name.slice(0, 1).toUpperCase()}</span>
+          <span className="avatar">
+            {brandIcon ? (
+              <img src={brandIcon} alt="" />
+            ) : (
+              name.slice(0, 1).toUpperCase()
+            )}
+          </span>
           <span>
             <b>{name}</b>
             <small>
@@ -321,7 +327,11 @@ export function AccountFooter() {
             })}
             {!hasWindows && (
               <span className="quota-summary">
-                <span className="quota-ring quota-ring-empty" />
+                <span className="quota-ring quota-ring-outline">
+                  {(s.account?.type === "provider" || balances.length > 0) && (
+                    <Wallet aria-hidden="true" />
+                  )}
+                </span>
                 <span className="quota-number">
                   {balances.length
                     ? money(balances[0].total_balance, balances[0].currency)
