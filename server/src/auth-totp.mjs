@@ -131,11 +131,13 @@ export async function openTotpStore(directory) {
   const read = db.prepare(
     "SELECT secret, binding, last_step FROM totp_authenticators WHERE name = ?",
   );
+  const candidates = db.prepare(
+    "SELECT secret, binding, last_step FROM totp_authenticators",
+  );
   const readState = db.prepare(`
     SELECT
       EXISTS(SELECT 1 FROM totp_authenticators WHERE last_step >= 0) AS enabled,
-      EXISTS(SELECT 1 FROM totp_authenticators WHERE name <> ?) AS named,
-      EXISTS(SELECT 1 FROM totp_authenticators WHERE name = ?) AS default_present,
+      EXISTS(SELECT 1 FROM totp_authenticators) AS configured,
       (SELECT binding FROM totp_password_only) AS password_binding
   `);
   const enroll = db.prepare(`
@@ -154,19 +156,11 @@ export async function openTotpStore(directory) {
   );
   const remove = db.prepare("DELETE FROM totp_authenticators WHERE name = ?");
   function state() {
-    const { enabled, named, default_present, password_binding } = readState.get(
-      defaultName,
-      defaultName,
-    );
+    const { enabled, configured, password_binding } = readState.get();
     if (password_binding)
       return { status: "disabled", binding: password_binding };
     return {
-      status: enabled
-        ? "enabled"
-        : named || default_present
-          ? "pending"
-          : "setup",
-      ...(named && { totpName: default_present ? "optional" : "required" }),
+      status: enabled ? "enabled" : configured ? "pending" : "setup",
     };
   }
   return {
@@ -210,24 +204,35 @@ export async function openTotpStore(directory) {
         ).run(binding("password", randomBytes(20)));
       });
     },
-    verify(code, value) {
-      const name = authenticatorName(value);
-      const row = name && read.get(name);
-      if (!row) {
-        const { status } = state();
-        if (status === "setup") return { status: "unconfigured" };
-        return { status: status === "disabled" ? "disabled" : "invalid" };
-      }
+    verify(code) {
+      if (typeof code !== "string" || !/^\d{6}$/.test(code))
+        return { status: "invalid" };
       const entered = Buffer.from(code);
       const current = Math.floor(Date.now() / (period * 1000));
-      for (const step of [current, current - 1, current + 1]) {
-        if (step <= row.last_step) continue;
-        if (timingSafeEqual(entered, Buffer.from(totpCode(row.secret, step))))
-          return consume.run(step, row.binding, step).changes === 1
-            ? { status: "verified", binding: row.binding }
-            : { status: "invalid" };
-      }
-      return { status: "invalid" };
+      const steps = [current + 1, current, current - 1];
+      return transaction(db, () => {
+        const rows = candidates.all();
+        if (!rows.length)
+          return {
+            status: state().status === "disabled" ? "disabled" : "unconfigured",
+          };
+        let match;
+        for (const row of rows) {
+          const step = steps.find((step) =>
+            timingSafeEqual(entered, Buffer.from(totpCode(row.secret, step))),
+          );
+          if (step === undefined) continue;
+          // 已用的时间步也参与匹配，防止重放被归到另一个验证器。
+          if (match) return { status: "ambiguous" };
+          match = { row, step };
+        }
+        if (!match || match.step <= match.row.last_step)
+          return { status: "invalid" };
+        const { row, step } = match;
+        return consume.run(step, row.binding, step).changes === 1
+          ? { status: "verified", binding: row.binding }
+          : { status: "invalid" };
+      });
     },
   };
 }

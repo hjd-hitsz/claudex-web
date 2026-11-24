@@ -78,8 +78,6 @@ export async function runAuthCommand([command, name, ...extra], config) {
     console.log(
       "用验证器 App 扫描二维码，再把 6 位动态码输入 Claudex Web。二维码仅供本人绑定。",
     );
-    if (name && name.trim() !== "default")
-      console.log(`网页登录时填写验证器名称 ${name.trim()}。`);
   } finally {
     totp.close();
   }

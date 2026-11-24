@@ -194,7 +194,6 @@ try {
   await password.fill("fixture-password");
   await submit.click();
   const code = page.getByLabel("六位动态码", { exact: true });
-  const authenticator = page.getByLabel("验证器名称", { exact: true });
   const verify = page.getByRole("button", { name: "验证并登录" });
   await code.waitFor();
   assert.equal(
@@ -206,7 +205,7 @@ try {
   await page.evaluate(() =>
     document.dispatchEvent(new Event("visibilitychange")),
   );
-  await authenticator.waitFor();
+  assert.equal(await page.locator("#totp-form input").count(), 1);
   await captureTotp(context, page, code, verify);
   await code.fill(fixtureTotpCode(directory));
   await verify.click();
@@ -283,7 +282,6 @@ try {
   await username.fill(userInfo().username);
   await password.fill("fixture-password");
   await submit.click();
-  await authenticator.fill("测试手机");
   await code.fill(fixtureTotpCode(directory, 0, "测试手机"));
   await verify.click();
   await composer.waitFor();
@@ -490,19 +488,17 @@ async function captureTotp(context, page, code, verify) {
             { scale, width },
           );
           await code.scrollIntoViewIfNeeded();
-          await page.getByLabel("验证器名称", { exact: true }).focus();
+          await code.focus();
           assert.ok(
-            await page
-              .getByLabel("验证器名称", { exact: true })
-              .evaluate((input) => {
-                const { left, right, height } = input.getBoundingClientRect();
-                return (
-                  document.activeElement === input &&
-                  left >= 0 &&
-                  right <= innerWidth &&
-                  height >= 40
-                );
-              }),
+            await code.evaluate((input) => {
+              const { left, right, height } = input.getBoundingClientRect();
+              return (
+                document.activeElement === input &&
+                left >= 0 &&
+                right <= innerWidth &&
+                height >= 40
+              );
+            }),
           );
           assert.ok(
             await page.evaluate(

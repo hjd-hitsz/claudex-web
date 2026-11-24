@@ -100,7 +100,7 @@ DeepSeek 等预置供应商直接填写 API Key。
 
 - 用 `claudex-web --help` 查看命令。
 
-* **双重验证**用 `claudex-web auth setup [名称]` 为认证应用生成绑定二维码。多人使用时，每人使用自己的验证器名称和动态码。查看、撤销和关闭方法见[双重验证](docs/deployment.md#双重验证)。
+* **双重验证**用 `claudex-web auth setup [名称]` 为认证应用生成绑定二维码。每人登录时输入自己验证器中的六位动态码。查看、撤销和关闭方法见[双重验证](docs/deployment.md#双重验证)。
 * **P2P** 用 `claudex-web p2p enable` 开启远程访问，再用 `claudex-web p2p create "我的手机"` 生成链接。其他操作见 [P2P 远程访问](docs/deployment.md#p2p-远程访问)。
 * **systemd 部署**用 `claudex-web service status` 查看状态，用 `claudex-web service restart-when-idle` 等待空闲后重启。
 * 其他命令见[部署指南](docs/deployment.md#命令与前台运行)。

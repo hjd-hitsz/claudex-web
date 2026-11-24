@@ -271,7 +271,7 @@ Mermaid 回归先执行 `npm run build`，再运行 `PLAYWRIGHT_MODULE=/path/to/
 
 ### 登录与证书
 
-`server/tests/auth.test.mjs` 通过临时 `CLAUDEX_WEB_CONFIG_DIR`、实际 TLS/WSS 服务及模拟 PAM 验证程序覆盖未登录访问、跨站请求、旧会话与退出、限流、维护连接及后台任务保护。双重验证回归覆盖 CLI 在线绑定、按名称登录、动态码防重放隔离、重启和单独撤销会话。`server/tests/auth-totp.test.mjs` 覆盖旧库迁移、关闭状态及最后一个绑定的撤销。测试凭据来自隔离夹具。`server/tests/tls.test.mjs` 检查证书并发生成、重复启动、权限与自定义证书；`server/tests/dev-https.test.mjs` 验证域名证书在本机 HTTPS/WSS 代理中的证书校验、Cookie 与来源转发。
+`server/tests/auth.test.mjs` 通过临时 `CLAUDEX_WEB_CONFIG_DIR`、实际 TLS/WSS 服务及模拟 PAM 验证程序覆盖未登录访问、跨站请求、旧会话与退出、限流、维护连接及后台任务保护。双重验证回归覆盖 CLI 在线绑定、动态码自动匹配与防重放、重启和单独撤销会话。`server/tests/auth-totp.test.mjs` 覆盖旧库迁移、关闭状态、跨验证器动态码碰撞及最后一个绑定的撤销。测试凭据来自隔离夹具。`server/tests/tls.test.mjs` 检查证书并发生成、重复启动、权限与自定义证书；`server/tests/dev-https.test.mjs` 验证域名证书在本机 HTTPS/WSS 代理中的证书校验、Cookie 与来源转发。
 
 浏览器回归使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/auth.mjs`，在生产构建和临时模拟后端上实际填写密码和动态码，检查首次绑定步骤、设置中的状态和折叠帮助，以及刷新、跨标签页退出、草稿恢复、过期、证书下载、设备安装指引、关于页隐藏开发标记、深浅主题及手机布局。截图及构建信息保存在 `.cache/auth-browser`。
 

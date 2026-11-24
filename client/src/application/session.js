@@ -209,7 +209,7 @@ export function createSession({
     checkSession,
     login: (username, password) =>
       advanceLogin("login", { username, password }),
-    verifyTotp: (code, name) => advanceLogin("totp", { code, name }),
+    verifyTotp: (code) => advanceLogin("totp", { code }),
     logout,
     get p2pToken() {
       return p2pToken;

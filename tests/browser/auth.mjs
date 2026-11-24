@@ -409,6 +409,7 @@ try {
       [],
     );
     await screenshot("login-error");
+    const authenticatorName = "测试手机";
     const signIn = async (target = page, first = false) => {
       if (!first) resetFixtureTotpReplay(directory);
       await target
@@ -419,6 +420,7 @@ try {
       const code = target.getByLabel("六位动态码", { exact: true });
       const verify = target.getByRole("button", { name: "验证并登录" });
       await code.waitFor();
+      assert.equal(await target.locator("#totp-form input").count(), 1);
       if (first) {
         assert.deepEqual(
           await target.evaluate(() => window.passwordSaveRequests),
@@ -459,7 +461,12 @@ try {
         await code.waitFor();
         const qr = execFileSync(
           process.execPath,
-          [join(root, "bin/claudex-web.mjs"), "auth", "setup"],
+          [
+            join(root, "bin/claudex-web.mjs"),
+            "auth",
+            "setup",
+            authenticatorName,
+          ],
           {
             env: {
               ...process.env,
@@ -472,7 +479,7 @@ try {
         );
         assert.match(qr, /扫描二维码/);
       }
-      await code.fill(fixtureTotpCode(directory));
+      await code.fill(fixtureTotpCode(directory, 0, authenticatorName));
       await verify.click();
       await target.locator(".app-shell").waitFor();
       await target.waitForFunction(

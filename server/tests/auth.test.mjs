@@ -648,17 +648,16 @@ test(
       });
     const name = "李雷 手机";
     const qr = run("setup", name);
-    assert.match(qr, /网页登录时填写验证器名称 李雷 手机/);
+    assert.match(qr, /把 6 位动态码输入 Claudex Web/);
+    assert.doesNotMatch(qr, /网页登录时填写验证器名称/);
     assert.equal(run("setup", name), qr);
     assert.match(run("list"), /default\t已绑定\n李雷 手机\t待验证/);
     const cookie = (response) =>
       response.headers.get("set-cookie").split(";")[0];
     const pending = await app.login();
-    assert.equal((await pending.json()).totpName, "optional");
+    assert.equal((await pending.json()).requiresTotp, true);
     const code = fixtureTotpCode(app.directory, 0, name);
-    const verify = (token, input = name) =>
-      app.authPost("totp", { name: input, code }, token);
-    assert.equal((await verify(cookie(pending), "其他名称")).status, 401);
+    const verify = (token) => app.authPost("totp", { code }, token);
     const named = await verify(cookie(pending));
     assert.equal(named.status, 200);
     assert.match(run("list"), /李雷 手机\t已绑定/);

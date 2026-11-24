@@ -216,9 +216,8 @@ test("直连保留 RPC 文本和文件 Range，并将管理入口留在 LAN", as
   assert.equal(reloginPending.session.requiresTotp, true);
   const name = "远程设备";
   await enrollFixtureTotp(directory, name);
-  assert.equal((await authenticate("status")).session.totpName, "optional");
+  assert.equal((await authenticate("status")).session.requiresTotp, true);
   const relogin = await authenticate("totp", {
-    name,
     code: fixtureTotpCode(directory, 0, name),
   });
   assert.equal(relogin.session.authenticated, true);

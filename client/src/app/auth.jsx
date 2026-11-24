@@ -117,8 +117,7 @@ export function AuthenticationGate({ children }) {
     setBusy(true);
     setError("");
     try {
-      if (verifying)
-        await verifyTotp(fields.get("code"), fields.get("name") ?? undefined);
+      if (verifying) await verifyTotp(fields.get("code"));
       else await login(fields.get("username"), fields.get("password"));
     } catch (failure) {
       const input = form.elements.namedItem(verifying ? "code" : "password");
@@ -172,27 +171,6 @@ export function AuthenticationGate({ children }) {
               method="post"
               onSubmit={submit}
             >
-              {auth.totpName && (
-                <label className="field-label">
-                  验证器名称
-                  <input
-                    className="field-input"
-                    name="name"
-                    placeholder={
-                      auth.totpName === "optional"
-                        ? "默认验证器可留空"
-                        : undefined
-                    }
-                    autoFocus={auth.totpName === "required"}
-                    autoComplete="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    required={auth.totpName === "required"}
-                    maxLength={64}
-                    readOnly={busy}
-                  />
-                </label>
-              )}
               <input
                 className="field-input"
                 name="code"
@@ -201,7 +179,7 @@ export function AuthenticationGate({ children }) {
                 placeholder="输入六位动态码"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                autoFocus={auth.totpName !== "required"}
+                autoFocus
                 required
                 pattern="[0-9]{6}"
                 maxLength={6}
@@ -231,7 +209,7 @@ export function AuthenticationGate({ children }) {
               </h2>
               <TotpSetupSteps
                 duringLogin
-                named={auth.totpName || auth.totpStatus === "enabled"}
+                named={auth.totpStatus === "enabled"}
               />
             </section>
           </>
