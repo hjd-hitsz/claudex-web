@@ -30,6 +30,7 @@ import { modelChoiceLabel, modelProviderName } from "../../domain/backends.js";
 import {
   agentStatusLabels,
   applyAgentEvent,
+  isActiveSubAgent,
   mergeAgentHistory,
   subAgents,
   withParentMessages,
@@ -47,7 +48,9 @@ const FilePanel = lazy(() =>
 export function ContextCard() {
   const s = useStore();
   const backgroundTasks = useContext(BackgroundTasks);
-  const agents = subAgents(s.items);
+  const agents = subAgents(s.items).sort(
+    (a, b) => Number(isActiveSubAgent(b)) - Number(isActiveSubAgent(a)),
+  );
   return (
     <section className="context-card" aria-label="对话功能">
       <div className="context-card-heading">

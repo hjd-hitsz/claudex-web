@@ -307,6 +307,8 @@ export function backendFixture(data) {
             item,
           })),
         };
+      if (m.method === "thread/backgroundTasks/list")
+        result = { tasks: data.backgroundTasks?.[p.threadId] || [] };
       if (m.method === "thread/turns/list")
         result = {
           data: [

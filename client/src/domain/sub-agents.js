@@ -33,6 +33,10 @@ export function isSubAgentItem(item) {
   return ["subAgentActivity", "collabAgentToolCall"].includes(item.type);
 }
 
+export function isActiveSubAgent(agent) {
+  return ["pendingInit", "running", "inProgress"].includes(agent.status);
+}
+
 export function subAgentAction(item) {
   return actions[item.kind || item.tool] || "子代理活动";
 }

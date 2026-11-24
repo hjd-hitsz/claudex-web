@@ -2,14 +2,7 @@ import { GoalSummary } from "./goal-summary.jsx";
 import { ModelSelect } from "./model-select.jsx";
 import { InputQueue } from "./input-queue.jsx";
 import { backendReady, backendCapability } from "../../domain/backends.js";
-import React, {
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import { BackgroundTasks } from "../background-tasks/background-task-provider.jsx";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
   Archive,
@@ -26,7 +19,6 @@ import {
   RefreshCw,
   Maximize2,
   Minimize2,
-  TerminalSquare,
 } from "lucide-react";
 import {
   useStore,
@@ -55,9 +47,9 @@ import { ReferenceEditor } from "./reference-editor.jsx";
 import { AttachmentPreview } from "./attachment-preview.jsx";
 import { ComposerSurface } from "./composer-surface.jsx";
 import { CodeFileAttachments } from "./code-file-attachments.jsx";
+import { ComposerActivity } from "./composer-activity.jsx";
 import { sameDraftText } from "../../domain/code-line-reference.js";
 export function Composer({ inputRef }) {
-  const backgroundTaskCount = useContext(BackgroundTasks).tasks.length;
   const [preview, setPreview] = useState(null);
   const [enlarged, setEnlarged] = useState(false);
   const [matching, setMatching] = useState(false);
@@ -363,29 +355,17 @@ export function Composer({ inputRef }) {
                   })
                 }
               />
-              {backgroundTaskCount > 0 && (
-                <button
-                  type="button"
-                  className={
-                    "icon-button background-task-count" +
-                    (s.contextOpen && !s.panel ? " active" : "")
-                  }
-                  aria-label={`后台终端，${backgroundTaskCount} 个运行中`}
-                  title="后台终端"
-                  aria-expanded={s.contextOpen && !s.panel}
-                  aria-controls="conversation-context"
-                  onClick={() => {
-                    setEnlarged(false);
-                    set({
-                      panel: null,
-                      contextOpen: !s.contextOpen || Boolean(s.panel),
-                    });
-                  }}
-                >
-                  <TerminalSquare size={16} />
-                  <span>{backgroundTaskCount}</span>
-                </button>
-              )}
+              <ComposerActivity
+                items={s.items}
+                expanded={s.contextOpen && !s.panel}
+                onToggle={() => {
+                  setEnlarged(false);
+                  set({
+                    panel: null,
+                    contextOpen: !s.contextOpen || Boolean(s.panel),
+                  });
+                }}
+              />
             </div>
             <div className="send-controls">
               <IconButton

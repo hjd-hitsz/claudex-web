@@ -1,12 +1,3 @@
-.composer-tools .background-task-count {
-  display: inline-flex;
-  width: auto;
-  flex: none;
-  gap: 4px;
-  padding-inline: 0.461538rem;
-  font-variant-numeric: tabular-nums;
-}
-
 .context-background-tasks {
   border-top: 1px solid var(--border);
   margin-top: 0.461538rem;

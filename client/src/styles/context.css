@@ -249,11 +249,11 @@
   .context-workspace {
     position: absolute;
     top: 12px;
-    right: 12px;
+    right: 48px;
     max-height: calc(100% - 24px);
     margin: 0;
     z-index: 22;
-    max-width: calc(100% - 24px);
+    max-width: calc(100% - 60px);
     box-shadow: var(--shadow);
     border-radius: 15px;
   }
@@ -269,10 +269,6 @@
     max-width: none;
     max-height: none;
     border-radius: 0;
-  }
-  .conversation-layout:has(.conversation-navigation) .context-workspace {
-    right: 48px;
-    max-width: calc(100% - 60px);
   }
   .conversation-layout:has(.conversation-navigation)
     .context-workspace.showing-panel {
