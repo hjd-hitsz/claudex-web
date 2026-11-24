@@ -21,8 +21,8 @@ npm 全局命令所在目录需在 `PATH` 中，目标电脑的防火墙需允�
 从[目标版本 Release](https://github.com/hjd-hitsz/claudex-web/releases) 下载 `.tgz` 和同名 `.sha256` 文件，将两者放在同一目录，然后执行以下命令。
 
 ```bash
-sha256sum -c claudex-web-4.2.1.tgz.sha256
-npm install -g ./claudex-web-4.2.1.tgz
+sha256sum -c claudex-web-4.2.2.tgz.sha256
+npm install -g ./claudex-web-4.2.2.tgz
 ```
 
 仓库安装命令按 Git 标签选择最新稳定版源码；Release 的 `.tgz` 包含预构建网页资源，可用于固定版本安装。两种方式均通过 npm 获取运行依赖。
