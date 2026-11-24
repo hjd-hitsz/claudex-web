@@ -6,7 +6,10 @@ const maximumRequests = 16;
 export async function activateP2pWorker(signal) {
   const serviceWorker = navigator.serviceWorker;
   if (!serviceWorker) throw new Error("当前浏览器环境无法加载 P2P 网页。");
-  await serviceWorker.register(workerPath);
+  signal.throwIfAborted();
+  const workerUrl = new URL(workerPath, location.origin).href;
+  if (serviceWorker.controller?.scriptURL === workerUrl) return serviceWorker;
+  const registration = await serviceWorker.register(workerPath);
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {
     const cleanup = () => {
@@ -14,11 +17,12 @@ export async function activateP2pWorker(signal) {
       signal.removeEventListener("abort", aborted);
     };
     const check = () => {
-      const url = serviceWorker.controller?.scriptURL;
-      if (url && new URL(url).pathname === workerPath) {
+      if (serviceWorker.controller?.scriptURL === workerUrl) {
         cleanup();
         resolve(serviceWorker);
+        return true;
       }
+      return false;
     };
     const aborted = () => {
       cleanup();
@@ -26,7 +30,9 @@ export async function activateP2pWorker(signal) {
     };
     serviceWorker.addEventListener("controllerchange", check);
     signal.addEventListener("abort", aborted, { once: true });
-    check();
+    const active = registration.active;
+    if (!check() && active?.scriptURL === workerUrl)
+      active.postMessage({ type: "claudex-p2p-claim-view" });
   });
 }
 

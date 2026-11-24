@@ -111,7 +111,11 @@ export function createBrowserNotifications() {
         threadId: params.get("notificationThread"),
         username: params.get("notificationUser"),
       });
-      history.replaceState(null, "", location.pathname + location.search);
+      history.replaceState(
+        history.state,
+        "",
+        location.pathname + location.search,
+      );
     }
     return () => {
       disposed = true;

@@ -19,43 +19,52 @@ export function p2pFrameUrl(url) {
   return target.pathname + target.search;
 }
 
+function writeHistoryToken(token, url = location.href) {
+  const state = { ...history.state };
+  if (token) state[storageKey] = token;
+  else delete state[storageKey];
+  try {
+    history.replaceState(state, "", url);
+  } catch {
+    // 浏览器拒绝更新历史记录时保留原地址。
+  }
+}
+
 export function readP2pToken() {
   const fragment = location.hash.slice(1);
   if (tokenFormat.test(fragment)) {
     try {
       sessionStorage.setItem(storageKey, fragment);
-      history.replaceState(
-        history.state,
-        "",
-        location.pathname + location.search,
-      );
     } catch {
-      // 浏览器禁用会话存储时，保留原链接以便刷新。
+      // 当前页面历史记录仍可保存授权。
     }
+    writeHistoryToken(fragment, location.pathname + location.search);
     return fragment;
   }
   if (fragment && !new URLSearchParams(fragment).has("notificationThread"))
     return "";
+  const previous = history.state?.[storageKey];
+  if (typeof previous === "string" && tokenFormat.test(previous))
+    return previous;
   try {
     const saved = sessionStorage.getItem(storageKey);
-    return tokenFormat.test(saved) ? saved : "";
+    if (tokenFormat.test(saved)) {
+      writeHistoryToken(saved);
+      return saved;
+    }
   } catch {
-    return "";
+    // 标签页存储可能未随页面恢复。
   }
+  return "";
 }
 
 export function forgetP2pToken() {
-  if (location.hash) {
-    history.replaceState(
-      history.state,
-      "",
-      location.pathname + location.search,
-    );
-  }
+  if (location.hash || history.state?.[storageKey])
+    writeHistoryToken(undefined, location.pathname + location.search);
   try {
     sessionStorage.removeItem(storageKey);
   } catch {
-    // 浏览器禁用会话存储时，凭据只存在于原链接。
+    // 浏览器可能禁用标签页存储。
   }
 }
 

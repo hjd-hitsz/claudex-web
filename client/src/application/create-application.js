@@ -107,7 +107,8 @@ export function createApplication() {
     onResponse: (request, message, error) =>
       connection.onResponse(request, message, error),
     ...(p2p && {
-      createSocket: () => createP2pSocket(session.p2pToken),
+      createSocket: () =>
+        createP2pSocket(session.p2pToken, session.p2pProgress),
       onOpen: () => session.p2pConnected(),
     }),
     onClose: (event, socket) => {

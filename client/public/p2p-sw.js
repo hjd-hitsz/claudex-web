@@ -122,6 +122,15 @@ function isP2pClient(client) {
   return client && new URL(client.url).pathname === "/p2p";
 }
 
+self.addEventListener("message", (event) => {
+  if (
+    event.data?.type === "claudex-p2p-claim-view" &&
+    event.source?.type === "window" &&
+    isP2pClient(event.source)
+  )
+    event.waitUntil(self.clients.claim());
+});
+
 async function findFileView(id) {
   const windows = await self.clients.matchAll({ type: "window" });
   return Promise.any(

@@ -78,6 +78,7 @@ export function createSession({
           applySession({ ...session, kind: "p2p" });
         return;
       }
+      set({ p2pStage: "session", authError: "" });
       const storage = p2pLoginStorage ?? (await openP2pLoginStorage(p2pToken));
       if (transport.connection !== socket || socket.readyState !== 1) return;
       p2pLoginStorage = storage;
@@ -123,6 +124,7 @@ export function createSession({
       } else if (!transport.connection || transport.connection.readyState > 1) {
         set({
           authError: "",
+          p2pStage: "opening",
           ...(!get().auth?.authenticated && { auth: null }),
         });
         transport.connect({ beforeAuthentication: true });
@@ -213,6 +215,7 @@ export function createSession({
       return p2pToken;
     },
     p2pConnected,
+    p2pProgress: (stage) => set({ p2pStage: stage }),
     p2pRejected({ code, reason }) {
       if (code === 4401) {
         const link = p2pToken;

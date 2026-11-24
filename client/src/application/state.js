@@ -16,6 +16,7 @@ export function createAppState() {
   let state = {
     auth: null,
     authError: "",
+    p2pStage: "opening",
     connected: false,
     backends: [],
     backendId: saved("cx-backend", "codex"),

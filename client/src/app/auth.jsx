@@ -15,8 +15,16 @@ import { CertificateHelp } from "./certificate-help.jsx";
 import { TotpSettings, TotpSetupSteps } from "./totp-help.jsx";
 import { isP2pPage, p2pDownloadFrame } from "../infrastructure/p2p-access.js";
 
+const p2pProgress = {
+  opening: "正在加载 P2P 网页",
+  signaling: "正在与电脑交换连接信息",
+  connecting: "正在建立 P2P 直连",
+  retrying: "正在重新尝试 P2P 直连",
+  session: "直连已建立，正在检查登录",
+};
+
 export function AuthenticationGate({ children }) {
-  const { auth, authError, theme } = useStore();
+  const { auth, authError, p2pStage, theme } = useStore();
   const p2p = isP2pPage();
   const verifying = auth?.requiresTotp === true;
   const [busy, setBusy] = useState(false);
@@ -81,8 +89,8 @@ export function AuthenticationGate({ children }) {
             <img src={claudexWebIcon} width="40" height="40" alt="" />
             <span>Claudex Web</span>
           </div>
-          <h1 id="p2p-join-title">
-            {authError ? "P2P 远程连接" : "正在与电脑建立 P2P 直连"}
+          <h1 id="p2p-join-title" aria-live="polite">
+            {authError ? "P2P 远程连接" : p2pProgress[p2pStage]}
           </h1>
           {authError ? (
             <>
@@ -94,7 +102,7 @@ export function AuthenticationGate({ children }) {
               </button>
             </>
           ) : (
-            <LoaderCircle className="spin" aria-label="正在连接" />
+            <LoaderCircle className="spin" aria-hidden="true" />
           )}
         </section>
       </main>
