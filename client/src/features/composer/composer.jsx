@@ -37,6 +37,7 @@ import {
   archive,
   refreshThreadAccess,
   stop,
+  notice,
   report,
   attachFile,
   basename,
@@ -54,10 +55,13 @@ import { ReferenceEditor } from "./reference-editor.jsx";
 import { AttachmentPreview } from "./attachment-preview.jsx";
 import { ComposerSurface } from "./composer-surface.jsx";
 import { CodeFileAttachments } from "./code-file-attachments.jsx";
+import { sameDraftText } from "../../domain/code-line-reference.js";
 export function Composer({ inputRef }) {
   const backgroundTaskCount = useContext(BackgroundTasks).tasks.length;
   const [preview, setPreview] = useState(null);
   const [enlarged, setEnlarged] = useState(false);
+  const [matching, setMatching] = useState(false);
+  const pendingSubmit = useRef(false);
   const s = useStore(),
     draft = useDraft(),
     localInput = useRef(),
@@ -70,13 +74,44 @@ export function Composer({ inputRef }) {
   const regularAttachments = s.attachments.filter(
     (a) => a.kind !== "code-line",
   );
-  const shortcuts = useComposerShortcuts(area);
+  const shortcuts = useComposerShortcuts(area, submitAfterCodeLookup);
   const active = s.active[s.current?.id];
   const compaction = s.compactions[s.current?.id];
   const compacting = isCompacting(compaction);
   function submit() {
     shortcuts.close();
-    return submitComposer();
+    return submitAfterCodeLookup(submitComposer);
+  }
+  async function submitAfterCodeLookup(send) {
+    if (pendingSubmit.current) return;
+    const editor = area.current;
+    const sources = editor?.waitForCodeSources?.();
+    if (!sources) return send();
+    const initial = get();
+    pendingSubmit.current = true;
+    setMatching(true);
+    try {
+      await sources;
+      const current = get();
+      if (
+        area.current !== editor ||
+        current.current?.id !== initial.current?.id ||
+        current.cwd !== initial.cwd ||
+        current.backendId !== initial.backendId ||
+        current.providerId !== initial.providerId ||
+        current.goalMode !== initial.goalMode ||
+        !current.connected
+      )
+        return;
+      if (!sameDraftText(current.draft, initial.draft)) {
+        notice("草稿已修改，请重新发送。");
+        return;
+      }
+      return send();
+    } finally {
+      pendingSubmit.current = false;
+      setMatching(false);
+    }
   }
   function add(files) {
     return Promise.all(
@@ -184,7 +219,7 @@ export function Composer({ inputRef }) {
             add(e.dataTransfer.files);
           }}
         >
-          <ComposerAnnotations />
+          <ComposerAnnotations onSubmit={submit} />
           <CodeFileAttachments
             attachments={codeAttachments}
             onRemove={(id) => {
@@ -386,12 +421,13 @@ export function Composer({ inputRef }) {
               <button
                 className="send-button"
                 aria-label="发送消息"
-                title="发送消息"
+                title={matching ? "正在匹配代码文件…" : "发送消息"}
                 disabled={
                   !s.connected ||
                   !backendReady(s) ||
                   checking ||
                   compacting ||
+                  matching ||
                   s.busy ||
                   s.goalBusy[s.current?.id] ||
                   (!draft.trim() &&
@@ -400,7 +436,7 @@ export function Composer({ inputRef }) {
                 }
                 onClick={submit}
               >
-                {s.busy ? (
+                {s.busy || matching ? (
                   <LoaderCircle size={18} className="spin" />
                 ) : (
                   <ArrowUp size={19} />
@@ -419,8 +455,10 @@ export function Composer({ inputRef }) {
           <span>{s.projectless ? "未分类" : basename(s.cwd)}</span>
           <ChevronDown size={11} />
         </button>
-        <span className="context-info">
-          {usage != null ? (
+        <span className="context-info" role={matching ? "status" : undefined}>
+          {matching ? (
+            "正在匹配代码文件…"
+          ) : usage != null ? (
             <>
               上下文 {usage.toLocaleString()} /{" "}
               {windowSize?.toLocaleString() ?? "—"} tokens

@@ -200,7 +200,7 @@ export function MessageAnnotations({ item, children }) {
   );
 }
 
-export function ComposerAnnotations() {
+export function ComposerAnnotations({ onSubmit }) {
   const s = useStore();
   const threadId = s.current?.id;
   const entries = useAnnotationDrafts(threadId);
@@ -257,6 +257,7 @@ export function ComposerAnnotations() {
           viewportScale={viewportScale}
           entry={entry}
           editor={editor}
+          onSubmit={onSubmit}
           onRemove={() => remove(entry.id)}
         />
       )}

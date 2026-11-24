@@ -18,6 +18,17 @@ function mockCodeLineLookup() {
   fixture.lookups = [];
   WebSocket.prototype.send = function (raw) {
     const request = JSON.parse(raw);
+    if (request.method === "turn/start" && fixture.holdSubmission) {
+      fixture.requests.push(request);
+      fixture.finishSubmission = () => {
+        fixture.holdSubmission = false;
+        fixture.finishSubmission = undefined;
+        this.onmessage({
+          data: JSON.stringify({ id: request.id, result: {} }),
+        });
+      };
+      return;
+    }
     if (request.method !== "lan/workspace/codeLine")
       return send.call(this, raw);
     fixture.lookups.push({
@@ -139,7 +150,9 @@ try {
   const finish = (line, matches) =>
     page.evaluate(
       ({ line, matches }) => {
-        const request = window.historyFixture.lookups.at(-1);
+        const request = window.historyFixture.lookups.findLast(
+          (entry) => entry.line === line,
+        );
         if (request?.line !== line)
           throw new Error("查找的代码行与剪贴板内容不一致");
         request.finish(matches);
@@ -455,7 +468,11 @@ try {
   );
   const attached = await sentText();
   for (const file of [unique, ...ambiguous])
-    assert(attached.includes(file.path));
+    assert(attached.includes(`\n- ${file.path}:${file.line}\n`));
+  assert.match(attached, /粘贴代码已定位。需要源码上下文时，请直接读取/);
+  assert.match(attached, /同一段粘贴代码匹配到多处/);
+  await chips.first().waitFor({ state: "detached", timeout: 3000 });
+  assert.equal(await field.textContent(), "");
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.reload();
   await page.getByRole("button", { name: /^简短对话/ }).click();
@@ -764,7 +781,7 @@ try {
   );
   const sent = await sentText();
   assert.match(sent, /```python(?: [^\n]+)?\n/);
-  assert(sent.includes(classLocation.path));
+  assert(sent.includes(`\n- ${classLocation.path}:${classLocation.line}\n`));
   const sentCode = page
     .locator(".user-text pre")
     .filter({ hasText: classLines[0] });
@@ -773,13 +790,114 @@ try {
     (await sentCode.locator("code").textContent()).trimEnd(),
     classCode,
   );
+  const sentMessage = sentCode.locator(
+    "xpath=ancestor::div[contains(@class, 'user-text')]/..",
+  );
+  await sentMessage.locator(".code-file-attachment").waitFor();
+  assert.doesNotMatch(await sentMessage.textContent(), /粘贴代码已定位/);
+  await chips.first().waitFor({ state: "detached", timeout: 3000 });
+  assert.equal(await field.textContent(), "");
   await sentCode
     .locator("xpath=ancestor::div[contains(@class, 'user-text')]")
     .screenshot({
       path: join(output, "list-sent.png"),
     });
+  await field.focus();
+  await page.keyboard.insertText("核对两处代码 ");
+  const firstLine = "first = graph[index]";
+  const pendingLine = "pending = graph[index + 1]";
+  assert(await paste(firstLine));
+  await page.keyboard.insertText(" 和 ");
+  assert(await paste(pendingLine));
+  const submissionCount = () =>
+    page.evaluate(
+      () =>
+        window.historyFixture.requests.filter((r) => r.method === "turn/start")
+          .length,
+    );
+  const countBefore = await submissionCount();
+  const matching = page
+    .getByRole("status")
+    .filter({ hasText: "正在匹配代码文件" });
+  await page.evaluate(() => (window.historyFixture.holdSubmission = true));
+  await send.click();
+  await matching.waitFor();
+  assert(await send.isDisabled());
+  assert.equal(await submissionCount(), countBefore);
+  await page.screenshot({ path: join(output, "send-waiting-for-matches.png") });
+  await finish(firstLine, [unique]);
+  await chips.first().waitFor();
+  assert.equal(await submissionCount(), countBefore);
+  await finish(pendingLine, [classLocation]);
+  await page.waitForFunction(() => window.historyFixture.finishSubmission);
+  const submitted = await page.evaluate(() =>
+    window.historyFixture.requests
+      .filter((r) => r.method === "turn/start")
+      .at(-1)
+      .params.input.map((part) => part.text)
+      .join("\n"),
+  );
+  for (const file of [unique, classLocation])
+    assert(submitted.includes(`\n- ${file.path}:${file.line}\n`));
+  assert.equal(await submissionCount(), countBefore + 1);
+  await page.evaluate(() => window.historyFixture.finishSubmission());
+  await chips.first().waitFor({ state: "detached", timeout: 3000 });
+  assert.equal(await field.textContent(), "");
+  await page.screenshot({ path: join(output, "send-cleared.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => (document.documentElement.dataset.theme = "dark"));
+  await field.focus();
+  const expires = "expire = graph[0]";
+  assert(await paste(expires));
+  await field.press("Control+Enter");
+  await matching.waitFor();
+  assert.equal(await submissionCount(), countBefore + 1);
+  await page.screenshot({ path: join(output, "send-waiting-mobile-dark.png") });
+  await page.waitForFunction(
+    (count) =>
+      window.historyFixture.requests.filter((r) => r.method === "turn/start")
+        .length === count,
+    countBefore + 2,
+    { timeout: 4000 },
+  );
+  await matching.waitFor({ state: "detached" });
+  await finish(expires, [unique]);
+  assert.equal(await chips.count(), 0);
+  await page.waitForFunction(
+    () =>
+      !document.querySelector(".markdown-composer .ProseMirror").textContent,
+  );
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.evaluate(() => (document.documentElement.dataset.theme = "light"));
+  await field.focus();
+  const cancelled = "cancelled = graph[1]";
+  assert(await paste(cancelled));
+  await send.click();
+  await matching.waitFor();
+  await field.focus();
+  await field.press("Control+End");
+  await page.keyboard.insertText(" 我先修改这条消息");
+  await finish(cancelled, [unique]);
+  await matching.waitFor({ state: "detached" });
+  assert.equal(await submissionCount(), countBefore + 2);
+  assert.match(await field.textContent(), /我先修改这条消息$/);
+  await field.press("Control+a");
+  await field.press("Backspace");
+  await field.focus();
+  await page.keyboard.insertText("这条消息正在发送");
+  await page.evaluate(() => (window.historyFixture.holdSubmission = true));
+  await send.click();
+  await page.waitForFunction(() => window.historyFixture.finishSubmission);
+  await field.focus();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.insertText("，这句是后来输入的");
+  await page.evaluate(() => window.historyFixture.finishSubmission());
+  await page.waitForFunction(
+    () => !document.querySelector('button[aria-label="发送消息"]').disabled,
+  );
+  assert.equal(await field.textContent(), "这条消息正在发送，这句是后来输入的");
   console.log(
-    "通过：即时粘贴、候选与正文分离、整项移除、五行居中粘贴、消息提交、深浅主题及桌面与窄屏五档缩放。",
+    "通过：即时粘贴、整项移除、等待全部匹配后发送、超时后发送正文、发送后清理、保留新输入，以及深浅主题和桌面与窄屏五档缩放。",
   );
 } finally {
   await context.close();

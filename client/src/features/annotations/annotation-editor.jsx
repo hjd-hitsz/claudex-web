@@ -2,7 +2,6 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Trash2 } from "lucide-react";
 import { set } from "../../store.js";
-import { submitComposer } from "../commands/composer-commands.js";
 import {
   readAnnotationDrafts,
   writeAnnotationDrafts,
@@ -12,6 +11,7 @@ import { useSurfaceResize } from "../../ui/surface-resize.jsx";
 export function AnnotationEditor({
   entry,
   editor,
+  onSubmit,
   onRemove,
   annotationRoot,
   sourceRange,
@@ -128,7 +128,7 @@ export function AnnotationEditor({
           event.nativeEvent.keyCode !== 229
         ) {
           event.preventDefault();
-          if (event.ctrlKey) submitComposer();
+          if (event.ctrlKey) onSubmit();
           else close();
         }
       }}

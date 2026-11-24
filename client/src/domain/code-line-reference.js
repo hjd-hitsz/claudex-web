@@ -4,11 +4,30 @@ import {
 } from "../../../shared/code-line-reference.mjs";
 import { uid } from "./format.js";
 
-const heading = "粘贴代码的匹配文件候选：\n";
-const sourceIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const legacyHeading = "粘贴代码的匹配文件候选：\n";
+const sourceHeading =
+  "粘贴代码已定位。需要源码上下文时，请直接读取以下绝对路径和行号。";
+const candidateHeading =
+  "同一段粘贴代码匹配到多处。需要源码上下文时，请直接读取以下候选位置并核对。";
+const sourceId = "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}";
+const sourceIdPattern = new RegExp(`^${sourceId}$`, "i");
+const sourceMarkers = new RegExp(
+  `<!--claudex-code-source:${sourceId}-->|(\`{3,}[^\\r\\n]*? claudex-paste(?: before)?(?: after)?) source=${sourceId}$`,
+  "gim",
+);
 
 export function isCodeSourceId(id) {
   return typeof id === "string" && sourceIdPattern.test(id);
+}
+
+// 匹配结果异步更新源码标记，发送确认按可见正文判断草稿是否已更改。
+export function sameDraftText(current, submitted) {
+  return (
+    current === submitted ||
+    (typeof current === "string" &&
+      current.replace(sourceMarkers, "$1") ===
+        submitted.replace(sourceMarkers, "$1"))
+  );
 }
 
 export function codeLineKey({ code, matches }) {
@@ -16,6 +35,13 @@ export function codeLineKey({ code, matches }) {
     code,
     matches.map(({ path, line }) => JSON.stringify([path, line])).sort(),
   ]);
+}
+
+export function codeLineContext({ matches }) {
+  return [
+    matches.length === 1 ? sourceHeading : candidateHeading,
+    ...matches.map(({ path, line }) => `- ${path}:${line}`),
+  ].join("\n");
 }
 
 export function codeLineAttachment(code, matches, id = uid(), anchors = []) {
@@ -46,26 +72,38 @@ export function codeLineAttachment(code, matches, id = uid(), anchors = []) {
     anchors,
     input: {
       type: "text",
-      text:
-        heading +
-        JSON.stringify({ code, matches, ...(anchors.length && { anchors }) }),
+      text: `\n\n${codeLineContext({ matches })}\n\n${JSON.stringify({ code, ...(anchors.length && { anchors }) })}\n\n`,
       text_elements: [],
     },
   };
 }
 
 export function readCodeLineAttachment(input, index) {
-  if (
-    input.type !== "text" ||
-    typeof input.text !== "string" ||
-    !input.text.startsWith(heading)
-  )
-    return null;
+  if (input.type !== "text" || typeof input.text !== "string") return null;
+  const id = `code-line-${index}`;
   try {
-    const { code, matches, anchors } = JSON.parse(
-      input.text.slice(heading.length),
-    );
-    return codeLineAttachment(code, matches, `code-line-${index}`, anchors);
+    const text = input.text.trim();
+    if (text.startsWith(legacyHeading)) {
+      const { code, matches, anchors } = JSON.parse(
+        text.slice(legacyHeading.length),
+      );
+      return codeLineAttachment(code, matches, id, anchors);
+    }
+    if (!text.startsWith(sourceHeading) && !text.startsWith(candidateHeading))
+      return null;
+    const [context, metadata, trailing] = text.split("\n\n");
+    const [heading, ...locations] = context.split("\n");
+    if (
+      trailing !== undefined ||
+      heading !== (locations.length === 1 ? sourceHeading : candidateHeading)
+    )
+      return null;
+    const matches = locations.map((location) => {
+      const match = /^- (\/.*):([1-9]\d*)$/.exec(location);
+      return match && { path: match[1], line: Number(match[2]) };
+    });
+    const { code, anchors } = JSON.parse(metadata);
+    return codeLineAttachment(code, matches, id, anchors);
   } catch {
     return null;
   }

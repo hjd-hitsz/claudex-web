@@ -1,4 +1,8 @@
 import { isCompacting } from "../domain/compaction.js";
+import {
+  codeLineContext,
+  sameDraftText,
+} from "../domain/code-line-reference.js";
 
 // 原生目标是事实来源；请求版本防止读取覆盖实时通知或后续操作。
 export function createGoals({ get, set, rpc, navigation, onEvent }) {
@@ -93,7 +97,7 @@ export function createGoals({ get, set, rpc, navigation, onEvent }) {
       let objective = s.draft.trim();
       for (const attachment of s.attachments) {
         if (attachment.kind === "code-line") {
-          objective += "\n\n" + attachment.input.text;
+          objective += "\n\n" + codeLineContext(attachment);
           continue;
         }
         if (!attachment.path) {
@@ -115,11 +119,11 @@ export function createGoals({ get, set, rpc, navigation, onEvent }) {
       });
       if (saved && get().current?.id === thread.id) {
         set({ goalMode: false });
-        if (get().draft === s.draft) {
+        if (sameDraftText(get().draft, s.draft)) {
           set({
             draft: "",
             attachments: get().attachments.filter(
-              (a) => !s.attachments.includes(a),
+              (a) => a.kind !== "code-line" && !s.attachments.includes(a),
             ),
           });
           localStorage.removeItem("cx-draft-" + thread.id);

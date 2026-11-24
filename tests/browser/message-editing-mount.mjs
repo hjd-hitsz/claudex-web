@@ -186,8 +186,40 @@ try {
     await editor.waitFor();
     await page.screenshot({ path: join(output, "reference-editor.png") });
     await editor.press("Control+End");
-    await page.keyboard.insertText("，补充输入与输出");
+    await page.keyboard.insertText("，补充输入与输出 ");
+    const code = "def prepare_route(inputs):";
+    const location = { path: "/demo/project/planner.py", line: 12 };
+    await page.evaluate(() => (editFixture.holdCodeLookup = true));
+    await editor.evaluate((element, code) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", code + "\n");
+      clipboardData.setData(
+        "vscode-editor-data",
+        JSON.stringify({ mode: "python", isFromEmptySelection: true }),
+      );
+      element.dispatchEvent(
+        new ClipboardEvent("paste", {
+          clipboardData,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }, code);
     await editor.press("Control+Enter");
+    await form.getByRole("button", { name: "匹配文件…" }).waitFor();
+    assert.equal(
+      await page.evaluate(() =>
+        editFixture.requests.some(
+          (r) => r.method === "thread/revert" || r.method === "turn/start",
+        ),
+      ),
+      false,
+    );
+    await page.screenshot({ path: join(output, "edit-waiting-for-match.png") });
+    await page.evaluate(
+      (location) => editFixture.finishCodeLookup([location]),
+      location,
+    );
     await page.getByText("修改后的回答", { exact: true }).waitFor();
     const sent = await page.evaluate(
       () =>
@@ -199,6 +231,11 @@ try {
       /\[planner\.py\]\(\/demo\/project\/planner\.py\)/,
     );
     assert.match(sent[0].text, /补充输入与输出/);
+    assert(
+      sent.some(({ text }) =>
+        text?.includes(`\n- ${location.path}:${location.line}\n`),
+      ),
+    );
     assert.equal(await composer.innerText(), "底部独立草稿");
     await page.reload();
     await page.getByText("修改后的回答", { exact: true }).waitFor();

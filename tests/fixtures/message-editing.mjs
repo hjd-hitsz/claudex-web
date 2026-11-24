@@ -87,6 +87,13 @@ export function messageEditingFixture() {
       const request = JSON.parse(raw);
       data.requests.push(request);
       const { method, params } = request;
+      if (method === "lan/workspace/codeLine" && data.holdCodeLookup) {
+        data.finishCodeLookup = (matches) =>
+          this.onmessage({
+            data: JSON.stringify({ id: request.id, result: { matches } }),
+          });
+        return;
+      }
       let result = { data: [], nextCursor: null },
         error;
       if (method === "thread/list")

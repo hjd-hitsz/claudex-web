@@ -8,6 +8,7 @@ import { resolveServiceTier } from "../domain/service-tier.js";
 import { inputRequestItem } from "../domain/question-state.js";
 import { annotationMessage } from "../domain/annotations.js";
 import { isCompacting } from "../domain/compaction.js";
+import { sameDraftText } from "../domain/code-line-reference.js";
 import {
   readAnnotationDrafts,
   removeSentAnnotations,
@@ -213,14 +214,17 @@ export function createMessages({
       }
       if (clearDraft) {
         const draftKey = "cx-draft-" + thread.id;
-        if (localStorage.getItem(draftKey) === text)
-          localStorage.removeItem(draftKey);
-        if (get().current?.id === thread.id)
-          set({
-            ...(get().draft === text ? { draft: "" } : {}),
-          });
+        const current = get().current?.id === thread.id;
+        const stored = localStorage.getItem(draftKey);
+        const clearText = sameDraftText(current ? get().draft : stored, text);
+        if (sameDraftText(stored, text)) localStorage.removeItem(draftKey);
+        if (current && clearText) set({ draft: "" });
         navigation.updateAttachmentDraft(attachmentDraft, (entries) =>
-          entries.filter((entry) => !attachments.includes(entry)),
+          entries.filter(
+            (entry) =>
+              !attachments.includes(entry) &&
+              !(clearText && entry.kind === "code-line"),
+          ),
         );
       }
       if (annotations.length && !replace) {

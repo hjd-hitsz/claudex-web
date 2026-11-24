@@ -94,6 +94,15 @@ export const documentCodeLine = (onSourcesChange) =>
               transaction.mapping,
               transaction.doc,
             );
+            if (transaction.docChanged)
+              pending = pending.remove(
+                pending
+                  .find()
+                  .filter(
+                    ({ from, to, spec }) =>
+                      transaction.doc.textBetween(from, to) !== spec.line,
+                  ),
+              );
             if (remove) pending = pending.remove(remove);
             if (add) pending = pending.add(transaction.doc, [add]);
             const registered =
@@ -114,11 +123,23 @@ export const documentCodeLine = (onSourcesChange) =>
         props: {
           decorations: (state) => sourcesKey.getState(state).decorations,
         },
-        view: () => ({
+        view: (view) => ({
           update(view, previous) {
-            const { attachments } = sourcesKey.getState(view.state);
-            if (attachments !== sourcesKey.getState(previous).attachments)
+            const { attachments, pending } = sourcesKey.getState(view.state);
+            const prior = sourcesKey.getState(previous);
+            if (attachments !== prior.attachments)
               onSourcesChange?.(attachments);
+            if (pending !== prior.pending) {
+              const current = new Set(pending.find().map(({ spec }) => spec));
+              for (const { spec } of prior.pending.find())
+                if (!current.has(spec)) spec.resolve();
+            }
+          },
+          destroy() {
+            for (const { spec } of sourcesKey
+              .getState(view.state)
+              .pending.find())
+              spec.resolve();
           },
         }),
       }),
@@ -145,7 +166,10 @@ export async function resolvePastedCodeLine(view, line, lookup, plain = false) {
     });
     if (formatted) return;
   }
-  const pending = {};
+  const pending = { line };
+  pending.promise = new Promise((resolve) => {
+    pending.resolve = resolve;
+  });
   const add = multiline
     ? Decoration.node(from, to, {}, pending)
     : Decoration.inline(from, to, {}, pending);
@@ -174,6 +198,17 @@ export async function resolvePastedCodeLine(view, line, lookup, plain = false) {
       .setMeta("addToHistory", false)
       .setMeta(sourcesKey, { remove: [range], register }),
   );
+}
+
+export function waitForCodeSources(view) {
+  const pending = sourcesKey.getState(view.state).pending.find();
+  if (!pending.length) return;
+  return Promise.all(pending.map(({ spec }) => spec.promise)).then(() => {
+    if (view.isDestroyed) return [];
+    return (
+      waitForCodeSources(view) ?? sourcesKey.getState(view.state).attachments
+    );
+  });
 }
 
 export function restoreCodeSources(view, attachments) {

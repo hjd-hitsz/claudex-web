@@ -35,6 +35,7 @@ import {
   documentCodeLine,
   removeCodeSource,
   restoreCodeSources,
+  waitForCodeSources,
 } from "./document-code-line.js";
 import {
   deletePastedCode,
@@ -274,6 +275,9 @@ export async function createDocumentEditor(
     },
     removeCodeSource(id) {
       return references && removeCodeSource(view, id);
+    },
+    waitForCodeSources() {
+      return references ? waitForCodeSources(view) : undefined;
     },
     restoreCodeSources(attachments) {
       return references ? restoreCodeSources(view, attachments) : [];

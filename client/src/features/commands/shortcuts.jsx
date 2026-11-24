@@ -6,60 +6,25 @@ import React, { useState, useEffect, useRef } from "react";
 import { referenceThreads } from "../../domain/composer-references.js";
 
 import {
-  FileCode,
   Folder,
   Sparkles,
   SquarePen,
-  Brain,
-  ListChecks,
-  GitPullRequest,
-  Minimize2,
-  TerminalSquare,
-  Search,
-  Settings,
-  GitBranch,
-  Square,
   ChevronRight,
   LoaderCircle,
-  Pencil,
-  Trash2,
 } from "lucide-react";
 import * as store from "../../store.js";
 import { backendReady, currentBackendId } from "../../domain/backends.js";
 
 import {
-  composerCommands,
   nativeComposerCommands,
   commandAvailable,
   runComposerCommand,
   absolutePath as absolute,
 } from "./composer-commands.js";
 
-const icons = {
-  init: FileCode,
-  new: SquarePen,
-  model: Brain,
-  plan: ListChecks,
-  goal: ListChecks,
-  review: GitPullRequest,
-  compact: Minimize2,
-  skills: Sparkles,
-  files: Folder,
-  diff: GitBranch,
-  terminal: TerminalSquare,
-  project: Folder,
-  search: Search,
-  status: Settings,
-  fork: GitBranch,
-  rename: Pencil,
-  delete: Trash2,
-  stop: Square,
-};
-const commands = composerCommands.map((command) => ({
-  ...command,
-  icon: icons[command.id] || Settings,
-}));
-export function useComposerShortcuts(area) {
+import { commandSuggestions } from "./command-suggestions.js";
+
+export function useComposerShortcuts(area, submitAfterCodeLookup) {
   const s = store.useStore();
   const draft = store.useDraft();
   const ready = s.connected && backendReady(s);
@@ -185,7 +150,7 @@ export function useComposerShortcuts(area) {
     trigger?.kind === "/"
       ? [
           ...[
-            ...commands,
+            ...commandSuggestions,
             ...nativeComposerCommands(s)
               .filter(
                 (command) =>
@@ -246,8 +211,22 @@ export function useComposerShortcuts(area) {
   }, [selected, items.length]);
   function choose(item) {
     if (!item || !trigger) return;
-    const t = trigger,
-      text = store.get().draft;
+    const text = store.get().draft;
+    if (item.kind === "command" && item.native) {
+      const selectedTrigger = trigger;
+      close();
+      return submitAfterCodeLookup(() => {
+        const draft = store.get().draft;
+        const end =
+          draft === text ? selectedTrigger.end : area.current?.selectionStart;
+        const start = end - selectedTrigger.query.length - 1;
+        if (draft.slice(start, end) === "/" + selectedTrigger.query)
+          insertSuggestion(item, { ...selectedTrigger, start, end }, draft);
+      });
+    }
+    return insertSuggestion(item, trigger, text);
+  }
+  function insertSuggestion(item, t, text) {
     if (item.kind === "command" && item.id === "goal") {
       if (area.current?.replaceText)
         area.current.replaceText("", t.start, t.end);

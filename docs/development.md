@@ -291,7 +291,7 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 
 `markdown-composer.mjs` 的剪贴板回归覆盖代码编辑器语言信息、单行代码在段落中插入和续写、一次撤销、网页行内代码及多行带语言围栏。检查编辑区域的原生节点、Markdown 草稿和提交内容，并保存行内粘贴截图。
 
-`tests/browser/code-line-paste.mjs` 使用相同环境变量验证单行直接复制、手动选中复制、纯文本剪贴板及多行片段。多行在列表项内保持原有上下边界和插入位置，候选查询在隔离工作区运行 `rg`，服务端回归另覆盖首尾截断、两行选区、完整匹配优先及超额候选，核对文件行号、预览、重复粘贴共用单次查找及标签、最后一处撤销或删除时移除标签、重做、对话切换恢复及发送后的代码块。证据保存在 `.cache/code-line-paste/sources`。
+`tests/browser/code-line-paste.mjs` 使用相同环境变量验证单行直接复制、手动选中复制、纯文本剪贴板及多行片段。多行在列表项内保持原有上下边界和插入位置，候选查询在隔离工作区运行 `rg`，服务端回归另覆盖首尾截断、两行选区、完整匹配优先及超额候选，核对文件行号、预览、重复粘贴共用单次查找及标签、最后一处撤销或删除时移除标签、重做、对话切换恢复及发送后的代码块。提交检查验证单处匹配和多处候选均携带绝对路径与起始行号，确认消息恢复为代码及可点击的文件位置标签。提交回归延迟两次匹配，验证最后一次匹配完成前没有发出请求，随后一次提交两个位置并清理输入区。另验证窄屏快捷发送在查询超时后提交正文，以及服务器确认前的手动输入仍保留。证据保存在 `.cache/code-line-paste/sources`。
 
 链接续写回归使用相同环境变量运行 `tests/browser/composer-links.mjs`，通过实际键盘及粘贴事件验证网址、Markdown 链接和自动链接末尾的空格及正文留在链接之外，检查链接内部编辑、撤销和实际提交内容，保存深浅主题及窄屏截图。结果及构建来源写入 `.cache/composer-links/after`；对照时使用 `BROWSER_BEFORE=1` 记录格式延续问题，证据写入 `before` 目录。
 
@@ -301,7 +301,7 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 
 ### 原消息编辑回归
 
-挂载与文件引用回归在构建后执行 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/message-editing-mount.mjs`。脚本使用仅含 Markdown 文件引用的单条用户消息、隔离模拟历史及真实 Chromium 编辑器，验证点击编辑、取消重开、引用保留、长正文内部滚动、底部草稿和高度偏好隔离、Ctrl+Enter 提交及刷新后再次编辑。通过 Chromium 设置执行桌面与窄屏、深浅主题及 80%、100%、125%、150%、200% 实际页面缩放，并核对 DPR 和视口。证据位于 `.cache/message-editing-mount/after`；对照时将 `client/dist` 和 `build-info.json` 保存到 `.cache/message-editing-mount/before`，设置 `EDIT_MOUNT_BEFORE=1` 运行对照。此回归直接挂载实际文档编辑器，组件测试中的文本框替身继续验证编辑用例。
+挂载与文件引用回归在构建后执行 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/message-editing-mount.mjs`。脚本使用仅含 Markdown 文件引用的单条用户消息、隔离模拟历史及真实 Chromium 编辑器，验证点击编辑、取消重开、引用保留、长正文内部滚动、底部草稿和高度偏好隔离、Ctrl+Enter 提交及刷新后再次编辑。通过 Chromium 设置执行桌面与窄屏、深浅主题及 80%、100%、125%、150%、200% 实际页面缩放，并核对 DPR 和视口。重发前延迟代码匹配，确认匹配完成后才回退原轮次并携带位置重发。证据位于 `.cache/message-editing-mount/after`；对照时将 `client/dist` 和 `build-info.json` 保存到 `.cache/message-editing-mount/before`，设置 `EDIT_MOUNT_BEFORE=1` 运行对照。此回归直接挂载实际文档编辑器，组件测试中的文本框替身继续验证编辑用例。
 
 执行 `npm run build` 后，使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/message-editing.mjs` 验证原地编辑。脚本使用生产构建、独立浏览器上下文与持久化的模拟历史，检查与底部输入框一致的背景、边框、阴影和聚焦反馈、主操作按钮配色、两行固定高度、紧凑宽度、长文本内部滚动及按钮位置稳定、铅笔图标、取消、Enter 换行、Ctrl+Enter 发送、文件引用、回退和发送失败重试、底部草稿隔离、刷新后的替换结果及切换对话时的迟到响应，覆盖深浅主题、80% 至 200% 缩放与窄屏。截图及构建来源保存在 `.cache/message-editing-browser/`。通过 `BROWSER_BEFORE=1`、`BROWSER_BUILD_DIR` 和 `BROWSER_BUILD_INFO` 指定隔离的旧构建及来源，复现恢复图标、回填底部输入和覆盖草稿，证据保存在 `.cache/message-editing-before-browser/`。领域与组件回归另覆盖完整轮次分页、旧接口兼容、运行状态、过期编辑、批注及附件独立性。
 

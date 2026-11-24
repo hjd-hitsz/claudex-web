@@ -112,6 +112,7 @@ export function MarkdownEditor({
           insertReference: (reference, start, end) =>
             instance.insertReference(reference, start, end),
           removeCodeSource: (id) => instance.removeCodeSource(id),
+          waitForCodeSources: () => instance.waitForCodeSources(),
           setSelectionRange: (start, end) => instance.setCursor(start, end),
           get value() {
             return rendered.current;

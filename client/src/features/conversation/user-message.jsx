@@ -1,7 +1,13 @@
 import { ResizableTextarea } from "../../ui/resizable-textarea.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { Copy, Pencil } from "lucide-react";
-import { copy, sendMessage, cancelMessageEdit, useStore } from "../../store.js";
+import {
+  copy,
+  get,
+  sendMessage,
+  cancelMessageEdit,
+  useStore,
+} from "../../store.js";
 import { IconButton } from "../../ui/primitives.jsx";
 import {
   parseUserMessage,
@@ -32,11 +38,11 @@ function MessageEditor({ item, threadId, onCancel }) {
   const [annotations, setAnnotations] = useState(parsed.annotations);
   const codeAttachments = attachments.filter((a) => a.kind === "code-line");
   const regularAttachments = attachments.filter((a) => a.kind !== "code-line");
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState("");
   const input = useRef();
   const edit = useRef({ item, threadId });
   const disabled =
-    pending ||
+    Boolean(pending) ||
     s.busy ||
     s.loading ||
     !s.connected ||
@@ -54,14 +60,26 @@ function MessageEditor({ item, threadId, onCancel }) {
       (!text.trim() && !attachments.length && !annotations.length)
     )
       return;
-    setPending(true);
-    const sent = await sendMessage(text, attachments, {
-      clearDraft: false,
-      annotations,
-      replace: edit.current,
-    });
-    setPending(false);
-    if (sent) onCancel();
+    const editor = input.current;
+    const waiting = editor?.waitForCodeSources?.();
+    setPending(waiting ? "matching" : "sending");
+    try {
+      const sources = waiting ? await waiting : null;
+      if (
+        waiting &&
+        (editor !== input.current || get().current?.id !== threadId)
+      )
+        return;
+      setPending("sending");
+      const sent = await sendMessage(
+        waiting ? editor.value : text,
+        sources ? [...regularAttachments, ...sources] : attachments,
+        { clearDraft: false, annotations, replace: edit.current },
+      );
+      if (sent) onCancel();
+    } finally {
+      setPending("");
+    }
   }
   function cancel() {
     if (pending) return;
@@ -91,7 +109,7 @@ function MessageEditor({ item, threadId, onCancel }) {
         }
       }}
     >
-      <div inert={pending}>
+      <div inert={Boolean(pending)}>
         <CodeFileAttachments
           attachments={codeAttachments}
           onRemove={(id) => {
@@ -122,7 +140,7 @@ function MessageEditor({ item, threadId, onCancel }) {
               type="button"
               key={index}
               title={`移除 ${entry.name}`}
-              disabled={pending}
+              disabled={Boolean(pending)}
               onClick={() =>
                 setAttachments(attachments.filter((a) => a !== entry))
               }
@@ -138,7 +156,7 @@ function MessageEditor({ item, threadId, onCancel }) {
           <ResizableTextarea
             aria-label={`编辑批注 ${index + 1}`}
             value={entry.annotation}
-            disabled={pending}
+            disabled={Boolean(pending)}
             onChange={(event) =>
               setAnnotations(
                 annotations.map((value, i) =>
@@ -152,7 +170,7 @@ function MessageEditor({ item, threadId, onCancel }) {
         </label>
       ))}
       <div className="inline-edit-actions">
-        <button type="button" onClick={cancel} disabled={pending}>
+        <button type="button" onClick={cancel} disabled={Boolean(pending)}>
           取消
         </button>
         <button
@@ -162,7 +180,7 @@ function MessageEditor({ item, threadId, onCancel }) {
             (!text.trim() && !attachments.length && !annotations.length)
           }
         >
-          {pending ? "发送中…" : "发送"}
+          {pending === "matching" ? "匹配文件…" : pending ? "发送中…" : "发送"}
         </button>
       </div>
     </form>
