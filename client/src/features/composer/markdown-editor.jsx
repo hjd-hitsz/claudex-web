@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { EditorFrame } from "./editor-frame.jsx";
+import { isCompositionKey } from "./document-composition.js";
 
 export function MarkdownEditor({
   value,
@@ -196,7 +197,13 @@ export function MarkdownEditor({
         className="document-editor-viewport"
         hidden={!ready}
         onKeyDownCapture={(event) => {
-          if (!ready || event.target.closest("input, textarea, button")) return;
+          if (
+            !ready ||
+            editor.current.composing ||
+            isCompositionKey(event.nativeEvent) ||
+            event.target.closest("input, textarea, button")
+          )
+            return;
           props.onKeyDown?.(event);
           if (event.defaultPrevented) event.stopPropagation();
         }}

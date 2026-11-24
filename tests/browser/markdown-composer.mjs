@@ -8,6 +8,7 @@ import { historyPerformanceFixture } from "../fixtures/history-performance.mjs";
 import { checkComposerSize } from "../helpers/composer-size.mjs";
 import { checkComposerEditing } from "../helpers/composer-editing.mjs";
 import { checkComposerMath } from "../helpers/composer-math.mjs";
+import { checkComposerListInput } from "../helpers/composer-list-input.mjs";
 import { checkComposerBlocks } from "../helpers/composer-blocks.mjs";
 import {
   holdDocumentEditor,
@@ -101,6 +102,8 @@ try {
     "双美元符号公式在同段渲染、源码修改、撤销重做、正文续写及刷新恢复",
   );
   const editing = await checkComposerEditing(page, output, true);
+  await checkComposerListInput(page, output);
+  checks.push("列表中组合输入保留当前条目与光标，退格保留右侧正文");
   await checkComposerBlocks(page, output);
   checks.push(
     "正文中间粘贴代码、公式、表格保留顺序与光标，整次撤销、代码续写及拖动展开",

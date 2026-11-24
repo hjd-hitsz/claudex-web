@@ -28,6 +28,7 @@ import {
   selectDocumentPosition,
 } from "./editor-selection.js";
 import { documentList } from "./document-list.js";
+import { documentCompositionEvents } from "./document-composition.js";
 import { documentMathInput } from "./document-math-input.js";
 import { documentPaste } from "./document-clipboard.js";
 import {
@@ -143,6 +144,11 @@ export async function createDocumentEditor(
       ctx.update(editorViewOptionsCtx, (previous) => ({
         ...previous,
         ...mathInput,
+        handleDOMEvents: {
+          ...previous.handleDOMEvents,
+          ...mathInput.handleDOMEvents,
+          ...documentCompositionEvents,
+        },
         ...(!file && {
           handleKeyDown: (view, event) =>
             deletePastedCode(view, event) ||
@@ -214,6 +220,9 @@ export async function createDocumentEditor(
   const serialize = crepe.editor.action((ctx) => ctx.get(serializerCtx));
   return {
     dom: view.dom,
+    get composing() {
+      return view.composing;
+    },
     focus() {
       view.focus();
     },
