@@ -1,4 +1,5 @@
 import { backgroundTerminalBrowser } from "../helpers/background-terminal-browser.mjs";
+import { backgroundWorkerClock } from "../helpers/background-worker-clock.mjs";
 import { received } from "../../packages/background-terminal/delivery.mjs";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -36,6 +37,7 @@ const output = join(
   ...(before ? ["before"] : []),
 );
 const directory = await mkdtemp(join(tmpdir(), "codex-web-real-background-"));
+const workerClock = await backgroundWorkerClock(directory);
 const codexHome = join(directory, "codex-home");
 const workspace = join(directory, "workspace");
 const unavailableSystemd = join(directory, "bin");
@@ -67,6 +69,8 @@ let phase = "seed",
   jobRequests = 0;
 const nativeRequests = new Map();
 const wakeRequests = [];
+const checkRequests = new Map();
+const nextEstimate = 420_000;
 const inference = http.createServer(async (request, response) => {
   try {
     const chunks = [];
@@ -82,10 +86,10 @@ const inference = http.createServer(async (request, response) => {
             part.text.includes("use it as the initial execution call"),
         ),
     );
-    if (body.input.some((item) => item.name === "background_completed")) {
-      const notice = body.input.find(
-        (item) => item.name === "background_completed",
-      );
+    const notice = body.input.findLast((item) =>
+      ["background_completed", "background_check_due"].includes(item.name),
+    );
+    if (notice?.name === "background_completed") {
       for (const result of JSON.parse(notice.output).results)
         assert.match(result.output_file, /\/output-[a-f0-9-]+\.log$/);
       const requestedUpdate = body.input.some(
@@ -141,13 +145,16 @@ const inference = http.createServer(async (request, response) => {
           }),
         };
       } else {
-        if (count === 3) {
+        if (notice?.name === "background_check_due") {
           assert.equal(nativeMode, "enabled");
-          const output = body.input.find(
-            (entry) => entry.name === "background_completed",
-          );
-          assert(output, "原生终端结果应触发新轮次");
-          const [result] = JSON.parse(output.output).results;
+          assert.equal(count, 3);
+          const [result] = JSON.parse(notice.output).results;
+          assert.equal(result.status, "running");
+          assert.ok(result.native_session_id);
+        } else if (notice?.name === "background_completed") {
+          assert.equal(nativeMode, "enabled");
+          assert.equal(count, 4);
+          const [result] = JSON.parse(notice.output).results;
           assert.equal(result.exit_code, 23);
           assert.ok(result.native_session_id);
           assert.match(
@@ -171,6 +178,67 @@ const inference = http.createServer(async (request, response) => {
           id: "native-message-" + calls.length,
           role: "assistant",
           content: [{ type: "output_text", text: "原生终端验证" }],
+        };
+      }
+    } else if (notice?.name === "background_check_due") {
+      const {
+        notification_id: id,
+        results: [result],
+      } = JSON.parse(notice.output);
+      const context = JSON.stringify(
+        body.input.filter((item) => item.role === "developer"),
+      );
+      assert.ok(executionPolicy);
+      assert.match(context, /one-minute minimum is a lower bound/);
+      assert.match(context, /use remaining size and observed throughput/);
+      assert.match(context, /its process was left running/);
+      assert.equal(result.status, "running");
+      assert.equal(result.exit_code, null);
+      assert.ok(
+        result.check_id &&
+          result.check_due_at_ms &&
+          result.running_for_ms >= 300_000,
+      );
+      const count = (checkRequests.get(id) ?? 0) + 1;
+      checkRequests.set(id, count);
+      if (checkRequests.size === 1 && count === 1) {
+        const tool = body.tools
+          .flatMap(
+            (entry) =>
+              entry.tools?.map((child) => ({
+                ...child,
+                namespace: entry.name,
+              })) ?? [entry],
+          )
+          .find((entry) => entry.name === "background_schedule_check");
+        assert(tool, "到期检查轮次应具备改期工具");
+        item = {
+          type: "function_call",
+          name: tool.name,
+          namespace: tool.namespace,
+          call_id: "schedule-next-check-fixture",
+          arguments: JSON.stringify({
+            job_id: result.job_id,
+            check_after_ms: nextEstimate,
+          }),
+        };
+      } else {
+        assert.ok(checkRequests.size === 2 ? count === 1 : count === 2);
+        if (checkRequests.size === 1)
+          assert.match(JSON.stringify(body.input.at(-1)), /nextCheckAt/);
+        item = {
+          type: "message",
+          id: "check-message-" + calls.length,
+          role: "assistant",
+          content: [
+            {
+              type: "output_text",
+              text:
+                checkRequests.size === 1
+                  ? "构建仍在运行，将在七分钟后复查。"
+                  : "",
+            },
+          ],
         };
       }
     } else if (phase === "job" && ++jobRequests === 1) {
@@ -201,6 +269,7 @@ const inference = http.createServer(async (request, response) => {
             `"${process.execPath}" --test --test-reporter=tap background.test.cjs`,
           ].join(" && "),
           title: "项目架构检查与测试",
+          check_after_ms: 300_000,
         }),
       };
     } else {
@@ -291,6 +360,7 @@ supports_websockets = false
 );
 const env = {
   ...process.env,
+  NODE_OPTIONS: workerClock.nodeOptions,
   PATH: unavailableSystemd + delimiter + process.env.PATH,
   CODEX_HOME: codexHome,
   CODEX_APP_SERVER_URL: upstreamUrl,
@@ -562,8 +632,8 @@ try {
     approvalPolicy: "never",
   });
   await until(
-    async () => Object.keys((await tools(thread.id)) || {}).length === 4,
-    "注册四项工具",
+    async () => Object.keys((await tools(thread.id)) || {}).length === 5,
+    "注册五项工具",
   );
   const initial = await browser.rpc("turn/start", {
     threadId: thread.id,
@@ -611,6 +681,7 @@ try {
         args: {
           command: "printf '写到文件\\n' > redirected.log && sleep 120",
           title: "输出写入文件",
+          check_after_ms: 300_000,
         },
       });
       await ui.inspectSilentTask();
@@ -626,6 +697,12 @@ try {
     const jobs = await enabledNative.jobs();
     return jobs.find((job) => job.status === "running" && job.native);
   }, "开启 MCP 时独立服务接过订阅");
+  await taskRequest(state, "tool", {
+    threadId: enabledNative.threadId,
+    callId: "native-check-fixture",
+    name: "background_schedule_check",
+    args: { job_id: nativeJob.id, check_after_ms: 660_000 },
+  });
   assert.equal(
     (
       await terminals("thread/backgroundTasks/list", {
@@ -665,7 +742,11 @@ try {
       threadId: other.id,
       callId: "cancel-test",
       name: "background_start",
-      args: { command: "sleep 120", title: "验证停止" },
+      args: {
+        command: "sleep 120",
+        title: "验证停止",
+        check_after_ms: 300_000,
+      },
     });
     assert(
       (
@@ -678,7 +759,11 @@ try {
       threadId: other.id,
       callId: "cancel-test-neighbour",
       name: "background_start",
-      args: { command: "sleep 120", title: "同对话里的另一个任务" },
+      args: {
+        command: "sleep 120",
+        title: "同对话里的另一个任务",
+        check_after_ms: 300_000,
+      },
     });
     await assert.rejects(
       terminals("thread/backgroundTasks/read", {
@@ -716,6 +801,60 @@ try {
     }, "独立任务运行期间原对话已从 app-server 卸载");
     assert.equal((await list()).jobs[0].status, "running");
   }
+  const jobId = running.jobs[0].id;
+  const checkTurn = (count) =>
+    until(async () => {
+      const page = await direct.rpc("thread/turns/list", {
+        threadId: thread.id,
+        limit: 100,
+        itemsView: "full",
+      });
+      const turns = page.data.filter(
+        (turn) =>
+          turn.status === "completed" &&
+          turn.items?.some((item) => item.name === "background_check_due"),
+      );
+      return turns.length === count && turns[0];
+    }, "到期检查应唤醒原对话一次");
+  const started = (await list()).jobs.find(({ id }) => id === jobId);
+  assert.equal(started.status, "running");
+  assert.ok(started.nextCheckAt >= started.startedAt + 300_000);
+  const jobFile = join(state, "job-" + jobId + ".json");
+  const originalPid = JSON.parse(await readFile(jobFile, "utf8")).pid;
+  await workerClock.advance(300_000);
+  const firstCheck = await checkTurn(1);
+  assert.ok(
+    firstCheck.items.some((item) => item.tool === "background_schedule_check"),
+  );
+  const rescheduled = (await list()).jobs.find(({ id }) => id === jobId);
+  assert.ok(rescheduled.nextCheckAt >= started.nextCheckAt + nextEstimate);
+  if (liveBrowser) await ui.inspectRescheduledCheck(rescheduled.nextCheckAt);
+  assert.equal(checkRequests.size, 1);
+  process.kill(originalPid, 0);
+  await workerClock.advance(nextEstimate);
+  await checkTurn(2);
+  await until(
+    async () => (await list()).checks?.length === 2,
+    "两次检查投递已结算",
+  );
+  const beforeExit = (await list()).jobs.find(({ id }) => id === jobId);
+  assert.equal(beforeExit.status, "running");
+  assert.equal(beforeExit.nextCheckAt, undefined);
+  assert.equal(beforeExit.delivery, "pending");
+  assert.equal(JSON.parse(await readFile(jobFile, "utf8")).pid, originalPid);
+  process.kill(originalPid, 0);
+  if (liveBrowser) await ui.inspectCheckReceipt();
+  await until(async () => {
+    const page = await direct.rpc("thread/turns/list", {
+      threadId: enabledNative.threadId,
+      itemsView: "full",
+    });
+    return page.data.some(
+      (turn) =>
+        turn.status === "completed" &&
+        turn.items?.some((item) => item.name === "background_check_due"),
+    );
+  }, "已接手原生终端应支持到期检查");
   process.kill(enabledNative.pid, 0);
   await writeFile(join(workspace, "release-fixture"), "done");
   await until(async () => {
@@ -765,11 +904,16 @@ try {
         JSON.parse(await readFile(join(state, file), "utf8")),
       ),
   );
-  const batch = batches.find((value) => value.threadId === thread.id);
+  const batch = batches.find(
+    (value) => value.threadId === thread.id && !value.checkpoints,
+  );
   assert(
     await received(direct.rpc, batch),
     "真实 Codex 历史必须支持完成结果回执核对",
   );
+  const checks = batches.filter((value) => value.checkpoints);
+  assert.equal(checks.length, 3);
+  for (const check of checks) assert(await received(direct.rpc, check));
   await delay(1200);
   assert.equal(
     jobRequests,
@@ -778,7 +922,7 @@ try {
   );
   assert.deepEqual(
     Object.fromEntries(nativeRequests),
-    { enabled: 3, disabled: 2, cancelled: 2 },
+    { enabled: 4, disabled: 2, cancelled: 2 },
     "原生终端模型请求数量应与执行、工具回执及唤醒轮次对应\n" + diagnostics,
   );
   assert.deepEqual(wakeRequests, [true, true]);
@@ -790,6 +934,7 @@ try {
         version,
         inference: "本机 Responses 模拟服务，未调用远程模型",
         jobRequests,
+        checkRequests: [...checkRequests.values()],
         threadUnloadedBeforeCompletion: !liveBrowser,
         wakeTurnStatus: wakeTurn.status,
         replyLength: replies[0].text.length,
@@ -806,7 +951,7 @@ try {
     ),
   );
   console.log(
-    `PASS ${version}：MCP 开关、原生 exec_command 订阅交接与停止，${liveBrowser ? "网页实时状态与续跑" : "关闭桥接后自动继续"}，完成结果仅投递一次`,
+    `PASS ${version}：MCP 软检查与改期、原进程持续运行、原生终端交接及停止，${liveBrowser ? "网页实时状态与续跑" : "关闭桥接后自动继续"}，完成结果仅投递一次`,
   );
 } finally {
   await ui?.close();

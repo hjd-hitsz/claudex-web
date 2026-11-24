@@ -16,7 +16,10 @@ type Job = {
   completedAt?: number;
   delivery?: string;
   exitCode?: number | null;
+  nextCheckAt?: number;
+  checkDelivery?: string;
 };
+type CheckReceipt = { id: string; deliveredAt: number };
 
 export function backgroundTaskViews(
   background: ReturnType<typeof createBackgroundService> | undefined,
@@ -36,12 +39,16 @@ export function backgroundTaskViews(
       expectedUpstream,
     });
   }
-  const list = async (threadId?: string): Promise<Job[]> => {
-    if (!background?.available || !background.listening()) return [];
+  const list = async (
+    threadId?: string,
+  ): Promise<{ jobs: Job[]; checks?: CheckReceipt[] }> => {
+    if (!background?.available || !background.listening()) return { jobs: [] };
     if (typeof threadId !== "string" || !threadId)
       throw new Error("缺少所属对话");
-    const result = (await tool(threadId, "background_list")) as { jobs: Job[] };
-    return result.jobs;
+    return (await tool(threadId, "background_list")) as {
+      jobs: Job[];
+      checks?: CheckReceipt[];
+    };
   };
   const summary = ({
     id,
@@ -52,6 +59,8 @@ export function backgroundTaskViews(
     completedAt,
     delivery,
     exitCode,
+    nextCheckAt,
+    checkDelivery,
   }: Job) => ({
     id,
     title,
@@ -61,9 +70,12 @@ export function backgroundTaskViews(
     completedAt,
     delivery,
     exitCode,
+    nextCheckAt,
+    checkDelivery,
   });
   async function owned({ threadId, taskId }: NativeParams) {
-    const job = (await list(threadId)).find((job) => job.id === taskId);
+    const { jobs } = await list(threadId);
+    const job = jobs.find((job) => job.id === taskId);
     if (!job || !/^[a-f0-9-]{36}$/.test(job.id))
       throw new Error("该对话中没有此后台任务");
     return job;
@@ -72,8 +84,9 @@ export function backgroundTaskViews(
     [
       "thread/backgroundTasks/list",
       async ({ threadId }) => {
-        const jobs = await list(threadId);
+        const { jobs, checks } = await list(threadId);
         return {
+          checks,
           tasks: jobs.filter((job) => job.status === "running").map(summary),
           completed: jobs
             .filter(

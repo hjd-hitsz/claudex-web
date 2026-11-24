@@ -1,5 +1,6 @@
 import React from "react";
 import { Square, TerminalSquare } from "lucide-react";
+import { BackgroundCheckTime } from "./background-check-time.jsx";
 
 export function BackgroundTaskList({ tasks, stopping, error, stop, onSelect }) {
   if (!tasks.length && !error) return null;
@@ -31,6 +32,7 @@ export function BackgroundTaskList({ tasks, stopping, error, stop, onSelect }) {
                     秒
                   </small>
                 )}
+                <BackgroundCheckTime task={task} />
               </span>
             </button>
             <button

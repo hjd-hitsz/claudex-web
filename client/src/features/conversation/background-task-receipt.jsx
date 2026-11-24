@@ -1,5 +1,5 @@
 import React from "react";
-import { backgroundCompletionResults } from "../../domain/background-results.js";
+import { backgroundNoticeResults } from "../../domain/background-results.js";
 import { set } from "../../store.js";
 
 const jobStatuses = {
@@ -10,13 +10,13 @@ const jobStatuses = {
   interrupted: "已中断",
 };
 
-export function BackgroundCompletionReceipt({ items, status, threadId }) {
-  const results = items.flatMap(backgroundCompletionResults);
+export function BackgroundTaskReceipt({ items, status, threadId, check }) {
+  const results = items.flatMap(backgroundNoticeResults);
   if (!results.length) return null;
   return (
     <section
       className="background-completion-receipt"
-      aria-label="后台任务结果"
+      aria-label={check ? "后台终端检查" : "后台任务结果"}
     >
       {status === "completed" && <p>模型本轮未生成回复正文。</p>}
       <ul>
@@ -25,7 +25,7 @@ export function BackgroundCompletionReceipt({ items, status, threadId }) {
             <li key={id}>
               <span>{title}</span>
               <small>
-                {jobStatuses[jobStatus] || jobStatus}
+                {check ? "检查时仍在运行" : jobStatuses[jobStatus] || jobStatus}
                 {exitCode != null && ` · 退出码 ${exitCode}`}
               </small>
               {threadId && (

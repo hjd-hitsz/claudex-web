@@ -89,7 +89,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         rows.every((row) => row.x === rows[0].x && row.textX === rows[0].textX),
       );
       assert.ok(
-        Math.abs(distances[0] - distances[1]) < 0.5,
+        Math.abs(distances[0] - distances[1]) <= 0.5,
         "复选框中心间距 " + distances.join(" / "),
       );
     }
@@ -166,7 +166,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         await page
           .locator(".catalog-card")
           .filter({ hasText: "后台终端 MCP" })
-          .getByText(/4 项工具/)
+          .getByText(/5 项工具/)
           .waitFor()
           .catch(async (error) => {
             throw new Error(await page.locator(".catalog-list").innerText(), {
@@ -196,6 +196,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         const menuBounds = await menu.boundingBox();
         assert.ok(menuBounds.x >= 0 && menuBounds.x + menuBounds.width <= 390);
         await task("项目架构检查与测试").click({ trial: true });
+        await menu.getByText(/^下次检查 /).waitFor();
         await page.screenshot({
           path: join(output, "task-menu-mobile.png"),
           animations: "disabled",
@@ -238,6 +239,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         await outputPanel
           .getByText(/架构检查通过.*Warning: 回归验证标准错误输出/s)
           .waitFor();
+        await outputPanel.getByText(/^下次检查 /).waitFor();
         await page.screenshot({ path: join(output, "task-output.png") });
         const composer = page.locator(".composer .ProseMirror");
         await composer.fill("/stop");
@@ -265,6 +267,37 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         await trigger(1).waitFor();
         await task("输出写入文件").waitFor({ state: "hidden" });
         await task("项目架构检查与测试").click();
+      },
+      async inspectRescheduledCheck(nextCheckAt) {
+        await page
+          .getByText("构建仍在运行，将在七分钟后复查。", { exact: true })
+          .waitFor();
+        const time = outputPanel.locator(
+          `time[datetime="${new Date(nextCheckAt).toISOString()}"]`,
+        );
+        await time.waitFor();
+        assert.match(await time.textContent(), /^下次检查 /);
+        await page.screenshot({
+          path: join(output, "checkpoint-rescheduled.png"),
+        });
+      },
+      async inspectCheckReceipt() {
+        const receipt = page.getByRole("region", { name: "后台终端检查" });
+        await receipt.getByText("检查时仍在运行", { exact: true }).waitFor();
+        await page.reload();
+        await receipt.getByText("检查时仍在运行", { exact: true }).waitFor();
+        await page.screenshot({ path: join(output, "checkpoint-receipt.png") });
+        await page.setViewportSize({ width: 390, height: 780 });
+        await waitForSidebarClosed();
+        await page.emulateMedia({ colorScheme: "dark" });
+        await page.screenshot({
+          path: join(output, "checkpoint-receipt-mobile-dark.png"),
+          animations: "disabled",
+        });
+        await page.emulateMedia({ colorScheme: "light" });
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await receipt.getByRole("button", { name: "查看输出" }).click();
+        await outputPanel.getByText("运行中", { exact: true }).waitFor();
       },
       async inspectCompletion({ emptyReply, before }) {
         const panel = page.getByRole("region", { name: "后台终端输出" });

@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { userInfo } from "node:os";
+import { createBackgroundBatches } from "./background-batches.mjs";
 import { readTaskLog } from "./log.mjs";
 import { validateBackgroundArguments } from "./background-protocol.mjs";
 
@@ -20,6 +21,7 @@ const terminal = (job) => job.status !== "running";
 export async function createBackgroundJobs({
   directory,
   readThread,
+  now = Date.now,
   terminateNative,
   shell = process.env.SHELL || userInfo().shell || "/bin/sh",
 }) {
@@ -57,28 +59,34 @@ export async function createBackgroundJobs({
     } else {
       if (value.status === "running") {
         value.status = "interrupted";
-        value.completedAt = Date.now();
+        value.completedAt = now();
         value.error = "后台任务服务重启，原进程执行结果需要检查";
       }
       jobs.set(value.id, value);
       await save("job", value.id, value);
     }
   }
-  for (const batch of batches.values())
-    for (const id of batch.jobIds) {
-      const job = jobs.get(id);
-      if (job && !["consumed", "suppressed"].includes(job.delivery)) {
-        job.delivery = batch.status;
-        await save("job", id, job);
-      }
-    }
+  const settling = new Set();
+  const running = (job) =>
+    !terminal(job) && !settling.has(job.id) && job.delivery !== "suppressed";
+  const notifications = createBackgroundBatches({
+    jobs,
+    batches,
+    save,
+    running,
+    now,
+  });
+  await notifications.restore();
   const owned = (threadId, id) => {
     const job = jobs.get(id);
     if (!job || job.threadId !== threadId)
       throw new Error("该对话中没有此后台任务");
     return job;
   };
-  const publicJob = (job) => ({ ...job, pid: undefined });
+  function publicJob(job) {
+    const { pid, checkpoint, scheduleCalls, ...record } = job;
+    return { ...record, ...notifications.checkpointView(job) };
+  }
   const list = (threadId) =>
     [...jobs.values()]
       .filter((job) => !threadId || job.threadId === threadId)
@@ -106,7 +114,7 @@ export async function createBackgroundJobs({
       cwd: item.cwd,
       command: item.command,
       title: item.command,
-      startedAt: item.startedAtMs ?? Date.now(),
+      startedAt: item.startedAtMs ?? now(),
       completedAt: null,
       status: "running",
       exitCode: null,
@@ -132,15 +140,31 @@ export async function createBackgroundJobs({
   }
   async function finishNative(threadId, id, item) {
     const job = owned(threadId, id);
-    if (job.completedAt) return;
-    if (typeof item.aggregatedOutput === "string")
-      await writeFile(logPath(job), item.aggregatedOutput);
-    nativeLogSizes.delete(id);
-    job.completedAt = item.completedAtMs ?? Date.now();
-    job.exitCode = item.exitCode ?? null;
-    if (job.status === "running")
-      job.status = item.status === "completed" ? "succeeded" : item.status;
+    if (job.completedAt || settling.has(id)) return;
+    settling.add(id);
+    try {
+      if (typeof item.aggregatedOutput === "string")
+        await writeFile(logPath(job), item.aggregatedOutput);
+      nativeLogSizes.delete(id);
+      job.completedAt = item.completedAtMs ?? now();
+      job.exitCode = item.exitCode ?? null;
+      if (job.status === "running")
+        job.status = item.status === "completed" ? "succeeded" : item.status;
+      await save("job", id, job);
+    } finally {
+      settling.delete(id);
+    }
+  }
+  const newCheckpoint = (delay) => ({ id: randomUUID(), dueAt: now() + delay });
+  async function scheduleCheck(threadId, id, delay, callId) {
+    const job = owned(threadId, id);
+    if (callId && job.scheduleCalls?.includes(callId))
+      return { job: publicJob(job) };
+    if (!running(job)) throw new Error("只能为仍在运行的后台任务设置检查时间");
+    job.checkpoint = newCheckpoint(delay);
+    if (callId) job.scheduleCalls = [...(job.scheduleCalls ?? []), callId];
     await save("job", id, job);
+    return { job: publicJob(job) };
   }
   const start = async (threadId, callId, args) => {
     if (closing) throw new Error("后台任务服务正在停止");
@@ -168,8 +192,9 @@ export async function createBackgroundJobs({
         cwd: thread.cwd,
         command: args.command,
         title: args.title,
-        startedAt: Date.now(),
+        startedAt: now(),
         completedAt: null,
+        checkpoint: newCheckpoint(args.check_after_ms),
         status: "running",
         exitCode: null,
         delivery: "pending",
@@ -226,6 +251,7 @@ export async function createBackgroundJobs({
       const completion = new Promise((resolve) => (complete = resolve));
       completions.set(job.id, completion);
       child.on("close", async (code, signal) => {
+        settling.add(job.id);
         clearTimeout(timeout);
         if (!log.destroyed)
           await new Promise((resolve) => {
@@ -233,7 +259,7 @@ export async function createBackgroundJobs({
             log.end();
           });
         children.delete(job.id);
-        job.completedAt = Date.now();
+        job.completedAt = now();
         job.exitCode = code;
         job.signal = signal;
         if (job.status === "running")
@@ -248,6 +274,7 @@ export async function createBackgroundJobs({
         await save("job", job.id, job).catch((error) =>
           console.error("保存后台任务结果：", error.message),
         );
+        settling.delete(job.id);
         completions.delete(job.id);
         complete();
       });
@@ -301,13 +328,6 @@ export async function createBackgroundJobs({
     ]);
     return { job: publicJob(job) };
   };
-  const pendingJobs = () =>
-    [...jobs.values()].filter(
-      (job) =>
-        terminal(job) &&
-        job.delivery === "pending" &&
-        job.status !== "cancelled",
-    );
   return {
     list,
     read,
@@ -319,123 +339,52 @@ export async function createBackgroundJobs({
       if (typeof threadId !== "string" || !threadId)
         throw new Error("缺少所属对话");
       if (name === "background_start") return start(threadId, callId, args);
+      if (name === "background_schedule_check")
+        return scheduleCheck(
+          threadId,
+          args.job_id,
+          args.check_after_ms,
+          callId,
+        );
       if (name === "background_read") {
-        const result = await read(threadId, args.job_id, args.offset);
+        const { output, ...result } = await read(
+          threadId,
+          args.job_id,
+          args.offset,
+        );
         const job = owned(threadId, args.job_id);
-        if (
-          terminal(job) &&
-          ["pending", "batched", "preparing"].includes(job.delivery)
-        ) {
-          job.delivery = "consumed";
-          await save("job", job.id, job);
-          for (const batch of batches.values())
-            if (
-              batch.jobIds.includes(job.id) &&
-              batch.jobIds.every((id) =>
-                ["consumed", "suppressed"].includes(jobs.get(id)?.delivery),
-              )
-            ) {
-              batch.status = "suppressed";
-              await save("batch", batch.id, batch);
-            }
-          result.job = publicJob(job);
-        }
-        return result;
+        if (job.completedAt) await notifications.consumeCompletion(job);
+        return { ...result, output, job: publicJob(job) };
       }
-      if (name === "background_list") return { jobs: list(threadId) };
+      if (name === "background_list")
+        return {
+          jobs: list(threadId),
+          checks: notifications.recentChecks(threadId),
+        };
       return cancel(threadId, args.job_id);
     },
     snapshot() {
-      return { jobs: list(), batches: [...batches.values()] };
-    },
-    async claim(threadId, owner) {
-      const existing = [...batches.values()].find(
-        (batch) =>
-          batch.threadId === threadId &&
-          ["pending", "preparing"].includes(batch.status),
-      );
-      if (existing) {
-        if (
-          existing.status === "preparing" &&
-          existing.owner !== owner &&
-          Date.now() - existing.updatedAt < 120000
-        )
-          return null;
-        if (existing.status === "preparing") existing.status = "pending";
-        if (existing.status !== "pending") return null;
-        existing.owner = owner;
-        existing.status = "preparing";
-        existing.updatedAt = Date.now();
-        await save("batch", existing.id, existing);
-        return existing;
-      }
-      const selected = pendingJobs()
-        .filter((job) => job.threadId === threadId)
-        .slice(0, 8);
-      if (!selected.length) return null;
-      const batch = {
-        id: randomUUID(),
-        threadId,
-        jobIds: selected.map((job) => job.id),
-        owner,
-        status: "preparing",
-        updatedAt: Date.now(),
+      return {
+        jobs: list(),
+        batches: [...batches.values()],
+        dueChecks: notifications.dueThreads(),
       };
-      batches.set(batch.id, batch);
-      await save("batch", batch.id, batch);
-      for (const job of selected) {
-        if (["consumed", "suppressed"].includes(job.delivery)) continue;
-        job.delivery = "batched";
-        await save("job", job.id, job);
-      }
-      return batch;
     },
-    async updateBatch({ id, status, error, turnId, owner }) {
-      const batch = batches.get(id);
-      if (!batch) throw new Error("后台完成通知不存在");
-      if (owner && batch.owner !== owner)
-        throw new Error("后台完成通知已由另一服务处理");
-      if (
-        !["pending", "sending", "accepted", "uncertain", "suppressed"].includes(
-          status,
-        )
-      )
-        throw new Error("无效投递状态");
-      if (["accepted", "suppressed"].includes(batch.status)) return batch;
-      if (status === "sending") {
-        batch.attemptedAt = Date.now();
-        batch.deliveryJobIds = batch.jobIds.filter(
-          (jobId) =>
-            !["consumed", "suppressed"].includes(jobs.get(jobId)?.delivery),
-        );
-        if (!batch.deliveryJobIds.length) status = "suppressed";
-      }
-      Object.assign(batch, { status, error, turnId, updatedAt: Date.now() });
-      for (const jobId of batch.jobIds) {
-        const job = jobs.get(jobId);
-        if (job && !["suppressed", "consumed"].includes(job.delivery)) {
-          job.delivery = status;
-          job.deliveryError = error;
-          await save("job", job.id, job);
-        }
-      }
-      await save("batch", id, batch);
-      return batch;
-    },
+    claim: notifications.claim,
+    updateBatch: notifications.updateBatch,
+    readyToSend: notifications.readyToSend,
     async suppressThread(threadId, cancelRunning = false) {
+      const saved = [];
       for (const job of jobs.values())
         if (job.threadId === threadId) {
-          if (cancelRunning) await cancel(threadId, job.id);
+          if (cancelRunning) saved.push(cancel(threadId, job.id));
           else {
             job.delivery = "suppressed";
-            await save("job", job.id, job);
+            saved.push(save("job", job.id, job));
           }
         }
-      for (const batch of batches.values())
-        if (batch.threadId === threadId && batch.status !== "accepted") {
-          batch.status = "suppressed";
-          await save("batch", batch.id, batch);
-        }
+      saved.push(notifications.suppressBatches(threadId));
+      await Promise.all(saved);
       return {};
     },
     async close() {

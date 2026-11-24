@@ -1,6 +1,6 @@
 import { reasoningSummaries } from "./reasoning-summary.js";
 import { asyncQuestionState } from "./question-state.js";
-import { isBackgroundCompletion } from "./background-results.js";
+import { isBackgroundNotice } from "./background-results.js";
 
 // 每轮活动合并为一个过程区域，运行中的待答卡片独立显示，结束提问收入过程。
 export function conversationGroups(items, requests = [], turns = []) {
@@ -32,7 +32,7 @@ export function conversationGroups(items, requests = [], turns = []) {
   const processes = new Map();
   // 后台续跑由任务结果开启，首次用户输入也属于运行中的补充。
   const userTurns = new Set(
-    items.filter(isBackgroundCompletion).map((item) => item.turnId),
+    items.filter(isBackgroundNotice).map((item) => item.turnId),
   );
   const replyTurns = new Set();
   function processFor(item) {

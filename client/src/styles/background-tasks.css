@@ -58,6 +58,12 @@
   white-space: nowrap;
 }
 
+.background-task-select time,
+.background-task-output-check {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
 .background-completion-receipt {
   padding: 0.461538rem 0.769231rem;
   margin-block-start: 0.307692rem;

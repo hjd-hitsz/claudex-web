@@ -1,4 +1,4 @@
-import { backgroundCompletionJobs } from "../domain/background-results.js";
+import { backgroundNoticeKeys } from "../domain/background-results.js";
 import { newDraftKey } from "../infrastructure/backend-storage.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { backendEnabled } from "../domain/backend-visibility.js";
@@ -390,7 +390,7 @@ export function createThreadNavigation({
     });
     apply(loaded);
   }
-  async function refreshBackgroundResults(threadId, taskIds) {
+  async function refreshBackgroundResults(threadId, noticeKeys) {
     if (get().current?.id !== threadId) return [];
     const epoch = opening;
     const history = historyRevision;
@@ -413,10 +413,10 @@ export function createThreadNavigation({
             timings[item.turnId]?.status ?? statuses.get(item.turnId),
           ),
         )
-        .flatMap(backgroundCompletionJobs),
+        .flatMap(backgroundNoticeKeys),
     );
-    const missing = new Set(taskIds.filter((id) => !present.has(id)));
-    if (!missing.size) return taskIds;
+    const missing = new Set(noticeKeys.filter((id) => !present.has(id)));
+    if (!missing.size) return noticeKeys;
     const page = await rpc("thread/turns/list", {
       threadId,
       itemsView: "full",
@@ -427,7 +427,7 @@ export function createThreadNavigation({
       (turn) =>
         turn.status !== "inProgress" &&
         (turn.items || []).some((item) =>
-          backgroundCompletionJobs(item).some((id) => missing.has(id)),
+          backgroundNoticeKeys(item).some((id) => missing.has(id)),
         ),
     );
     if (finishedTurns.length) {
@@ -436,9 +436,9 @@ export function createThreadNavigation({
       records.recordTurnTimings(threadId, finishedTurns);
     }
     const finished = finishedTurns.flatMap((turn) =>
-      (turn.items || []).flatMap(backgroundCompletionJobs),
+      (turn.items || []).flatMap(backgroundNoticeKeys),
     );
-    return taskIds.filter((id) => present.has(id) || finished.includes(id));
+    return noticeKeys.filter((id) => present.has(id) || finished.includes(id));
   }
   async function ensureThread() {
     if (get().current) return get().current;

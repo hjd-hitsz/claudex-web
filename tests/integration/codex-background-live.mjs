@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 import { taskRequest } from "../../packages/background-terminal/client.mjs";
 import { authenticationFixture } from "../helpers/auth.mjs";
+import { backgroundWorkerClock } from "../helpers/background-worker-clock.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const source =
@@ -31,6 +32,7 @@ const version = execFileSync(binary, ["--version"], {
 const model = "gpt-6-luna";
 const sleepEnabled = process.env.BACKGROUND_SLEEP_DISABLED !== "1";
 const directory = await mkdtemp(join(tmpdir(), "claudex-background-live-"));
+const workerClock = await backgroundWorkerClock(directory);
 const codexHome = join(directory, "codex");
 const webHome = join(directory, "web");
 const state = join(directory, "tasks");
@@ -110,6 +112,7 @@ try {
   await new Promise((resolve) => port.close(resolve));
   const env = {
     ...process.env,
+    NODE_OPTIONS: workerClock.nodeOptions,
     CODEX_HOME: codexHome,
     CODEX_APP_SERVER_URL: upstream,
     CLAUDEX_BACKGROUND_TASKS_DIR: state,
@@ -240,12 +243,20 @@ try {
           args: {},
         })
       ).jobs;
+    const checks = {};
     if (release) {
       assert.deepEqual(tools, ["background_start"], name + " 首轮工具");
       assert.equal(calls[0].server, "claudex_background");
       const [job] = await list();
       assert.equal(job?.status, "running");
       assert.equal(job.native, undefined);
+      checks.firstDelayMs = job.nextCheckAt - job.startedAt;
+      const minutes = name === "download" ? [7, 20] : [3, 8];
+      assert.ok(
+        checks.firstDelayMs >= minutes[0] * 60_000 &&
+          checks.firstDelayMs <= minutes[1] * 60_000,
+        name + " 应按任务预估安排检查，实际毫秒 " + checks.firstDelayMs,
+      );
       assert.ok(
         firstItems.some(
           (item) => item.type === "agentMessage" && item.text.trim(),
@@ -254,6 +265,48 @@ try {
       await assert.rejects(readFile(join(cwd, "verified.txt")), {
         code: "ENOENT",
       });
+      if (name === "build") {
+        await writeFile(join(cwd, "progress-ready"), "");
+        await until(async () => {
+          const result = await taskRequest(state, "tool", {
+            threadId,
+            name: "background_read",
+            args: { job_id: job.id },
+          });
+          return result.output.includes(
+            "remaining phase is expected to need about six minutes",
+          );
+        }, "等候隔离构建的阶段进度");
+        await workerClock.advance(checks.firstDelayMs);
+        const check = await until(
+          async () =>
+            (await turns()).find(
+              (entry) =>
+                entry.status !== "inProgress" &&
+                entry.items?.some(
+                  (item) => item.name === "background_check_due",
+                ),
+            ),
+          "真实模型到期检查超时",
+        );
+        assert.equal(check.status, "completed", check.error?.message);
+        checks.checkTools = check.items
+          .filter((item) => item.tool)
+          .map((item) => item.tool);
+        assert.ok(
+          checks.checkTools.includes("background_schedule_check"),
+          "确认仍在运行时应改期",
+        );
+        assert.ok(!checks.checkTools.includes("background_cancel"));
+        const [scheduled] = await list();
+        assert.equal(scheduled.status, "running");
+        checks.rescheduledDelayMs =
+          scheduled.nextCheckAt - Date.now() - checks.firstDelayMs;
+        assert.ok(
+          checks.rescheduledDelayMs >= 3 * 60_000,
+          "改期应按剩余阶段留足时间",
+        );
+      }
       await release(cwd);
       const wake = await until(async () => {
         const resumed = (await turns()).find(
@@ -287,11 +340,17 @@ try {
         "quick-ok",
       );
     }
-    evidence.push({ name, tools, firstTurnMs, continued: Boolean(release) });
+    evidence.push({
+      name,
+      tools,
+      firstTurnMs,
+      continued: Boolean(release),
+      ...checks,
+    });
     console.log(JSON.stringify(evidence.at(-1)));
   }
   const build =
-    'node -e \'const fs=require("node:fs"); const timer=setInterval(()=>{if(fs.existsSync("release.bin")){clearInterval(timer);fs.copyFileSync("release.bin","artifact.bin")}},100)\'';
+    'node -e \'const fs=require("node:fs"); let reported=false; const timer=setInterval(()=>{if(!reported&&fs.existsSync("progress-ready")){reported=true;console.log("Setup complete. Test fixture is supplying the next input and the remaining phase is expected to need about six minutes.")}if(fs.existsSync("release.bin")){clearInterval(timer);fs.copyFileSync("release.bin","artifact.bin")}},100)\'';
   const download = `curl --noproxy '*' -fsS http://127.0.0.1:${http.address().port}/artifact.bin -o artifact.bin`;
   const verify =
     "成功后计算 artifact.bin 的 SHA-256，把十六进制哈希写到 verified.txt，并报告结果。";

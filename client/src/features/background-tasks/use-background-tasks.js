@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { backgroundCheckKey } from "../../domain/background-results.js";
 import { refreshBackgroundResults, rpc } from "../../store.js";
 import { useBackgroundPoll } from "./use-background-poll.js";
 
@@ -24,10 +25,11 @@ export function useBackgroundTasks(threadId, enabled) {
     1500,
     async (current) => {
       try {
-        const { tasks, completed = [] } = await rpc(
-          "thread/backgroundTasks/list",
-          { threadId },
-        );
+        const {
+          tasks,
+          completed = [],
+          checks = [],
+        } = await rpc("thread/backgroundTasks/list", { threadId });
         if (!current()) return;
         update(({ stopError }) => ({
           tasks,
@@ -45,6 +47,11 @@ export function useBackgroundTasks(threadId, enabled) {
                 Date.now() - task.completedAt < 300000),
           )
           .map((task) => task.id);
+        for (const check of checks) {
+          const key = backgroundCheckKey(check.id);
+          if (!scope.seen.has(key) && Date.now() - check.deliveredAt < 300000)
+            pending.push(key);
+        }
         if (pending.length) {
           const found = await refreshBackgroundResults(threadId, pending);
           if (current())

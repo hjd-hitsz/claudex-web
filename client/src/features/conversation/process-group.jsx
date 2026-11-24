@@ -8,8 +8,11 @@ import {
 } from "lucide-react";
 
 import { reasoningSummaries } from "../../domain/reasoning-summary.js";
-import { isBackgroundCompletion } from "../../domain/background-results.js";
-import { BackgroundCompletionReceipt } from "./background-completion-receipt.jsx";
+import {
+  isBackgroundCheck,
+  isBackgroundNotice,
+} from "../../domain/background-results.js";
+import { BackgroundTaskReceipt } from "./background-task-receipt.jsx";
 import { turnElapsedMs, formatElapsed } from "../../domain/turn-timing.js";
 import { ReasoningPart } from "./activity.jsx";
 import { userMessageText } from "../../domain/user-message.js";
@@ -47,14 +50,15 @@ export function ProcessGroup({
   cwd,
 }) {
   const [open, setOpen] = useState(false);
-  const background = group.items.some(isBackgroundCompletion);
+  const background = group.items.some(isBackgroundNotice);
+  const check = group.items.some(isBackgroundCheck);
   const turnStatus = working ? "inProgress" : (timing?.status ?? status);
   const label = background
     ? {
-        interrupted: "后台终端续跑已中断",
-        failed: "后台终端续跑失败",
-        inProgress: "后台终端正在续跑",
-      }[turnStatus] || "后台终端续跑"
+        interrupted: check ? "后台终端检查已中断" : "后台终端续跑已中断",
+        failed: check ? "后台终端检查失败" : "后台终端续跑失败",
+        inProgress: check ? "正在检查后台终端" : "后台终端正在续跑",
+      }[turnStatus] || (check ? "后台终端到期检查" : "后台终端续跑")
     : working
       ? "正在处理"
       : "工作过程";
@@ -126,10 +130,11 @@ export function ProcessGroup({
       {background &&
         !group.hasReply &&
         ["completed", "failed", "interrupted"].includes(turnStatus) && (
-          <BackgroundCompletionReceipt
+          <BackgroundTaskReceipt
             items={group.items}
             status={turnStatus}
             threadId={threadId}
+            check={check}
           />
         )}
       {working && !open && latest && (

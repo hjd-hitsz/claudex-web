@@ -18,7 +18,7 @@ for await (const line of input) {
       result = {
         protocolVersion: request.params.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "Codex 后台终端", version: "1" },
+        serverInfo: { name: "Codex 后台终端", version: "2" },
         instructions: BACKGROUND_INSTRUCTIONS,
       };
     } else if (request.method === "ping") result = {};

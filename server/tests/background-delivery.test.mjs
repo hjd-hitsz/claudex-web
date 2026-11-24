@@ -48,8 +48,9 @@ for (const finish of ["notification", "before-response", "disconnect"]) {
       "/tmp",
       `ws://127.0.0.1:${server.address().port}`,
       {
-        snapshot: () => ({ jobs: [job], batches: [] }),
+        snapshot: () => ({ jobs: [job], batches: [], dueChecks: [] }),
         claim: async () => batch,
+        readyToSend: () => batch.deliveryJobIds,
         read: async () => ({ job, output: "" }),
         async updateBatch({ status, turnId }) {
           job.delivery = status;

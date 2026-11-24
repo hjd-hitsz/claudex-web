@@ -4,9 +4,9 @@
 
 ## 后台终端回归
 
-独立 MCP 服务与 Codex 适配的部署方式见[后台终端说明](background-tasks.md)。命令及日志回归纳入单元测试。修改执行、取消和唤醒时按受影响后端验证真实原生调用。运行 `node --import ./tests/helpers/test-console.mjs tests/integration/codex-background-terminal.mjs`，在 systemd 命令不可用的夹具中通过网页 RPC 开启后台终端，以真实 Codex 和本机模拟 Responses 服务验证任务退出、通知进入模型请求、原生续跑终态和网页结果。关闭桥接的场景先确认独立进程仍可响应及原生对话卸载，再放行隔离任务完成。另覆盖仅独立服务持有订阅且启用零延迟卸载，以及没有回复正文时刷新仍可查看任务结果、退出码和日志。运行 `node tests/integration/claude-runtime-lifecycle.mjs` 对照 Claude SDK 的原生后台执行、停止和唤醒。
+独立 MCP 服务与 Codex 适配的部署方式见[后台终端说明](background-tasks.md)。单元测试覆盖参数校验、日志、检查点改期、取消、终态竞争和投递恢复。运行 `node --import ./tests/helpers/test-console.mjs tests/integration/codex-background-terminal.mjs`，在 systemd 命令不可用的夹具中，以真实 Codex 和本机模拟 Responses 服务验证软检查进入模型请求、改期后同一个进程继续运行，以及最终退出单独投递。测试只推进隔离任务服务的时钟。默认场景先关闭网页桥接并确认原生对话卸载，再触发两次检查和最终退出。设置 `BACKGROUND_LIVE_BROWSER=1` 并传入 `PLAYWRIGHT_MODULE` 和 `CHROME_PATH`，通过网页核对检查时间、运行状态、无回复检查回执、刷新恢复、输出和终态。运行 `node tests/integration/claude-runtime-lifecycle.mjs` 对照 Claude SDK 的原生后台执行、停止和唤醒。
 
-运行 `node --import ./tests/helpers/test-console.mjs tests/integration/codex-background-live.mjs`，通过隔离网页桥接和真实 `gpt-6-luna` 验证执行选择。测试使用 `CODEX_VALIDATION_HOME`、`CODEX_HOME` 或默认 Codex 目录的 ChatGPT 文件认证，在临时目录运行。长下载和构建在首轮完成后才放行，断言首轮直接调用 `background_start`、自动续跑完成文件校验，以及短命令使用前台执行。默认让模型可调用 `sleep`，设置 `BACKGROUND_SLEEP_DISABLED=1` 可对照。
+运行 `node --import ./tests/helpers/test-console.mjs tests/integration/codex-background-live.mjs`，通过隔离网页桥接和真实 `gpt-6-luna` 验证执行选择。测试使用 `CODEX_VALIDATION_HOME`、`CODEX_HOME` 或默认 Codex 目录的 ChatGPT 文件认证，在临时目录运行。长下载和构建验证模型按预期耗时填写检查时间，构建在到期后提供仍在运行的阶段进度，核对模型以新估计改期，随后放行并验证完成续跑及文件校验。短命令使用前台执行。默认让模型可调用 `sleep`，设置 `BACKGROUND_SLEEP_DISABLED=1` 可对照。
 
 ## 本地环境与源码启动
 

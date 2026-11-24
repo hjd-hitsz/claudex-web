@@ -33,7 +33,12 @@ async function fixture(t) {
       name: "background_start",
       threadId: "thread-a",
       callId: id,
-      args: { command: command(script), title: "隔离测试任务", ...extra },
+      args: {
+        command: command(script),
+        title: "隔离测试任务",
+        check_after_ms: 300_000,
+        ...extra,
+      },
     });
   return {
     directory,

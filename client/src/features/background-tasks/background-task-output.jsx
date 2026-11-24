@@ -3,6 +3,7 @@ import { ArrowDown, LoaderCircle } from "lucide-react";
 import { rpc, useStore } from "../../store.js";
 import { useBackgroundPoll } from "./use-background-poll.js";
 import { workspaceDownloadProps } from "../../infrastructure/workspace-files.js";
+import { BackgroundCheckTime } from "./background-check-time.jsx";
 
 const statuses = {
   succeeded: "已完成",
@@ -71,6 +72,10 @@ export function BackgroundTaskOutput({ task }) {
           )}
         </div>
       </div>
+      <BackgroundCheckTime
+        className="background-task-output-check"
+        task={result ?? task}
+      />
       <div className="background-task-output-body">
         {result && !output ? (
           <div className="background-task-empty">
