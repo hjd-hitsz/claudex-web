@@ -95,7 +95,7 @@ Claude Code 的附加能力通过后端扩展描述提供，采用显式命令�
 - 标准 Messages 供应商的请求转换保留原生思考控制及结构化输出，主请求中的 `adaptive`、`enabled` 和 `disabled` 按原文传递；省略 `thinking` 的原生请求按 Anthropic 的关闭语义显式传递 `{type: "disabled"}`。目标评估的 JSON schema 保持完整。供应商环境保持原生功能开启，避免全局关闭实验功能同时移除结构化输出。
 - 流式 `message_delta.stop_reason` 确定最终正文与计划正文；完整 assistant 消息提前到达时保留过程状态。刷新按原生消息标识恢复已确认的展示类型和阶段，正文仍读取原生内容。API 错误转换为轮次错误，公开提示与诊断详情分别保存。
 - `project-instructions.mjs` 在每次 `UserPromptSubmit` 从根目录到当前目录读取 `AGENTS.override.md` 或 `AGENTS.md`，同目录优先 override，保留路径、作用域和完整正文。每轮完整快照替换此前的 AGENTS 快照，空列表同样提交。读取失败结束当前提交，原生 `CLAUDE.md` 继续由 Claude Code 加载。
-- `hooks.mts` 处理提问、子代理及文件操作；`git-tool-changes.mjs` 记录工具实际引起的 Git 文件变化。`agent-history.mjs` 根据原生子代理目录、调用标识和消息恢复任务与接收历史，保留已分支对话中子代理的真实来源。
+- `hooks.mts` 处理提问、子代理及文件操作。Claude Code 的 `AskUserQuestion` 以题干为回答键，适配器只写入用户作答的题目，全部拒答时提交空回答映射；`git-tool-changes.mjs` 记录工具实际引起的 Git 文件变化。`agent-history.mjs` 根据原生子代理目录、调用标识和消息恢复任务与接收历史，保留已分支对话中子代理的真实来源。
 - SDK 会话启用原生文件 checkpoint。`Query.rewindFiles` 按用户消息恢复完整 checkpoint，并提供只读预览；原生分支从独立的文件历史开始。网页单文件撤销继续采用路径级补丁与当前文件校验，明确选择目标文件并保护用户并发编辑。
 - `goals.mjs` 使用原生 `/goal` 设置目标，由 CLI 的会话级 Stop 提示钩子评估条件并持续执行；通过 `getHooksListing` 与 SDK 导入的原生 `goal_status` 核对活动、完成及阻塞，保留显式设置和清除的 `sentinel`。网页保存目标面板、暂停和预算状态，使用实际 token 事件核算预算。`native-commands.mjs` 将内部清除指令按 UUID 与普通轮次隔离；刷新及分支保持这一隔离。`background-tasks.mjs` 接收原生任务事件、保留任务所有者并调用 SDK 停止后台终端；后台任务结束后的原生唤醒使用独立轮次和消息锚点保存。
 - 目标检查按原生记录 UUID 区分当前执行与旧结果。CLI 已结束轮次、目标钩子仍在且没有后台活动时，将目标显示为阻塞并保留原生检查错误；原生评估超时或返回无效结构时及时结算，等待明确的继续操作。后台任务仍运行时保留活动目标，等待真实原生唤醒；目标适配器使用原生评估结果，不另行创建评估请求。

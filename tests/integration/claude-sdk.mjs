@@ -15,7 +15,7 @@ const image =
 let sequence = 0,
   requestedWrite = false,
   requestedReadImage = false,
-  requestedAsk = false;
+  requestedAsks = 0;
 const service = await messagesServer((body) => {
   if (!requestedWrite && body.tools?.some((t) => t.name === "Write")) {
     requestedWrite = true;
@@ -39,12 +39,12 @@ const service = await messagesServer((body) => {
       },
     ];
   }
-  if (!requestedAsk) {
-    requestedAsk = true;
+  if (requestedAsks < 2) {
+    requestedAsks += 1;
     return [
       {
         type: "tool_use",
-        id: "toolu_fixture_question",
+        id: `toolu_fixture_question_${requestedAsks}`,
         name: "AskUserQuestion",
         input: {
           questions: [
@@ -54,6 +54,15 @@ const service = await messagesServer((body) => {
               options: [
                 { label: "通过", description: "继续" },
                 { label: "重试", description: "重试" },
+              ],
+              multiSelect: false,
+            },
+            {
+              header: "说明",
+              question: "需要补充说明吗？",
+              options: [
+                { label: "需要", description: "输出详细说明" },
+                { label: "省略", description: "只给出结论" },
               ],
               multiSelect: false,
             },
@@ -89,7 +98,15 @@ const adapter = createClaudeAdapter({
       queueMicrotask(() =>
         adapter.receive(
           {},
-          { id: message.id, result: { answers: { 0: { answers: ["通过"] } } } },
+          {
+            id: message.id,
+            result: {
+              answers: {
+                0: { answers: requestedAsks === 1 ? ["通过"] : [] },
+                1: { answers: [] },
+              },
+            },
+          },
         ),
       );
   },
@@ -158,6 +175,18 @@ try {
   );
   assert.equal(await readFile(join(cwd, "proof.txt"), "utf8"), "verified\n");
   assert.ok(events.some((e) => e.method === "item/tool/requestUserInput"));
+  const questionResults = service.requests
+    .at(-1)
+    .messages.flatMap(({ content }) => content)
+    .filter((block) =>
+      block.tool_use_id?.startsWith("toolu_fixture_question_"),
+    );
+  assert.match(questionResults[0].content, /选择验证结果.*通过/);
+  assert.doesNotMatch(questionResults[0].content, /需要补充说明吗/);
+  assert.equal(
+    questionResults[1].content,
+    "The user did not answer the questions.",
+  );
   const completed = events.find((e) => e.method === "turn/completed");
   const changed = await call("thread/items/list", { threadId: thread.id });
   assert.ok(

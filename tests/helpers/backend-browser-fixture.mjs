@@ -160,6 +160,7 @@ export function backendFixture(data) {
       const m = JSON.parse(raw),
         p = m.params || {};
       window.fixtureRequests.push(m);
+      if (!m.method) return;
       const thread = threads.find((t) => t.id === p.threadId);
       let result = { data: [] };
       if (m.method === "lan/backends/list") result = { backends };

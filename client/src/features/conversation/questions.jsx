@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import { Shield } from "lucide-react";
 import { useStore, sendMessage, respond } from "../../store.js";
+import {
+  questionRecordAnswers,
+  questionReply,
+} from "../../domain/question-state.js";
 import { QuestionRecord, UserInputForm } from "./user-input.jsx";
 
 function raiseFailure(error) {
@@ -19,12 +23,7 @@ export function AsyncQuestion({ item, context }) {
     return (
       <QuestionRecord
         questions={questions}
-        answers={Object.fromEntries(
-          item.questionAnswers.map((text, index) => [
-            String(index),
-            { answers: [text] },
-          ]),
-        )}
+        answers={questionRecordAnswers(item.questionAnswers)}
       >
         {context}
       </QuestionRecord>
@@ -32,29 +31,20 @@ export function AsyncQuestion({ item, context }) {
   const form = (
     <UserInputForm
       questions={questions}
-      isBlocking={false}
       isCompleted={!!item.questionClosed}
       draftKey={JSON.stringify([s.current?.id, item.id])}
       disabled={!s.connected || s.busy}
-      onSubmit={(answers) =>
-        sendMessage(
-          item.questions
-            .map(
-              (question, index) =>
-                `${question.title}\n回答：${answers[index].answers[0]}`,
-            )
-            .join("\n\n"),
-          [],
-          {
-            clearDraft: false,
-            questionId: item.id,
-            onFailure: raiseFailure,
-            questionAnswers: item.questions.map(
-              (_, index) => answers[index].answers[0],
-            ),
-          },
-        )
-      }
+      onSubmit={(answers) => {
+        const questionAnswers = item.questions.map(
+          (_, index) => answers[index].answers[0] ?? null,
+        );
+        return sendMessage(questionReply(item.questions, questionAnswers), [], {
+          clearDraft: false,
+          questionId: item.id,
+          onFailure: raiseFailure,
+          questionAnswers,
+        });
+      }}
     />
   );
   return item.questionClosed ? (
@@ -74,7 +64,6 @@ export function Question({ request }) {
     return (
       <UserInputForm
         questions={p.questions}
-        isBlocking={p.isBlocking}
         disabled={!s.connected}
         onSubmit={(answers) =>
           respond(request, { answers }, undefined, raiseFailure)

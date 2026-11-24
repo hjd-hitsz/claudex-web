@@ -41,6 +41,21 @@ export async function testQuestionInteraction(app, fixture) {
       },
     };
     const submitEvent = () => ({ preventDefault() {} });
+    const navigate = (label) =>
+      act(async () =>
+        view.root.findByProps({ "aria-label": label }).props.onClick(),
+      );
+    const choose = (index) =>
+      act(async () =>
+        view.root.findAllByProps({ type: "radio" })[index].props.onChange(),
+      );
+    const decline = () =>
+      act(async () =>
+        view.root
+          .findAllByType("button")
+          .find((button) => button.props.children === "拒答此题")
+          .props.onClick(),
+      );
     const showRequest = async (next = request, extra = {}) => {
       await act(async () => {
         app.set({
@@ -67,6 +82,7 @@ export async function testQuestionInteraction(app, fixture) {
       ],
     });
     assert.equal(view.root.findAllByType("form").length, 1);
+    assert.equal(view.root.findAllByType("fieldset").length, 1);
     assert.equal(
       view.root.findByProps({ type: "submit" }).props.disabled,
       true,
@@ -75,9 +91,20 @@ export async function testQuestionInteraction(app, fixture) {
     await act(async () =>
       firstGroup.findAllByType("input")[1].props.onChange(),
     );
+    await navigate("下一题");
     const details = view.root.findByType("textarea");
     await act(async () =>
       details.props.onChange({ target: { value: "第一行\n第二行" } }),
+    );
+    await navigate("上一题");
+    assert.equal(
+      view.root.findAllByProps({ type: "radio" })[1].props.checked,
+      true,
+    );
+    await navigate("下一题");
+    assert.equal(
+      view.root.findByType("textarea").props.value,
+      "第一行\n第二行",
     );
     assert.equal(
       view.root.findByProps({ type: "submit" }).props.disabled,
@@ -128,7 +155,7 @@ export async function testQuestionInteraction(app, fixture) {
       params: { ...request.params, questions: [question], isBlocking: false },
     };
     await showRequest(single);
-    assert.equal(view.root.findAllByType("input")[0].props.checked, true);
+    assert.equal(view.root.findAllByType("input")[0].props.checked, false);
     await act(async () => view.root.findAllByType("input")[2].props.onChange());
     assert.equal(
       view.root.findByProps({ type: "submit" }).props.disabled,
@@ -168,7 +195,9 @@ export async function testQuestionInteraction(app, fixture) {
       answers: { deployment: { answers: ["容器\n部署"] } },
     });
     await act(async () => view.unmount());
-    console.log("PASS 非阻塞提问预选、其他回答独立保存、断线保留回答及重试");
+    console.log(
+      "PASS 非阻塞提问由用户选择、其他回答独立保存、断线保留回答及重试",
+    );
 
     await showRequest({
       ...single,
@@ -188,10 +217,24 @@ export async function testQuestionInteraction(app, fixture) {
       },
     });
     assert.equal(view.root.findAllByProps({ type: "radio" }).length, 2);
+    await decline();
+    assert.equal(
+      view.root.findByType("fieldset").props["aria-label"],
+      "希望怎样部署？",
+    );
+    assert(view.root.findByProps({ role: "status" }));
+    await navigate("下一题");
     assert.equal(
       view.root.findByProps({ type: "password" }).props.autoComplete,
       "off",
     );
+    await decline();
+    await act(async () =>
+      view.root.findByType("form").props.onSubmit(submitEvent()),
+    );
+    assert.deepEqual(requests.findLast((m) => m.id === request.id).result, {
+      answers: { deployment: { answers: [] }, secret: { answers: [] } },
+    });
     await act(async () => view.unmount());
     console.log("PASS 自定义回答开关和私密输入字段");
 
@@ -226,7 +269,7 @@ export async function testQuestionInteraction(app, fixture) {
       }),
     );
     assert.equal(view.root.findAllByType("form").length, 1);
-    assert.equal(view.root.findAllByType("input")[0].props.checked, true);
+    assert.equal(view.root.findAllByType("input")[0].props.checked, false);
     await act(async () =>
       fixture.socket.emit("serverRequest/resolved", {
         threadId: "questions",
@@ -282,6 +325,8 @@ export async function testQuestionInteraction(app, fixture) {
       }),
     );
     assert.equal(view.root.findAllByType("form").length, 1);
+    await decline();
+    await navigate("下一题");
     await act(async () =>
       view.root
         .findByType("textarea")
@@ -310,7 +355,7 @@ export async function testQuestionInteraction(app, fixture) {
     assert.equal(steer.params.expectedTurnId, "async-turn");
     assert.equal(
       steer.params.input[0].text,
-      "选择运行方式\n回答：源码\n\n补充部署要求\n回答：保留配置",
+      "选择运行方式\n已拒答\n\n补充部署要求\n回答：保留配置",
     );
     assert.equal(app.get().draft, "尚未发送的草稿");
     assert.deepEqual(app.get().attachments, [{ id: "draft-file" }]);
@@ -345,6 +390,8 @@ export async function testQuestionInteraction(app, fixture) {
       items: [asyncItem],
       active: {},
     });
+    await choose(0);
+    await navigate("下一题");
     await act(async () =>
       view.root
         .findByType("textarea")
@@ -385,6 +432,13 @@ export async function testQuestionInteraction(app, fixture) {
       }),
     );
     assert.equal(view.root.findAllByType("form").length, 2);
+    await act(async () =>
+      view.root
+        .findAllByType("form")[0]
+        .findAllByProps({ type: "radio" })[0]
+        .props.onChange(),
+    );
+    await navigate("下一题");
     await act(async () =>
       view.root.findByType("textarea").props.onChange({
         target: { value: "单独回答第一张卡片" },

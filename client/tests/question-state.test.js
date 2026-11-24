@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   asyncQuestionState,
   questionAnswers,
+  questionReply,
 } from "../src/domain/question-state.js";
 
 const question = (id, title = "选择部署方式") => ({
@@ -15,6 +16,25 @@ const response = (id, text, props = {}) => ({
   type: "userMessage",
   content: [{ type: "text", text }],
   ...props,
+});
+
+test("异步提问恢复拒答状态并保留同名答案", () => {
+  const questions = [
+    { title: "选择部署方式" },
+    { title: "补充要求" },
+    { title: "选择通知渠道" },
+  ];
+  const answers = [null, "保留配置\n使用远程目录", "已拒答"];
+  const text = questionReply(questions, answers);
+  assert.equal(
+    text,
+    "选择部署方式\n已拒答\n\n补充要求\n回答：保留配置\n使用远程目录\n\n选择通知渠道\n回答：已拒答",
+  );
+  assert.deepEqual(questionAnswers(questions, text), answers);
+  assert.deepEqual(
+    questionAnswers(questions, questionReply(questions, [null, null, null])),
+    [null, null, null],
+  );
 });
 
 test("批量问题完整匹配并保留多行回答", () => {

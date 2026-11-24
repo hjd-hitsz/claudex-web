@@ -59,6 +59,26 @@
 }
 .user-input-card > .request-title {
   margin-bottom: 0.615385rem;
+  flex-wrap: wrap;
+}
+.question-navigation {
+  display: flex;
+  align-items: center;
+  gap: 0.461538rem;
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.question-navigation button {
+  width: 2.461538rem;
+  height: 2.461538rem;
+  padding: 0;
+}
+.question-navigation button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.38;
+  background: transparent;
 }
 .request-card pre {
   font: 0.846154rem/1.6 var(--mono);

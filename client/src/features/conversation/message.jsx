@@ -1,6 +1,7 @@
 import React from "react";
 import { Copy, GitBranch } from "lucide-react";
 import { get, report, copy, fork } from "../../store.js";
+import { questionRecordAnswers } from "../../domain/question-state.js";
 import { IconButton } from "../../ui/primitives.jsx";
 import { QuestionRecord } from "./user-input.jsx";
 import { RichText } from "../markdown/rich-text.jsx";
@@ -59,15 +60,7 @@ export function Message({
               question: question.title,
               options: question.options?.map((label) => ({ label })),
             }))}
-            answers={
-              item.questionAnswers &&
-              Object.fromEntries(
-                item.questionAnswers.map((text, index) => [
-                  String(index),
-                  { answers: [text] },
-                ]),
-              )
-            }
+            answers={questionRecordAnswers(item.questionAnswers)}
           />
         )}
       </article>

@@ -186,7 +186,6 @@ export async function testQuestions(app, requests, setResponse, emit) {
       });
       assert.equal(record.props.open, undefined);
       assert(visible().includes("提问已结束"));
-      assert(!visible().includes("需要你的回答"));
       assert(!visible().includes("回答已发送"));
       assert.equal(
         record.findAllByProps({ className: "answer-option recorded-option " })
@@ -336,6 +335,9 @@ export async function testQuestions(app, requests, setResponse, emit) {
     );
     await act(async () =>
       view.root.findAllByProps({ type: "radio" })[1].props.onChange(),
+    );
+    await act(async () =>
+      view.root.findByProps({ "aria-label": "下一题" }).props.onClick(),
     );
     await act(async () =>
       view.root

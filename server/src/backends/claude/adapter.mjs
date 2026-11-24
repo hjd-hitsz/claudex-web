@@ -331,10 +331,12 @@ export function createClaudeAdapter({
         if (q) {
           questions.delete(String(message.id));
           const answers = Object.fromEntries(
-            q.input.questions.map((question, i) => [
-              question.question,
-              (message.result?.answers?.[String(i)]?.answers || []).join(", "),
-            ]),
+            q.input.questions.flatMap((question, index) => {
+              const values = message.result?.answers?.[index]?.answers;
+              return values?.length
+                ? [[question.question, values.join(", ")]]
+                : [];
+            }),
           );
           q.resolve(
             message.error
