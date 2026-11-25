@@ -58,7 +58,7 @@ function insertMath(view, from, to, text) {
         (!text && match.index + match[0].length === offset)),
   );
   if (!matches.length) {
-    if (openFormula(source, $from.parentOffset) < 0) return false;
+    if (!text || openFormula(source, $from.parentOffset) < 0) return false;
     view.dispatch(state.tr.insertText(text, from, to).scrollIntoView());
     return true;
   }
@@ -80,20 +80,6 @@ function insertMath(view, from, to, text) {
 
 export function documentMathInput() {
   return {
-    handleDOMEvents: {
-      compositionend(view) {
-        requestAnimationFrame(() => {
-          if (view.isDestroyed || !view.dom.isConnected) return;
-          insertMath(
-            view,
-            view.state.selection.from,
-            view.state.selection.to,
-            "",
-          );
-        });
-        return false;
-      },
-    },
     handleTextInput(view, from, to, text) {
       if (view.composing) return false;
       return insertMath(view, from, to, text);
@@ -131,4 +117,10 @@ export function documentMathInput() {
       );
     },
   };
+}
+
+export function completeComposedMath(view) {
+  if (view.composing) return;
+  const { from, to } = view.state.selection;
+  insertMath(view, from, to, "");
 }

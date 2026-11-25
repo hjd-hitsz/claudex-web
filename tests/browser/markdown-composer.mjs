@@ -8,11 +8,16 @@ import { historyPerformanceFixture } from "../fixtures/history-performance.mjs";
 import { checkComposerSize } from "../helpers/composer-size.mjs";
 import { checkComposerEditing } from "../helpers/composer-editing.mjs";
 import { checkComposerMath } from "../helpers/composer-math.mjs";
-import { checkComposerListInput } from "../helpers/composer-list-input.mjs";
+import {
+  checkComposerListInput,
+  checkExpandedListComposition,
+  checkNestedListComposition,
+} from "../helpers/composer-list-input.mjs";
 import { checkComposerBlocks } from "../helpers/composer-blocks.mjs";
 import {
   holdDocumentEditor,
   checkComposerInitialization,
+  checkComposerCompositionHandoff,
 } from "../helpers/composer-initialization.mjs";
 const editorAssetTypes = {
   js: "text/javascript",
@@ -69,6 +74,14 @@ const external = [];
 const checks = [];
 let page;
 try {
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const loadingPage = await browser.newPage();
+  try {
+    await checkComposerCompositionHandoff(loadingPage, url);
+    checks.push("加载中组合输入保留原焦点，选词后交接已提交文字和光标");
+  } finally {
+    await loadingPage.close();
+  }
   page = await browser.newPage({
     viewport: { width: 1280, height: 900 },
   });
@@ -91,7 +104,7 @@ try {
     return route.continue();
   });
   const releaseEditor = await holdDocumentEditor(page);
-  await page.goto(`http://127.0.0.1:${server.address().port}`);
+  await page.goto(url);
   await page.getByRole("button", { name: /^简短对话/ }).click();
   await checkComposerInitialization(page, releaseEditor);
   checks.push("加载期间输入与跨对话草稿隔离、初始化选区和尺寸保持");
@@ -103,7 +116,10 @@ try {
   );
   const editing = await checkComposerEditing(page, output, true);
   await checkComposerListInput(page, output);
-  checks.push("列表中组合输入保留当前条目与光标，退格保留右侧正文");
+  await checkExpandedListComposition(page, output);
+  checks.push("列表组合输入时方向键保留光标，选词后支持移动、续写和退格");
+  await checkNestedListComposition(page, output);
+  checks.push("嵌套列表预编辑期间选区偏离时恢复正文位置");
   await checkComposerBlocks(page, output);
   checks.push(
     "正文中间粘贴代码、公式、表格保留顺序与光标，整次撤销、代码续写及拖动展开",
@@ -336,13 +352,12 @@ try {
       const response = data.fail
         ? { error: { message: "模拟发送失败" } }
         : { result: { turn: { id: "sent", status: "completed" } } };
-      setTimeout(
-        () =>
-          socket.onmessage({
-            data: JSON.stringify({ id: request.id, ...response }),
-          }),
-        data.delay || 0,
-      );
+      const complete = () =>
+        socket.onmessage({
+          data: JSON.stringify({ id: request.id, ...response }),
+        });
+      if (data.holdReply) data.completeReply = complete;
+      else complete();
     };
   });
   await page.getByRole("button", { name: "发送消息", exact: true }).click();
@@ -353,13 +368,27 @@ try {
   assert((await field.textContent()).includes("中文组合输入"));
   await page.evaluate(() => {
     window.historyFixture.fail = false;
-    window.historyFixture.delay = 150;
+    window.historyFixture.holdReply = true;
   });
   await page.getByRole("button", { name: "发送消息", exact: true }).click();
   await page
     .locator(".document-editor-viewport")
     .click({ position: { x: 20, y: 15 } });
-  await page.keyboard.insertText("后续草稿");
+  await page.waitForFunction(() => window.historyFixture.completeReply);
+  await device.send("Input.imeSetComposition", {
+    text: "houxu",
+    selectionStart: 5,
+    selectionEnd: 5,
+  });
+  await page.evaluate(() => {
+    window.historyFixture.completeReply();
+    window.historyFixture.holdReply = false;
+  });
+  await page.waitForFunction(
+    () => localStorage.getItem("cx-draft-short") === null,
+  );
+  assert.match(await field.textContent(), /houxu/);
+  await device.send("Input.insertText", { text: "后续草稿" });
   await page.waitForFunction(
     () => !document.querySelector('[aria-label="发送消息"]').disabled,
   );
@@ -368,7 +397,7 @@ try {
       await page.evaluate(() => localStorage.getItem("cx-draft-short"))
     ).includes("后续草稿"),
   );
-  checks.push("真实组合输入、选词期间暂停提交、失败重试及发送期间继续编辑");
+  checks.push("组合输入期间暂停快捷发送，失败重试后发送回执保护在编文本");
   await page.evaluate(() => {
     const data = window.historyFixture;
     const socket = data.socket;

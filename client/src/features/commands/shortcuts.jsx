@@ -45,6 +45,14 @@ export function useComposerShortcuts(area, submitAfterCodeLookup) {
     dismissed.current = null;
     const before = text.slice(0, position),
       match = before.match(/(^|\s)([@/])([^\s@]*)$/);
+    if (!trigger && !match) return;
+    if (
+      match &&
+      trigger?.end === position &&
+      trigger.kind === match[2] &&
+      trigger.query === match[3]
+    )
+      return;
     setTrigger(
       match
         ? {
@@ -210,7 +218,7 @@ export function useComposerShortcuts(area, submitAfterCodeLookup) {
       ?.scrollIntoView({ block: "nearest" });
   }, [selected, items.length]);
   function choose(item) {
-    if (!item || !trigger) return;
+    if (!item || !trigger || area.current?.composing) return;
     const text = store.get().draft;
     if (item.kind === "command" && item.native) {
       const selectedTrigger = trigger;
@@ -331,9 +339,11 @@ export function useComposerShortcuts(area, submitAfterCodeLookup) {
     store.setDraft(next);
     setTrigger(null);
     setIndex(0);
+    const editor = area.current;
     requestAnimationFrame(() => {
-      area.current?.focus();
-      area.current?.setSelectionRange(
+      if (area.current !== editor || editor?.composing) return;
+      editor?.focus();
+      editor?.setSelectionRange(
         t.start + replacement.length,
         t.start + replacement.length,
       );
@@ -360,9 +370,11 @@ export function useComposerShortcuts(area, submitAfterCodeLookup) {
     const position = trigger.start + replacement.length;
     store.setDraft(next);
     detect(next, position);
+    const editor = area.current;
     requestAnimationFrame(() => {
-      area.current?.focus();
-      area.current?.setSelectionRange(position, position);
+      if (area.current !== editor || editor?.composing) return;
+      editor?.focus();
+      editor?.setSelectionRange(position, position);
     });
   }
   function close() {
@@ -372,8 +384,7 @@ export function useComposerShortcuts(area, submitAfterCodeLookup) {
     setTrigger(null);
   }
   function keydown(e) {
-    if (!trigger || e.nativeEvent.isComposing || e.ctrlKey || e.metaKey)
-      return false;
+    if (!trigger || e.ctrlKey || e.metaKey) return false;
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -469,6 +480,7 @@ export function useComposerShortcuts(area, submitAfterCodeLookup) {
     open: !!trigger,
     activeId: items.length ? "shortcut-option-" + selected : undefined,
     detect,
+    clear: () => setTrigger(null),
     close,
     keydown,
   };

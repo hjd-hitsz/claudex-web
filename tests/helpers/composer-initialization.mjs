@@ -52,3 +52,49 @@ export async function checkComposerInitialization(page, release) {
     "长对话加载期间的草稿",
   );
 }
+
+export async function checkComposerCompositionHandoff(page, url) {
+  const release = await holdDocumentEditor(page);
+  await page.goto(url);
+  await page.getByRole("button", { name: /^简短对话/ }).click();
+  const fallback = page.locator(".markdown-composer > textarea");
+  await fallback.and(page.locator(":focus")).waitFor();
+  await fallback.fill("前文后文");
+  await fallback.evaluate((element) => element.setSelectionRange(2, 2));
+  const device = await page.context().newCDPSession(page);
+  try {
+    await device.send("Input.imeSetComposition", {
+      text: "buzai",
+      selectionStart: 5,
+      selectionEnd: 5,
+    });
+    assert.equal(await fallback.inputValue(), "前文buzai后文");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Control+Enter");
+    assert.equal(await fallback.inputValue(), "前文buzai后文");
+    release();
+    await page.locator(".document-editor-viewport .milkdown").waitFor({
+      state: "attached",
+    });
+    assert(await fallback.and(page.locator(":focus")).isVisible());
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem("cx-draft-short")),
+      "前文后文",
+    );
+    await device.send("Input.insertText", { text: "不再" });
+    await page.locator(".markdown-composer .ProseMirror:focus").waitFor();
+    await page.keyboard.insertText("跳行");
+    await page.waitForFunction(
+      () => localStorage.getItem("cx-draft-short") === "前文不再跳行后文",
+    );
+    assert.equal(
+      await page.evaluate(() =>
+        window.historyFixture.requests.some((r) => r.method === "turn/start"),
+      ),
+      false,
+    );
+  } finally {
+    release();
+    await device.detach();
+  }
+}

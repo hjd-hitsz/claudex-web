@@ -11,8 +11,8 @@ const fixtures = [
     `import React from 'react'; import {RichText} from ${JSON.stringify(root + "client/src/features/markdown/rich-text.jsx")}; export function FileMarkdownEditor({path,text,onChange}) {return React.createElement('div', null, React.createElement(RichText, {text,cwd:path.slice(0,path.lastIndexOf('/'))}), React.createElement('textarea', {'aria-label':'Markdown 文件预览', value:text, onChange:e=>onChange(e.target.value)}))}`,
   ],
   [
-    /^(?:.*\/)?markdown-editor(?:\.jsx)?$/,
-    `import React from 'react'; export function MarkdownEditor({inputRef,theme,expanded,activeId,...props}) {return React.createElement('textarea', {...props, 'aria-label': props['aria-label'] || '消息', 'aria-expanded': expanded, 'aria-activedescendant': activeId, ref: inputRef})}`,
+    /^(?:.*\/)?document-editor(?:\.js)?$/,
+    `export function createDocumentEditor() { throw new Error('富文本编辑器需要浏览器 DOM'); }`,
   ],
   [
     /^(?:.*\/)?code-editor(?:\.jsx)?$/,

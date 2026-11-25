@@ -26,10 +26,14 @@ import {
   documentCursor,
   documentPosition,
   selectDocumentPosition,
+  syncDocumentSelection,
 } from "./editor-selection.js";
 import { documentList } from "./document-list.js";
-import { documentCompositionEvents } from "./document-composition.js";
-import { documentMathInput } from "./document-math-input.js";
+import { documentCompositionSelection } from "./document-composition-selection.js";
+import {
+  completeComposedMath,
+  documentMathInput,
+} from "./document-math-input.js";
 import { documentPaste } from "./document-clipboard.js";
 import {
   documentCodeLine,
@@ -100,6 +104,7 @@ export async function createDocumentEditor(
 ) {
   let suppressed = false;
   let destroyed = false;
+  const composition = documentCompositionSelection();
   const crepe = new Crepe({
     root: parent,
     defaultValue: value,
@@ -147,8 +152,8 @@ export async function createDocumentEditor(
         ...mathInput,
         handleDOMEvents: {
           ...previous.handleDOMEvents,
-          ...mathInput.handleDOMEvents,
-          ...documentCompositionEvents,
+          copy: syncDocumentSelection,
+          cut: syncDocumentSelection,
         },
         ...(!file && {
           handleKeyDown: (view, event) =>
@@ -195,21 +200,27 @@ export async function createDocumentEditor(
       .use(documentMathSchema)
       .use(documentMathView);
   configure?.(crepe.editor);
-  crepe.editor.use(
-    $prose(
-      (ctx) =>
-        new Plugin({
-          view: () => ({
-            update(view, previous) {
-              if (!suppressed && !destroyed && !view.state.doc.eq(previous.doc))
-                onChange(
-                  serializeDraft(view.state.doc, ctx.get(serializerCtx)),
-                );
-            },
+  crepe.editor
+    .use(
+      $prose(
+        (ctx) =>
+          new Plugin({
+            view: () => ({
+              update(view, previous) {
+                if (
+                  !suppressed &&
+                  !destroyed &&
+                  !view.state.doc.eq(previous.doc)
+                )
+                  onChange(
+                    serializeDraft(view.state.doc, ctx.get(serializerCtx)),
+                  );
+              },
+            }),
           }),
-        }),
-    ),
-  );
+      ),
+    )
+    .use($prose(() => composition.plugin));
   try {
     await crepe.create();
   } catch (error) {
@@ -221,14 +232,18 @@ export async function createDocumentEditor(
   const serialize = crepe.editor.action((ctx) => ctx.get(serializerCtx));
   return {
     dom: view.dom,
-    get composing() {
-      return view.composing;
+    finishComposition(text, format) {
+      composition.finish(view, text);
+      if (format && !file) completeComposedMath(view);
     },
     focus() {
       view.focus();
     },
     getCursor(end = false) {
       return documentCursor(view, serialize, end);
+    },
+    syncSelection() {
+      syncDocumentSelection(view);
     },
     setCursor(start, end = start) {
       selectDocumentPosition(view, serialize, start, end);

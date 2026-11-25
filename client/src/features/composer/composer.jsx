@@ -71,12 +71,13 @@ export function Composer({ inputRef }) {
   const compaction = s.compactions[s.current?.id];
   const compacting = isCompacting(compaction);
   function submit() {
+    if (area.current?.composing) return;
     shortcuts.close();
     return submitAfterCodeLookup(submitComposer);
   }
   async function submitAfterCodeLookup(send) {
-    if (pendingSubmit.current) return;
     const editor = area.current;
+    if (pendingSubmit.current || editor?.composing) return;
     const sources = editor?.waitForCodeSources?.();
     if (!sources) return send();
     const initial = get();
@@ -87,6 +88,7 @@ export function Composer({ inputRef }) {
       const current = get();
       if (
         area.current !== editor ||
+        editor.composing ||
         current.current?.id !== initial.current?.id ||
         current.cwd !== initial.cwd ||
         current.backendId !== initial.backendId ||
@@ -143,10 +145,8 @@ export function Composer({ inputRef }) {
   return (
     <ComposerSurface
       expanded={enlarged}
-      onClose={() => {
-        setEnlarged(false);
-        requestAnimationFrame(() => area.current?.focus());
-      }}
+      inputRef={area}
+      onClose={() => setEnlarged(false)}
     >
       <InputQueue />
       <GoalSummary />
@@ -287,18 +287,11 @@ export function Composer({ inputRef }) {
                     : "描述任务，@ 引用文件，/ 使用命令…"
             }
             value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              if (document.activeElement?.closest?.(".cm-content"))
-                shortcuts.close();
-              else shortcuts.detect(e.target.value, e.target.selectionStart);
-            }}
-            onClick={(e) =>
-              shortcuts.detect(e.target.value, e.target.selectionStart)
-            }
-            onKeyUp={(e) => {
-              if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key))
-                shortcuts.detect(e.target.value, e.target.selectionStart);
+            onValueChange={setDraft}
+            onCompositionStart={shortcuts.clear}
+            onCursorActivity={(text, position) => {
+              if (position === null) shortcuts.clear();
+              else shortcuts.detect(text, position);
             }}
             onPaste={(e) => {
               const images = [...e.clipboardData.files].filter((f) =>
@@ -312,12 +305,7 @@ export function Composer({ inputRef }) {
             onKeyDown={(e) => {
               if (!e.target?.closest?.(".cm-content") && shortcuts.keydown(e))
                 return;
-              if (
-                e.key === "Enter" &&
-                e.ctrlKey &&
-                !e.shiftKey &&
-                !e.nativeEvent.isComposing
-              ) {
+              if (e.key === "Enter" && e.ctrlKey && !e.shiftKey) {
                 e.preventDefault();
                 submit();
               }
@@ -373,10 +361,7 @@ export function Composer({ inputRef }) {
                 title={enlarged ? "收起输入框" : "展开输入框"}
                 data-composer-expand={!enlarged || undefined}
                 aria-expanded={enlarged}
-                onClick={() => {
-                  setEnlarged(!enlarged);
-                  area.current?.focus();
-                }}
+                onClick={() => setEnlarged(!enlarged)}
               />
               {s.goalMode && (
                 <button

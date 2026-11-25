@@ -21,6 +21,7 @@ import {
 } from "../store.js";
 import { Conversation } from "../features/conversation/conversation.jsx";
 import { Composer } from "../features/composer/composer.jsx";
+import { isCompositionKey } from "../features/composer/document-composition.js";
 import { ContextWorkspace } from "../features/workspace/context-panel.jsx";
 import { BackgroundTaskProvider } from "../features/background-tasks/background-task-provider.jsx";
 import { Sidebar } from "./sidebar.jsx";
@@ -145,9 +146,10 @@ function AppShell() {
   }, [theme]);
   useEffect(() => {
     const key = (e) => {
+      if (e.defaultPrevented || isCompositionKey(e)) return;
       if (e.key === "Escape") {
         const state = get();
-        if (e.defaultPrevented || state.modal) return;
+        if (state.modal) return;
         if (state.sidebar && usesDrawer()) closeDrawer();
         else if (state.contextOpen) {
           set({ contextOpen: false });

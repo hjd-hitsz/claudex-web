@@ -285,9 +285,9 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 
 ### Markdown 富文本输入回归
 
-输入框采用直接编辑排版正文的交互，持久化与提交使用 Markdown。执行 `npm run build` 后，使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/markdown-composer.mjs` 验证生产构建。脚本使用隔离模拟后端和独立浏览器上下文，检查双美元符号公式的同段渲染、单美元符号普通文本、闭合前源码、源码重入及撤销重做；同时检查延迟加载期间的文本及选区恢复、快速切换对话后的实例隔离、正文及列表的完整边界、点击与方向键定位、撤销重做、滚动后继续输入、原生光标、连续换行自动增高及可用空间边界、混合块在正文中间粘贴及选区替换后的顺序、光标与整次撤销、代码续写、公共手柄拖动及展开收起、放大时底部输入区的轮廓与尺寸保留、只读预览与编辑器节点隔离、编辑区滚轮上下滚动、混合 Markdown 粘贴、表格直接编辑、任务复选框、公式、脚注、代码与 HTML 源码保留、草稿、发送及快捷建议，并覆盖深浅主题、80%～200% 缩放和窄屏。截图、结果和构建来源保存在 `.cache/markdown-composer`。组件回归使用文本输入适配，实际富文本行为由浏览器回归覆盖；发行包回归验证编辑器分块的安装与资源响应，浏览器回归拦截外站请求。
+输入框采用直接编辑排版正文的交互，持久化与提交使用 Markdown。执行 `npm run build` 后，使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/markdown-composer.mjs` 验证生产构建。脚本使用隔离模拟后端和独立浏览器上下文，检查双美元符号公式的同段渲染、单美元符号普通文本、闭合前源码、源码重入及撤销重做；同时检查延迟加载期间的文本及选区恢复、快速切换对话后的实例隔离、正文及列表的完整边界、点击与方向键定位、撤销重做、滚动后继续输入、原生光标、连续换行自动增高及可用空间边界、混合块在正文中间粘贴及选区替换后的顺序、光标与整次撤销、代码续写、公共手柄拖动及展开收起、放大时底部输入区的轮廓与尺寸保留、只读预览与编辑器节点隔离、编辑区滚轮上下滚动、混合 Markdown 粘贴、表格直接编辑、任务复选框、公式、脚注、代码与 HTML 源码保留、草稿、发送及快捷建议，并覆盖深浅主题、80%～200% 缩放和窄屏。截图、结果和构建来源保存在 `.cache/markdown-composer`。组件回归使用实际加载期文本框，富文本由浏览器回归覆盖；发行包回归验证编辑器分块的安装与资源响应，浏览器回归拦截外站请求。
 
-使用相同环境变量运行 `tests/browser/markdown-typing.mjs`，验证逐字键入、整段插入、粘贴和中文组合输入自动排版。覆盖列表内公式 `- $$x_{t+1}=x_{t}+dx$$`、标题、强调、链接、任务列表、表格分隔行及代码围栏进出，同时核对实际可见排版、表格光标和 Markdown 草稿。证据保存在 `.cache/markdown-typing/after`。
+`markdown-composer.mjs` 使用 Chromium 的组合输入接口验证列表预编辑和候选词提交。展开后，在末尾列表项输入拼音并按方向键，验证光标与正文位置。嵌套列表回归移除浏览器提供的替换范围，并在预编辑更新之间将光标交替移到下一条外层列表，核对逐字恢复位置、选词后续写和外层正文。回归还模拟确认文字被写入错误段落，核对原选区替换、相邻正文恢复和一次撤销。紧凑输入框覆盖列表中途选词、退格及后缀保留。使用相同环境变量运行 `tests/browser/markdown-typing.mjs`，验证逐字键入、整段插入、粘贴和中文组合输入自动排版。覆盖列表内公式 `- $$x_{t+1}=x_{t}+dx$$`、标题、强调、链接、任务列表、表格分隔行及代码围栏进出，同时核对实际可见排版、表格光标和 Markdown 草稿。自动排版证据保存在 `.cache/markdown-typing/after`。
 
 `markdown-composer.mjs` 的剪贴板回归覆盖代码编辑器语言信息、单行代码在段落中插入和续写、一次撤销、网页行内代码及多行带语言围栏。检查编辑区域的原生节点、Markdown 草稿和提交内容，并保存行内粘贴截图。
 
@@ -301,7 +301,7 @@ Ubuntu 安装指引回归在设备选择器中实际切换 Ubuntu，检查 DER �
 
 ### 原消息编辑回归
 
-挂载与文件引用回归在构建后执行 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/message-editing-mount.mjs`。脚本使用仅含 Markdown 文件引用的单条用户消息、隔离模拟历史及真实 Chromium 编辑器，验证点击编辑、取消重开、引用保留、长正文内部滚动、底部草稿和高度偏好隔离、Ctrl+Enter 提交及刷新后再次编辑。通过 Chromium 设置执行桌面与窄屏、深浅主题及 80%、100%、125%、150%、200% 实际页面缩放，并核对 DPR 和视口。重发前延迟代码匹配，确认匹配完成后才回退原轮次并携带位置重发。证据位于 `.cache/message-editing-mount/after`；对照时将 `client/dist` 和 `build-info.json` 保存到 `.cache/message-editing-mount/before`，设置 `EDIT_MOUNT_BEFORE=1` 运行对照。此回归直接挂载实际文档编辑器，组件测试中的文本框替身继续验证编辑用例。
+挂载与文件引用回归在构建后执行 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/message-editing-mount.mjs`。脚本使用仅含 Markdown 文件引用的单条用户消息、隔离模拟历史及真实 Chromium 编辑器，验证点击编辑、取消重开、引用保留、长正文内部滚动、底部草稿和高度偏好隔离、Ctrl+Enter 提交及刷新后再次编辑。通过 Chromium 设置执行桌面与窄屏、深浅主题及 80%、100%、125%、150%、200% 实际页面缩放，并核对 DPR 和视口。重发前延迟代码匹配，确认匹配完成后才回退原轮次并携带位置重发。证据位于 `.cache/message-editing-mount/after`；对照时将 `client/dist` 和 `build-info.json` 保存到 `.cache/message-editing-mount/before`，设置 `EDIT_MOUNT_BEFORE=1` 运行对照。组件回归使用实际加载期文本框验证编辑与重试。
 
 执行 `npm run build` 后，使用 `CHROME_PATH=/path/to/chromium PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser/message-editing.mjs` 验证原地编辑。脚本使用生产构建、独立浏览器上下文与持久化的模拟历史，检查与底部输入框一致的背景、边框、阴影和聚焦反馈、主操作按钮配色、两行固定高度、紧凑宽度、长文本内部滚动及按钮位置稳定、铅笔图标、取消、Enter 换行、Ctrl+Enter 发送、文件引用、回退和发送失败重试、底部草稿隔离、刷新后的替换结果及切换对话时的迟到响应，覆盖深浅主题、80% 至 200% 缩放与窄屏。截图及构建来源保存在 `.cache/message-editing-browser/`。通过 `BROWSER_BEFORE=1`、`BROWSER_BUILD_DIR` 和 `BROWSER_BUILD_INFO` 指定隔离的旧构建及来源，复现恢复图标、回填底部输入和覆盖草稿，证据保存在 `.cache/message-editing-before-browser/`。领域与组件回归另覆盖完整轮次分页、旧接口兼容、运行状态、过期编辑、批注及附件独立性。
 

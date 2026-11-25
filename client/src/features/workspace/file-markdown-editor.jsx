@@ -14,7 +14,7 @@ export function FileMarkdownEditor({ path, text, onChange }) {
         fill
         configure={(editor) => editor.use(fileDocumentViews(cwd))}
         aria-label="Markdown 文件预览"
-        onChange={(event) => onChange(event.target.value)}
+        onValueChange={onChange}
       />
     </div>
   );

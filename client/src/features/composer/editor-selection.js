@@ -1,6 +1,6 @@
 import { TextSelection } from "@milkdown/kit/prose/state";
 
-export function syncDocumentSelection(view) {
+function nativeTextSelection(view) {
   if (!view.hasFocus() || view.composing) return;
   const selection = view.dom.ownerDocument.getSelection();
   if (
@@ -11,11 +11,15 @@ export function syncDocumentSelection(view) {
     return;
   const anchor = view.posAtDOM(selection.anchorNode, selection.anchorOffset);
   const head = view.posAtDOM(selection.focusNode, selection.focusOffset);
-  const next = TextSelection.between(
+  return TextSelection.between(
     view.state.doc.resolve(anchor),
     view.state.doc.resolve(head),
   );
-  if (!next.eq(view.state.selection))
+}
+
+export function syncDocumentSelection(view) {
+  const next = nativeTextSelection(view);
+  if (next && !next.eq(view.state.selection))
     view.dispatch(view.state.tr.setSelection(next));
 }
 
@@ -26,12 +30,12 @@ function sourceOffset(view, serialize, position) {
 }
 
 export function documentCursor(view, serialize, end = false) {
-  syncDocumentSelection(view);
-  return sourceOffset(
-    view,
-    serialize,
-    end ? view.state.selection.to : view.state.selection.from,
-  );
+  const current = view.state.selection;
+  const selection =
+    current instanceof TextSelection
+      ? (nativeTextSelection(view) ?? current)
+      : current;
+  return sourceOffset(view, serialize, end ? selection.to : selection.from);
 }
 
 export function documentPosition(view, serialize, position) {

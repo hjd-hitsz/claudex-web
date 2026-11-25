@@ -37,7 +37,14 @@ export function GoalEditor() {
   const disabled =
     !s.connected || s.busy || s.goalBusy[id] || isCompacting(s.compactions[id]);
   async function save() {
-    if (disabled || saving.current || !dirty || !text.trim()) return;
+    if (
+      disabled ||
+      saving.current ||
+      inputRef.current?.composing ||
+      !dirty ||
+      !text.trim()
+    )
+      return;
     const tokenBudget = budgetText === "" ? null : Number(budgetText);
     if (
       tokenBudget !== null &&
@@ -114,10 +121,10 @@ export function GoalEditor() {
           theme={s.theme}
           rows={8}
           value={text}
-          onChange={(e) => edit(e.target.value)}
+          onValueChange={edit}
           placeholder="描述目标和可衡量的完成条件…"
           onKeyDown={(e) => {
-            if (e.key === "Enter" && e.ctrlKey && !e.nativeEvent.isComposing) {
+            if (e.key === "Enter" && e.ctrlKey) {
               e.preventDefault();
               save();
             }

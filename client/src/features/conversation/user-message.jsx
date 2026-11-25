@@ -19,6 +19,7 @@ import { Content } from "./user-content.jsx";
 import { ReferenceEditor } from "../composer/reference-editor.jsx";
 import { annotationQuote } from "../annotations/annotation-selection.js";
 import { CodeFileAttachments } from "../composer/code-file-attachments.jsx";
+import { isCompositionKey } from "../composer/document-composition.js";
 
 function MessageEditor({ item, threadId, onCancel }) {
   const s = useStore();
@@ -57,6 +58,7 @@ function MessageEditor({ item, threadId, onCancel }) {
     event?.preventDefault();
     if (
       disabled ||
+      input.current?.composing ||
       (!text.trim() && !attachments.length && !annotations.length)
     )
       return;
@@ -67,7 +69,9 @@ function MessageEditor({ item, threadId, onCancel }) {
       const sources = waiting ? await waiting : null;
       if (
         waiting &&
-        (editor !== input.current || get().current?.id !== threadId)
+        (editor !== input.current ||
+          editor.composing ||
+          get().current?.id !== threadId)
       )
         return;
       setPending("sending");
@@ -93,11 +97,7 @@ function MessageEditor({ item, threadId, onCancel }) {
       aria-label="编辑上一条消息"
       onSubmit={submit}
       onKeyDownCapture={(event) => {
-        if (
-          event.nativeEvent?.isComposing ||
-          event.isComposing ||
-          event.keyCode === 229
-        )
+        if (input.current?.composing || isCompositionKey(event.nativeEvent))
           return;
         if (event.key === "Enter" && event.ctrlKey) submit(event);
         if (
@@ -130,7 +130,7 @@ function MessageEditor({ item, threadId, onCancel }) {
           }
           theme={s.theme}
           aria-label="编辑消息"
-          onChange={(event) => setText(event.target.value)}
+          onValueChange={setText}
         />
       </div>
       {regularAttachments.length > 0 && (

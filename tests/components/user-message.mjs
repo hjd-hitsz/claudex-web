@@ -113,7 +113,10 @@ export async function testUserMessage(app, requests, setResponse) {
       undefined,
     );
     const editButton = () => view.root.findByProps({ title: "编辑上一条消息" });
-    const editor = () => view.root.findByProps({ "aria-label": "编辑消息" });
+    const editor = () =>
+      form()
+        .findAllByType("textarea")
+        .find(({ props }) => props["aria-label"] === "编辑消息");
     const form = () => view.root.findByType("form");
     await act(async () => editButton().props.onClick());
     assert.equal(editor().props.value, "检查 @planner.js。");
