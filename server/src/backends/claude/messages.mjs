@@ -61,7 +61,15 @@ export function convertMessage(
             },
       );
     if (content.length && isUserPrompt(message))
-      items.push({ id: message.uuid, turnId, type: "userMessage", content });
+      items.push({
+        id: message.uuid,
+        turnId,
+        type: "userMessage",
+        content,
+        ...(message.origin?.kind === "peer" && {
+          authorLabel: message.origin.name || message.origin.from,
+        }),
+      });
     for (const block of blocks.filter((b) => b.type === "tool_result")) {
       const prior = tools.get(block.tool_use_id);
       if (prior) {

@@ -14,7 +14,14 @@ const application = createWebApplication({
   authentication,
   version: readVersion(),
 });
-await application.start();
+try {
+  await application.start();
+} catch (error) {
+  await application.close().catch((closingError) => {
+    console.error(closingError);
+  });
+  throw error;
+}
 let closing;
 function shutdown() {
   closing ||= application.close().catch((error) => {

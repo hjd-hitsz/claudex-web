@@ -63,8 +63,12 @@ for (const method of ["thread/start", "thread/resume", "thread/fork"]) {
         threadId: "source",
         config: { model: "fixture-model", thread_unload_delay_secs: 1800 },
       });
-      const { "mcp_servers.claudex_references": referenceTool, ...config } =
-        app.requests.find((request) => request.method === method).params.config;
+      const {
+        "mcp_servers.claudex_references": referenceTool,
+        "mcp_servers.claudex_conversations": conversationTool,
+        ...config
+      } = app.requests.find((request) => request.method === method).params
+        .config;
       assert.deepEqual(config, {
         model: "fixture-model",
         thread_unload_delay_secs: 0,
@@ -78,6 +82,34 @@ for (const method of ["thread/start", "thread/resume", "thread/fork"]) {
         /^ws:\/\/127\.0\.0\.1:\d+\/?$/,
       );
       assert.equal(referenceTool.enabled, true);
+      assert.equal(conversationTool.command, process.execPath);
+      assert(
+        conversationTool.args[0].endsWith(
+          "/backends/codex/conversation-mcp.mjs",
+        ),
+      );
+      assert.equal(conversationTool.enabled, true);
+      let endpoint;
+      try {
+        endpoint = JSON.parse(
+          conversationTool.env.CLAUDEX_CONVERSATION_ENDPOINT,
+        );
+      } catch {
+        assert.fail("会话工具的本地连接配置须为有效的 JSON");
+      }
+      assert(
+        typeof endpoint.socketPath === "string" &&
+          endpoint.socketPath.endsWith(".sock"),
+      );
+      assert(
+        /^[0-9a-f]{32}$/.test(endpoint.runtimeId),
+        "会话工具须绑定本地后端实例",
+      );
+      assert(
+        typeof endpoint.token === "string" &&
+          /^[A-Za-z0-9_-]{43}$/.test(endpoint.token),
+        "会话工具须包含有效格式的本地凭据",
+      );
       if (method === "thread/start") {
         assert.equal(app.unsubscribed().length, 0);
         await app.rpc(client, "turn/start", { threadId: thread.id, input: [] });

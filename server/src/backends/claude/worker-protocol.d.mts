@@ -3,6 +3,11 @@ import type { RpcMessage } from "../../rpc-message.d.mts";
 import type { hasBackendWork } from "../../../../shared/backend-activity.mjs";
 import type { ExecutionBackend } from "./execution-types.d.mts";
 import type { workerRevision } from "./worker-revision.mjs";
+import type {
+  ConversationDelivery,
+  ConversationEnvelope,
+  ConversationThread,
+} from "./conversation-protocol.d.mts";
 
 export type WorkerBackend = ExecutionBackend & {
   stateDir: string;
@@ -44,7 +49,7 @@ export type WorkerState = {
 
 type WorkerOperations = {
   initialize: {
-    input: { options: WorkerOptions };
+    input: { options: WorkerOptions; conversationTools?: boolean };
     result: {
       pid: number;
       state: WorkerState;
@@ -60,6 +65,25 @@ type WorkerOperations = {
     result: Record<string, never>;
   };
   rpc: { input: { message: RpcMessage }; result: RpcMessage | null };
+  conversationList: {
+    input: object;
+    result: {
+      threads: (ConversationThread & { status: string })[];
+      complete: boolean;
+    };
+  };
+  conversationRead: {
+    input: { threadId: string };
+    result: ConversationThread | null;
+  };
+  conversationDeliver: {
+    input: { envelope: ConversationEnvelope };
+    result: ConversationDelivery;
+  };
+  conversationReconcile: {
+    input: { envelope: ConversationEnvelope };
+    result: ConversationDelivery;
+  };
 };
 
 export type Operation = keyof WorkerOperations;
@@ -71,10 +95,24 @@ export type WorkerCall<Kind extends Operation = Operation> = {
 }[Kind];
 export type WorkerResult<Kind extends Operation> =
   WorkerOperations[Kind]["result"];
-export type WorkerRequest = WorkerCall | { kind: "release" };
+export type ConversationToolReply = {
+  kind: "conversationToolReply";
+  id: string;
+  result?: unknown;
+  error?: string;
+};
+export type WorkerRequest =
+  WorkerCall | { kind: "release" } | ConversationToolReply;
 export type WorkerPacket =
   | { kind: "state"; message: WorkerState }
   | { kind: "event"; message: RpcMessage }
+  | {
+      kind: "conversationTool";
+      id: string;
+      context: { threadId: string };
+      name: string;
+      args: object;
+    }
   | {
       kind: "response";
       id?: string;

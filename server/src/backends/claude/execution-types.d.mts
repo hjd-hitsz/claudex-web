@@ -16,6 +16,11 @@ import type { AskUserQuestionInput } from "@anthropic-ai/claude-agent-sdk/sdk-to
 
 import type { createInputStream } from "./input-stream.mjs";
 import type { createNativeCommands } from "./native-commands.mjs";
+import type {
+  ConversationInput,
+  ConversationThread,
+  ConversationTool,
+} from "./conversation-protocol.d.mts";
 
 export type PendingQuestion = {
   threadId: string;
@@ -35,6 +40,8 @@ export type ProcessIdentity = {
 export type SessionRecord = {
   id: string;
   cwd: string;
+  archived?: boolean;
+  deleted?: boolean;
   nativeSessionId?: string;
   initialized?: boolean;
   providerId?: string;
@@ -52,6 +59,7 @@ export type SessionRecord = {
   active?: QueuedInput | { id: string; automatic: true } | null;
   updatedAt?: number;
   mode?: string;
+  review?: boolean;
   effort?: QueuedExecution["effort"];
   serviceTier?: string | null;
   name?: string;
@@ -66,6 +74,17 @@ export type SessionRecord = {
   goal?: { id: string; status: string } | null;
   backgroundTasks?: Record<string, { status: string }>;
   extraItems?: Record<string, { id: string; type: string }>;
+  peerInputs?: Record<
+    string,
+    {
+      nativeSessionId: string;
+      cwd: string;
+      from: ConversationThread;
+      nativeAccepted?: boolean;
+      nativeReceipt?: "claude-native-stream" | "claude-native-result";
+      rejected?: string;
+    }
+  >;
   agentCalls?: Record<
     string,
     {
@@ -123,16 +142,18 @@ export type QueuedInput = QueuedExecution & {
   input: readonly InputPart[];
   goalId?: string;
   createdAt: number;
+  peer?: ConversationInput;
 };
 
 export type ActiveExecution = {
   turn: ExecutionTurn;
-  queued: Pick<QueuedExecution, "review" | "compact">;
+  queued: Pick<QueuedInput, "review" | "compact" | "peer">;
   query?: Query | null;
   interrupted?: boolean;
   goalId?: string;
   automatic?: boolean;
   inputIds: Set<string>;
+  peerInputIds?: Set<string>;
   completedInputs?: Set<string>;
   promptError?: unknown;
   status?: {
@@ -194,6 +215,7 @@ export type SessionDependencies = {
   }) => void;
   questions: Map<string, PendingQuestion>;
   observeMessage?: (threadId: string, message: SDKMessage) => void;
+  callConversationTool?: ConversationTool;
   goals: {
     beforeTool(threadId: string): ReturnType<HookCallback>;
     observe(
@@ -242,6 +264,7 @@ export type ExecutionActivity = {
   ownerError?: unknown;
   fileSuggestionsError?: unknown;
   nativeState?: SDKSessionStateChangedMessage["state"];
+  correlatedInput?: boolean;
   activityPending?: boolean;
   rateLimits?: Map<string, SDKRateLimitInfo>;
   terminalCommands?: string[];
@@ -251,7 +274,11 @@ export type ExecutionActivity = {
 type SavedIndex = { sessions: Record<string, SessionRecord> };
 export type RuntimeDependencies = Pick<
   SessionDependencies,
-  "providers" | "broadcast" | "questions" | "observeMessage"
+  | "providers"
+  | "broadcast"
+  | "questions"
+  | "observeMessage"
+  | "callConversationTool"
 > & {
   backend: ExecutionBackend & { stateDir: string };
   storage: {

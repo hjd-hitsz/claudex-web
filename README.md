@@ -111,6 +111,10 @@ DeepSeek 等预置供应商直接填写 API Key。
 - [开发者指南](docs/development.md)介绍源码运行与开发验证，[架构设计](docs/architecture.md)说明模块边界。
 - [版本更新](https://github.com/hjd-hitsz/claudex-web/releases)与[变更日志](CHANGELOG.md)记录版本变化。
 
+## 致谢
+
+感谢 [ysys143/xsm](https://github.com/ysys143/xsm) 为通用对话管理器的设计提供参考。
+
 ## 许可证
 
 Copyright (C) 2026 Claudex Web contributors.

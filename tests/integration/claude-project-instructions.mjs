@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createClaudeRuntime } from "../../server/src/backends/claude/runtime.mjs";
 import { createStorage } from "../../server/src/backends/storage.mjs";
 import { createCompactions } from "../../server/src/compaction.mjs";
+import { conversationCollaborationInstructions } from "../../server/src/conversation-manager/instructions.mjs";
 import { messagesServer } from "../helpers/claude-messages-server.mjs";
 
 const root = await mkdtemp(
@@ -113,6 +114,14 @@ function currentContext(request) {
 try {
   await runtime.check();
   const first = await send("INSTRUCTIONS_FIRST_PROOF");
+  assert.ok(
+    !JSON.stringify(first).includes(
+      JSON.stringify(
+        conversationCollaborationInstructions("claudex_conversation"),
+      ).slice(1, -1),
+    ),
+    "the native prompt leaves out collaboration policy when its MCP server is not registered",
+  );
   const firstContext = currentContext(first);
   assert.ok(firstContext.includes(inherited));
   assert.ok(firstContext.includes(initial));

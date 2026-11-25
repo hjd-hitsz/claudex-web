@@ -243,6 +243,7 @@ claudex-web service restart-when-idle
 ## 数据保存与迁移
 
 - Codex 和 Claude Code 的原生对话、配置及登录凭据继续由各自 CLI 管理。网页对话索引和供应商设置保存在 `CLAUDEX_WEB_CONFIG_DIR`；迁移网页时保留该目录，并将后端连接指向本机 CLI 的实际配置目录。系统密码仅用于登录验证。双重验证密钥位于网页配置目录下的私有文件 `auth/totp.sqlite`，请按登录凭据保护该目录和备份。
+- 会话间的消息正文、回执及回复关联保存在 `CLAUDEX_WEB_CONFIG_DIR/conversation-manager/messages.sqlite`。迁移前停止网页桥接，再随配置目录复制账本，并保留仅服务用户可访问的权限。同一配置目录由一个桥接进程管理。Codex 会话间通信需要 app-server 与网页桥接位于同一台主机，并以同一系统用户运行。
 - 草稿、置顶、固定文件夹、项目快捷列表和主题保存在当前浏览器中。固定文件夹在全部对话归档后仍会在刷新或重新打开网页时显示；手动添加的项目自动固定，取消固定后在下次加载时按未归档对话重新确定是否显示。使用同一浏览器及站点地址可恢复固定记录，清除站点数据会清除这些记录。
 - Codex 每个项目上次选择的模型和思考强度保存在服务所在电脑的 `CLAUDEX_WEB_CONFIG_DIR/project-models.json`。Claude Code 项目选择保存在 `CLAUDEX_WEB_CONFIG_DIR/backends/claude/project-models.json`，迁移服务时分别保留。同项目新建沿用当前选择，跨项目及重新打开网页时恢复目标项目设置，清空浏览器数据后可再次从服务端读取。保存失败时会提示重试。切换模型时保留当前思考强度，目标模型缺少该档位时采用最近的可用档位，距离相同时选较低档。
 - “未分类”对话的文件保存在 `CLAUDEX_WEB_CONFIG_DIR/workspaces/chat-XXXXXX`，首次发送时分配。迁移电脑时随 Claudex Web 配置目录一起保留。

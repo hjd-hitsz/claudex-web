@@ -92,7 +92,19 @@ export function createClaudeSessions({
         ])
       : [[], []];
     const records = historyTurns(
-      visibleSessionMessages(messages, s.internalInputIds),
+      visibleSessionMessages(messages, s.internalInputIds).map((message) => {
+        const peer = message.type === "user" && s.peerInputs?.[message.uuid];
+        return peer
+          ? {
+              ...message,
+              origin: {
+                kind: "peer",
+                from: peer.from.threadId,
+                name: peer.from.title,
+              },
+            }
+          : message;
+      }),
       s.turns,
       s.turnIds,
       s.inputTurns,

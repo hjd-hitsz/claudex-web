@@ -47,6 +47,7 @@ type HookOptions = {
   broadcast: SessionDependencies["broadcast"];
   questions: Map<string, PendingQuestion>;
   goalBeforeTool: HookCallback;
+  conversationToolGuard?: NonNullable<Options["hooks"]>["PreToolUse"];
   onPromptFailure: (error: unknown) => void;
 };
 
@@ -61,6 +62,7 @@ export function createRunHooks({
   broadcast,
   questions,
   goalBeforeTool,
+  conversationToolGuard = [],
   onPromptFailure,
 }: HookOptions): NonNullable<Options["hooks"]> {
   const snapshots = new Map<string, Snapshot>();
@@ -251,6 +253,7 @@ export function createRunHooks({
     ],
     PreToolUse: [
       { hooks: [goalBeforeTool] },
+      ...conversationToolGuard,
       {
         matcher: "AskUserQuestion|Write|Edit|NotebookEdit|Agent|Bash",
         hooks: [before],

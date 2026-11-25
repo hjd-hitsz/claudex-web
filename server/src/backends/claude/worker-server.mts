@@ -8,6 +8,7 @@ import { createBackendConfiguration } from "../configuration.mjs";
 import { createProviders } from "../providers.mjs";
 import { workerRevision } from "./worker-revision.mjs";
 import { readWorkerLines } from "./worker-lines.mjs";
+import { workerConversationTools } from "./worker-conversation-tools.mjs";
 import { hasBackendWork } from "../../../../shared/backend-activity.mjs";
 import type { RpcMessage } from "../../rpc-message.d.mts";
 import type {
@@ -33,8 +34,19 @@ process.umask(0o077);
 await mkdir(dataDir, { recursive: true, mode: 0o700 });
 await prepareWorkerDirectory(dirname(socketPath));
 const optionsPath = join(dataDir, "worker-options.json");
-type WorkerSocket = Socket & { initialized?: boolean };
+type WorkerSocket = Socket & {
+  initialized?: boolean;
+  conversationTools?: boolean;
+};
 const clients = new Set<WorkerSocket>();
+const conversationTools = workerConversationTools(
+  () =>
+    [...clients].findLast(
+      (socket) =>
+        socket.initialized && socket.conversationTools && !socket.destroyed,
+    ),
+  send,
+);
 const revision = await workerRevision();
 let adapter: ReturnType<typeof createClaudeAdapter> | undefined;
 let options:
@@ -133,6 +145,7 @@ async function initialize(value: WorkerOptions) {
       ...value,
       providers,
       readSubagentSettings: () => configuration.readSubagentSettings("claude"),
+      callConversationTool: conversationTools.call,
       send: (
         client: { deliver(message: RpcMessage): void },
         message: RpcMessage,
@@ -156,7 +169,10 @@ const server = net.createServer((socket) => {
     );
   });
   socket.on("error", () => {});
-  socket.on("close", () => clients.delete(socket));
+  socket.on("close", () => {
+    clients.delete(socket);
+    conversationTools.disconnect(socket);
+  });
 });
 async function handle(socket: WorkerSocket, line: string) {
   let request: WorkerRequest | undefined;
@@ -167,6 +183,7 @@ async function handle(socket: WorkerSocket, line: string) {
       const state = await currentState();
       if (!options) throw new Error("Claude IPC 尚未初始化");
       socket.initialized = true;
+      socket.conversationTools = request.conversationTools === true;
       reply(socket, request, {
         pid: process.pid,
         state,
@@ -185,6 +202,8 @@ async function handle(socket: WorkerSocket, line: string) {
       throw new Error("Claude IPC 尚未初始化");
     if (request.kind === "state")
       return reply(socket, request, await currentState());
+    if (request.kind === "conversationToolReply")
+      return conversationTools.accept(socket, request);
     if (request.kind === "release") {
       adapter.releaseUnusedThreads();
       return;
@@ -221,12 +240,29 @@ async function handle(socket: WorkerSocket, line: string) {
       reply(socket, request, {});
       return shutdown();
     }
-    if (request.kind !== "rpc") throw new Error("未知 Claude IPC 操作");
     if (stopping) throw new Error("Claude 后端正在停止，请稍后重试。");
     const call = request;
     let replied = false;
     inflight++;
     try {
+      const conversations = adapter.conversationManager;
+      if (call.kind === "conversationList")
+        return reply(socket, call, await conversations.listActive());
+      if (call.kind === "conversationRead")
+        return reply(
+          socket,
+          call,
+          await conversations.readThread(call.threadId),
+        );
+      if (call.kind === "conversationDeliver")
+        return reply(socket, call, await conversations.deliver(call.envelope));
+      if (call.kind === "conversationReconcile")
+        return reply(
+          socket,
+          call,
+          await conversations.reconcile(call.envelope),
+        );
+      if (call.kind !== "rpc") throw new Error("未知 Claude IPC 操作");
       await adapter.receive(
         {
           deliver(message: RpcMessage) {
@@ -234,7 +270,7 @@ async function handle(socket: WorkerSocket, line: string) {
             reply(socket, call, message);
           },
         },
-        request.message,
+        call.message,
       );
     } finally {
       inflight--;

@@ -1,10 +1,12 @@
 import { nativeProcessesAlive } from "./process-ownership.mjs";
 
 export async function recoverClaudeSessions(storage) {
+  const resumable = [];
   await storage.update(async (data) => {
     const sessions = {};
     for (const [id, session] of Object.entries(data.sessions)) {
-      const stopped = (await nativeProcessesAlive(session)) === false;
+      const alive = await nativeProcessesAlive(session);
+      const stopped = alive === false;
       sessions[id] = {
         ...session,
         active: null,
@@ -39,16 +41,24 @@ export async function recoverClaudeSessions(storage) {
           ]),
         ),
         queue: [
-          ...(session.active && !session.active.automatic
+          ...(session.active &&
+          !session.active.automatic &&
+          !session.active.peer
             ? [{ ...session.active, status: "uncertain" }]
             : []),
-          ...(session.queue || []).map((entry) => ({
-            ...entry,
-            status: "uncertain",
-          })),
+          ...(session.queue || []).map((entry) =>
+            entry.peer ? entry : { ...entry, status: "uncertain" },
+          ),
         ],
       };
+      if (
+        !alive &&
+        sessions[id].queue[0]?.peer &&
+        sessions[id].queue[0].status === "queued"
+      )
+        resumable.push(id);
     }
     return { ...data, sessions };
   });
+  return resumable;
 }

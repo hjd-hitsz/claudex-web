@@ -11,6 +11,8 @@ flowchart LR
   Browser[浏览器：交互与草稿] <-->|HTTPS / WSS| Web[网页桥接]
   Browser <-->|可选 WebRTC 直连| Web
   Web --> Host[主机服务：文件、网页终端、配置]
+  Web --> Conversations[通用会话管理器：发现、收发、恢复]
+  Conversations --> Router[后端路由与适配器]
   Web <-->|JSON-RPC| Codex[Codex app-server]
   Web <-->|本机 IPC| Worker[Claude 独立执行服务]
   Worker <--> SDK[Claude Agent SDK]
@@ -23,6 +25,7 @@ flowchart LR
 - `client/src/app` 组装应用外壳与路由，`features` 组织业务界面并通过参数取得外壳操作，`ui` 提供基础控件。`main.jsx` 只挂载，`store.js` 连接 React 订阅与应用动作。
 - 前端核心依赖方向为 `application → infrastructure → domain → shared`，应用层也可直接使用领域规则。`application` 管理用例与请求生命周期，`infrastructure` 访问 RPC 和浏览器存储，`domain` 维护纯规则。核心三层保持与 React 无关；`ui` 只依赖本层与领域层。
 - `server/src/server.mjs` 与 `application.mjs` 组装服务。`http` 处理 HTTP，`bridge` 维护公共网页操作，`backends/manager.mjs` 路由固定的两个后端，`workspace` 提供主机文件和网页交互终端。
+- `server/src/conversation-manager` 位于后端路由上层，通过注入的适配器发现会话、异步投递消息并核对回执。适配器持有原生协议，应用负责组装与关闭。
 - HTTP 与公共桥接通过参数取得所需服务和状态；`backends/codex` 与 `backends/claude` 分别管理自己的原生传输、订阅与执行。公共桥接保持与具体后端解耦，两个原生适配器保持独立。
 - `shared` 提供跨端纯逻辑，只依赖本层；前后端通过协议协作。`packages/background-terminal` 与 `packages/translation-engine` 各自只依赖本子项目及外部包。
 
@@ -31,6 +34,8 @@ flowchart LR
 ## 状态与生命周期
 
 原生后端保存对话、轮次和工具历史，是恢复执行结果的事实来源。桥接只持有网页连接及网页专用状态，原生会话和后台任务由所属适配器及运行时管理。网页交互终端的进程与缓冲区归主机工作区服务。
+
+通用会话管理器持久保存会话间的消息、投递意图和回复关联。桥接重启后，管理器恢复待投递记录并向所属运行时核对已经尝试的投递。
 
 网页配置、证书、登录状态、项目偏好及 Claude 网页索引保存在 `CLAUDEX_WEB_CONFIG_DIR`；原生配置沿用 `CODEX_HOME` 与 `CLAUDE_CONFIG_DIR`。浏览器持有草稿、界面偏好和文件编辑缓冲区。私有持久文件采用权限限制与原子写入；目录设置和迁移见[部署与维护](deployment.md#数据保存与迁移)。
 
@@ -54,6 +59,7 @@ flowchart LR
   - [对话与历史](architecture/behavior.md#对话项目与历史)、[输入与草稿](architecture/behavior.md#输入草稿与执行)、[计划](architecture/behavior.md#计划模式)及[目标](architecture/behavior.md#目标交互)。
   - [工作区、文件与终端](architecture/behavior.md#工作区文件与终端)、[子代理与渲染](architecture/behavior.md#子代理与共享渲染)、[账户与界面](architecture/behavior.md#账户登录与外观)。
 - **原生后端**：[双后端产品契约与实施](architecture/backends.md)，包含适配器职责、执行生命周期与协议差异；[回归审查](architecture/backend-regressions.md)保留兼容基线与验证依据。
+  - [通用会话管理器](architecture/backends.md#通用会话管理器)维护活跃会话发现、会话间通信与投递恢复契约。
   - [命令覆盖](cli-command-coverage.md)维护快捷命令及原生扩展；[Codex 后台终端](background-tasks.md)维护独立任务扩展；[翻译引擎](../packages/translation-engine/README.md)维护独立翻译子项目。
 - **开发与交付**：[开发者指南](development.md)提供本地环境、测试入口和源码服务操作。
   - [部署与维护](deployment.md)维护安装、配置、迁移和排障；[版本管理](versioning.md)维护版本准备、发布及重试。

@@ -50,3 +50,7 @@ packages/translation-engine/bin/tokenizer-linux-*
 /server/src/backends/claude/native-control.mjs
 /server/src/backends/claude/native-turn.mjs
 /server/src/backends/claude/prompt.mjs
+/server/src/backends/claude/conversation-input.mjs
+/server/src/backends/claude/conversation-tools.mjs
+/server/src/backends/claude/steer.mjs
+/server/src/backends/claude/worker-conversation-tools.mjs

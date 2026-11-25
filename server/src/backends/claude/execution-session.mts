@@ -12,6 +12,11 @@ import { createTokenUsage } from "./token-usage.mjs";
 import { modelOptions } from "./model-options.mjs";
 import { captureNativeProcesses } from "./process-ownership.mjs";
 import { createNativeCommands } from "./native-commands.mjs";
+import {
+  claudeConversationTools,
+  conversationToolGuard,
+} from "./conversation-tools.mjs";
+import { recordPeerAcceptance } from "./conversation-input.mjs";
 import { warmFileSuggestions } from "./native-control.mjs";
 import {
   providerSettingsEnvironment,
@@ -35,6 +40,7 @@ export async function createExecutionSession({
   broadcast,
   questions,
   observeMessage,
+  callConversationTool,
   goals,
   tasks,
   current: getCurrent,
@@ -43,6 +49,7 @@ export async function createExecutionSession({
   beginActivity,
 }: SessionDependencies) {
   const threadId = session.id;
+  const observePeer = recordPeerAcceptance(threadId, save);
   const usage = createTokenUsage({
     threadId,
     session,
@@ -163,6 +170,9 @@ export async function createExecutionSession({
       perTaskStopAffordance: true,
       forwardSubagentText: true,
       persistSession: true,
+      ...(callConversationTool && {
+        mcpServers: claudeConversationTools(threadId, callConversationTool),
+      }),
       systemPrompt: { type: "preset", preset: "claude_code" },
       settingSources: ["user", "project", "local"],
       canUseTool: async (name, toolInput) =>
@@ -179,6 +189,9 @@ export async function createExecutionSession({
         broadcast,
         questions,
         goalBeforeTool: () => goals.beforeTool(threadId),
+        conversationToolGuard: callConversationTool
+          ? [conversationToolGuard()]
+          : [],
         onPromptFailure: (error) => {
           const active = current();
           if (active) active.promptError = error;
@@ -255,6 +268,12 @@ export async function createExecutionSession({
         await process.ownerReady;
         if (process.ownerError) throw process.ownerError;
         observeMessage?.(threadId, message);
+        if (
+          "user_message_uuids" in message &&
+          message.user_message_uuids?.some((id) => current()?.inputIds.has(id))
+        )
+          process.correlatedInput = true;
+        await observePeer(message, current());
         process.lastActivityAt = Date.now();
         if (
           ("isReplay" in message && message.isReplay) ||
@@ -436,11 +455,15 @@ export async function createExecutionSession({
           }));
         }
         if (message.type === "result") {
-          if (!active.automatic) {
+          if (!active.automatic || active.peerInputIds?.size) {
             const completedInputs = (active.completedInputs ||=
               new Set<string>());
             for (const id of resultIds) completedInputs.add(id);
-            if (!resultIds.length && active.inputIds.size === 1)
+            if (
+              !active.automatic &&
+              !resultIds.length &&
+              active.inputIds.size === 1
+            )
               completedInputs.add([...active.inputIds][0]);
             if ([...active.inputIds].some((id) => !completedInputs.has(id)))
               continue;

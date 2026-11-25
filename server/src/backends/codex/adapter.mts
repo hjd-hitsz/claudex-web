@@ -6,6 +6,8 @@ import {
 } from "./background-terminals.mjs";
 import { threadMethods } from "./methods.mjs";
 import { referenceToolParams } from "./reference-tools.mjs";
+import { codexConversationToolParams } from "./conversation-tools.mjs";
+import { createCodexConversationManager } from "./conversation-manager.mjs";
 import { subagentModelParams } from "./subagent-model.mjs";
 import { join } from "node:path";
 import { codexCapabilities } from "../../../../shared/backend-capabilities.mjs";
@@ -26,6 +28,22 @@ import type { createBackgroundService } from "./background-service.mjs";
 import type { NativeParams, RpcMessage } from "./native-protocol.d.mts";
 import type { CodexClient } from "./upstream.mjs";
 
+const conversationUserRequests = new Set([
+  "item/commandExecution/requestApproval",
+  "item/fileChange/requestApproval",
+  "item/permissions/requestApproval",
+  "item/tool/requestUserInput",
+  "mcpServer/elicitation/request",
+]);
+const conversationWrites = new Set([
+  "turn/start",
+  "turn/steer",
+  "turn/interrupt",
+  "thread/revert",
+  "thread/rollback",
+  "review/start",
+]);
+
 type SubagentSettings = Parameters<typeof subagentModelParams>[2];
 type CodexAdapterOptions = {
   backend: SubagentSettings & { url: string; dataDir: string };
@@ -36,6 +54,7 @@ type CodexAdapterOptions = {
   background?: ReturnType<typeof createBackgroundService>;
   backgroundEnabled?: () => boolean;
   readSubagentSettings?: () => Promise<SubagentSettings>;
+  conversationToolEndpoint?: Parameters<typeof codexConversationToolParams>[2];
 };
 
 export function createCodexAdapter({
@@ -47,6 +66,7 @@ export function createCodexAdapter({
   background,
   backgroundEnabled = () => false,
   readSubagentSettings = async () => backend,
+  conversationToolEndpoint,
 }: CodexAdapterOptions) {
   config = { ...config, upstreamUrl: backend.url, codexHome: backend.dataDir };
   const questions = new Map<string, RpcMessage>();
@@ -77,6 +97,7 @@ export function createCodexAdapter({
           checkCompaction(threadId).catch(() => {});
     },
     onEvent(message) {
+      conversationManager.onEvent(message);
       handoff.event(message);
       const discardedStreamingMessageIds = streamingMessages.event(message);
       events.onEvent(
@@ -91,6 +112,7 @@ export function createCodexAdapter({
     onResponse: (request, message) => events.onResponse(request, message),
     onSettled: () => subscriptions.releaseUnusedThreads(),
     onDisconnect() {
+      conversationManager.disconnected();
       compactions.disconnected();
       threadNaming.clear();
       questions.clear();
@@ -115,7 +137,11 @@ export function createCodexAdapter({
       method,
       backgroundParams(
         method,
-        referenceToolParams(method, params, config),
+        codexConversationToolParams(
+          method,
+          referenceToolParams(method, params, config),
+          conversationToolEndpoint,
+        ),
         enabled ? await background?.ensure() : null,
         config.upstreamUrl,
       ),
@@ -157,6 +183,25 @@ export function createCodexAdapter({
     broadcast,
   });
   const { files } = methods;
+  const conversationManager = createCodexConversationManager({
+    transport,
+    subscriptions,
+    busy: (threadId: string, replying: boolean) =>
+      compactions.busy(threadId) ||
+      files.undoing.has(threadId) ||
+      (!replying &&
+        (activeTurns.has(threadId) || activeThreads.has(threadId))) ||
+      [...questions.values()].some(
+        ({ method, params }) =>
+          params?.threadId === threadId &&
+          conversationUserRequests.has(method ?? ""),
+      ) ||
+      [...transport.pending.values()].some(
+        (request) =>
+          request.threadId === threadId &&
+          conversationWrites.has(request.method),
+      ),
+  });
   const events = createBridgeEvents({
     questions,
     activeTurns,
@@ -221,6 +266,7 @@ export function createCodexAdapter({
     readTokenUsage: (thread: Parameters<typeof readCodexTokenUsage>[0]) =>
       readCodexTokenUsage(thread, transport.call),
     workspaceOwner: "backend",
+    conversationManager,
     state,
     async receive(client: CodexClient, message: RpcMessage) {
       if (!message.method) return receive(client, message);
@@ -239,6 +285,7 @@ export function createCodexAdapter({
       handoff.disconnected();
       streamingMessages.clear();
       transport.close();
+      conversationManager.disconnected();
       subscriptions.reset();
     },
     get ready() {

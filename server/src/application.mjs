@@ -1,4 +1,5 @@
 import { hasBackendWork } from "../../shared/backend-activity.mjs";
+import { resourceTarget } from "../../shared/backend-identity.mjs";
 import { createServiceMaintenance } from "./service-maintenance.mjs";
 import { createTranslationService } from "./translation-service.mjs";
 import https from "node:https";
@@ -6,6 +7,7 @@ import { WebSocketServer } from "ws";
 import { createHttpHandler } from "./http/router.mjs";
 import { createBusinessHttpHandler } from "./http/business.mjs";
 import { createBackendManager } from "./backends/manager.mjs";
+import { createConversationManager } from "./conversation-manager/manager.mjs";
 import { sendRpcText } from "./rpc-transport.mjs";
 import {
   createP2pService,
@@ -21,6 +23,9 @@ export function createWebApplication({
   runP2pTunnel,
 }) {
   let requestsInFlight = 0;
+  const conversations = createConversationManager({
+    configDir: config.configDir,
+  });
   const maintenance = createServiceMaintenance({
     config,
     version,
@@ -51,6 +56,23 @@ export function createWebApplication({
     if (canSend(client)) sendText(client, JSON.stringify(message));
   }
   function broadcast(message) {
+    if (message.method === "lan/state") conversations.wake();
+    if (
+      [
+        "turn/started",
+        "turn/completed",
+        "thread/status/changed",
+        "serverRequest/resolved",
+        "lan/compaction",
+      ].includes(message.method)
+    ) {
+      const target = resourceTarget(
+        message.params?.threadId,
+        message.backendId,
+      );
+      if (target.nativeId)
+        conversations.wakeThread(target.backendId, target.nativeId);
+    }
     let text;
     for (const group of [clients.clients, peers])
       for (const client of group)
@@ -70,7 +92,13 @@ export function createWebApplication({
         if (canSend(monitor)) sendText(monitor, state);
     }
   }
-  const bridge = createBackendManager({ config, version, send, broadcast });
+  const bridge = createBackendManager({
+    config,
+    version,
+    send,
+    broadcast,
+    conversations,
+  });
   const { state, maintenanceState, releaseUnusedThreads } = bridge;
   const handleBusiness = createBusinessHttpHandler({
     translation,
@@ -217,6 +245,7 @@ export function createWebApplication({
   return {
     server,
     async start() {
+      await conversations.start();
       maintenance.initialize();
       await translation.initialize();
       await p2p.start();
@@ -234,7 +263,12 @@ export function createWebApplication({
       maintenance.close();
       await p2p.close();
       await translation.close();
-      await bridge.close();
+      const closingConversations = conversations.close();
+      try {
+        await bridge.close();
+      } finally {
+        await closingConversations;
+      }
       for (const client of [...clients.clients, ...monitors.clients])
         client.terminate();
       clients.close();

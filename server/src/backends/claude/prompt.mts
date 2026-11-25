@@ -1,5 +1,6 @@
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { InputPart, SessionRecord } from "./execution-types.d.mts";
+import type { ConversationInput } from "./conversation-protocol.d.mts";
 
 type Content = Exclude<SDKUserMessage["message"]["content"], string>;
 type ImageSource = Extract<Content[number], { type: "image" }>["source"];
@@ -33,6 +34,7 @@ export function userPrompt(
   queued: {
     id: NonNullable<SDKUserMessage["uuid"]>;
     input: readonly InputPart[];
+    peer?: ConversationInput;
   },
   priority?: SDKUserMessage["priority"],
 ): SDKUserMessage {
@@ -42,6 +44,14 @@ export function userPrompt(
     session_id: session.nativeSessionId || session.id,
     parent_tool_use_id: null,
     message: { role: "user", content: inputMessage(queued.input) },
+    ...(queued.peer && {
+      client_composed: true,
+      origin: {
+        kind: "peer",
+        from: queued.peer.from.threadId,
+        name: queued.peer.from.title,
+      },
+    }),
     ...(priority && { priority }),
   };
 }

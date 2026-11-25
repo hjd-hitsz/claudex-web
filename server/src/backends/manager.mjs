@@ -1,4 +1,5 @@
 import { createBackgroundService } from "./codex/background-service.mjs";
+import { bindConversationTools } from "../conversation-manager/backend-binding.mjs";
 import { createThreadFolders } from "../thread-folders.mjs";
 import { createTokenUsageStore } from "../token-usage.mjs";
 import { createTokenUsageReconciliation } from "../token-usage-reconciliation.mjs";
@@ -21,18 +22,22 @@ import { isSubagentSettings } from "../../../shared/subagent-settings.mjs";
 import { validateSubagentSettings } from "./subagent-settings.mjs";
 import { createCodexAdapter } from "./codex/adapter.mjs";
 import { createClaudeWorkerAdapter } from "./claude/worker-client.mjs";
-import { mapResult, mapState, nativeParams } from "./identity-mapping.mjs";
-
+import {
+  mapNotification,
+  mapResult,
+  mapState,
+  nativeParams,
+} from "./identity-mapping.mjs";
 const adapterFactories = {
   codex: createCodexAdapter,
   claude: createClaudeWorkerAdapter,
 };
-
 export function createBackendManager({
   config,
   version,
   send,
   broadcast,
+  conversations,
   factories = {},
 }) {
   const folders = createThreadFolders(config.configDir);
@@ -122,10 +127,17 @@ export function createBackendManager({
   async function install(backend) {
     const entry = { backend, adapter: null, error: null, proxies: new Map() };
     instances.set(backend.id, entry);
+    const deps = bindConversationTools(
+      conversations,
+      entry,
+      folders,
+      () => !closed,
+    );
     if (!backend.enabled) return;
     try {
       const factory = factories[backend.type] || adapterFactories[backend.type];
       entry.adapter = factory({
+        ...deps,
         backend,
         config,
         background,
@@ -135,9 +147,7 @@ export function createBackendManager({
         providers,
         readSubagentSettings: () =>
           configuration.readSubagentSettings(backend.id),
-        send(client, message) {
-          client.deliver(message);
-        },
+        send: (client, message) => client.deliver(message),
         broadcast(message) {
           if (instances.get(backend.id) !== entry || closed) return;
           if (message.method === "lan/state") {
@@ -145,14 +155,7 @@ export function createBackendManager({
             usageReconciliation.start(entry);
             return emitState();
           }
-          const notification = {
-            ...message,
-            ...(backend.id !== "codex" && { backendId: backend.id }),
-            ...(message.id !== undefined && {
-              id: resourceId(backend.id, message.id),
-            }),
-            params: mapResult(message.params, backend.id, message.method),
-          };
+          const notification = mapNotification(message, backend.id);
           tokenUsage.observe(notification);
           broadcast(notification);
         },

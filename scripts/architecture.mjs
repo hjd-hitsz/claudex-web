@@ -118,6 +118,14 @@ function boundaryError(from, to) {
     return "浏览器代码只能通过 shared/ 复用跨端逻辑";
   if (from.startsWith("server/src/") && to.startsWith("client/src/"))
     return "服务端不能依赖浏览器实现";
+  if (
+    from.startsWith("server/src/conversation-manager/") &&
+    (to.startsWith("server/src/backends/") ||
+      to.startsWith("server/src/bridge/") ||
+      to.startsWith("server/src/http/") ||
+      serverEntry)
+  )
+    return "通用会话管理器通过参数取得原生适配器与应用状态";
   if (from.startsWith("shared/") && !to.startsWith("shared/"))
     return "共享模块只能依赖共享模块";
   if (

@@ -11,6 +11,8 @@ import { createSessionReader, page } from "./history.mjs";
 import { createClaudeRuntime } from "./runtime.mjs";
 import { createCompactions } from "../../compaction.mjs";
 import { createWorkspace } from "../../workspace/service.mjs";
+import { claudeConversationAdapter } from "./conversation-adapter.mjs";
+import { removeQueuedInput } from "./conversation-input.mjs";
 
 export function createClaudeAdapter({
   backend,
@@ -20,6 +22,7 @@ export function createClaudeAdapter({
   providers,
   workspace: sharedWorkspace,
   readSubagentSettings,
+  callConversationTool,
 }) {
   const storage = createStorage(
     join(backend.stateDir, "claudex-web-index.json"),
@@ -39,6 +42,7 @@ export function createClaudeAdapter({
     compactions,
     questions,
     readSubagentSettings,
+    callConversationTool,
   });
   const catalogue = createClaudeCatalogue({
     backend,
@@ -280,10 +284,15 @@ export function createClaudeAdapter({
         ...data,
         sessions: {
           ...data.sessions,
-          [p.threadId]: {
-            ...data.sessions[p.threadId],
-            queue: data.sessions[p.threadId].queue.filter((q) => q.id !== p.id),
-          },
+          [p.threadId]: data.sessions[p.threadId].queue?.some(
+            (q) => q.id === p.id,
+          )
+            ? removeQueuedInput(
+                data.sessions[p.threadId],
+                p.id,
+                "目标会话已取消排队输入。",
+              )
+            : data.sessions[p.threadId],
         },
       }));
       notify("lan/inputQueue/updated", { threadId: p.threadId });
@@ -292,6 +301,15 @@ export function createClaudeAdapter({
     throw new Error(`Claude Code 暂不支持此操作：${method}`);
   }
   return {
+    conversationManager: claudeConversationAdapter({
+      storage,
+      runtime,
+      questions,
+      compactions,
+      files,
+      readSession,
+      assertReady,
+    }),
     capabilities: claudeCapabilities,
     workspaceOwner: "bridge",
     state,
@@ -343,7 +361,10 @@ export function createClaudeAdapter({
               ? { behavior: "deny", message: message.error.message }
               : { behavior: "allow", updatedInput: { ...q.input, answers } },
           );
-          notify("serverRequest/resolved", { requestId: message.id });
+          notify("serverRequest/resolved", {
+            requestId: message.id,
+            threadId: q.threadId,
+          });
         }
         return;
       }

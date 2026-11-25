@@ -64,6 +64,10 @@ test("架构检查识别文件膨胀、逆向依赖、跨端耦合和循环，�
     "import '../backends/codex/adapter.mjs';\n",
   );
   await file(
+    "server/src/conversation-manager/a.mjs",
+    "import '../backends/codex/adapter.mjs';\n",
+  );
+  await file(
     "packages/translation-engine/src/coupled.mjs",
     "import '../../../server/src/a.mjs';\n",
   );
@@ -100,4 +104,5 @@ test("架构检查识别文件膨胀、逆向依赖、跨端耦合和循环，�
   assert(errors.some((error) => error.includes("公共桥接规则通过参数")));
   assert(errors.some((error) => error.includes("原生适配器只能依赖所属后端")));
   assert(errors.some((error) => error.includes("HTTP 处理器通过参数")));
+  assert(errors.some((error) => error.includes("通用会话管理器通过参数")));
 });

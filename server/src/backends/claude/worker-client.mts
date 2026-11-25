@@ -4,6 +4,12 @@ import type { Socket } from "node:net";
 import type { RpcMessage } from "../../rpc-message.d.mts";
 import type { ProcessIdentity } from "./execution-types.d.mts";
 import type {
+  ConversationDelivery,
+  ConversationEnvelope,
+  ConversationTool,
+} from "./conversation-protocol.d.mts";
+import type {
+  ConversationToolReply,
   Operation,
   Replacement,
   WorkerBackend,
@@ -39,6 +45,7 @@ type WorkerAdapterOptions<Client> = {
   config: WorkerConfig;
   send: (client: Client, message: RpcMessage) => void;
   broadcast: (message: WorkerState | RpcMessage) => void;
+  callConversationTool?: ConversationTool;
 };
 
 type PendingRequest = {
@@ -52,6 +59,7 @@ export function createClaudeWorkerAdapter<Client>({
   config,
   send,
   broadcast,
+  callConversationTool,
 }: WorkerAdapterOptions<Client>) {
   const location = workerLocation(backend);
   const options: WorkerOptions = {
@@ -165,7 +173,32 @@ export function createClaudeWorkerAdapter<Client>({
         upgradeWhenIdle();
       });
   }
-  function accept(packet: WorkerPacket) {
+  function accept(connection: Socket, packet: WorkerPacket) {
+    if (packet.kind === "conversationTool") {
+      const answer = (reply: Omit<ConversationToolReply, "kind" | "id">) => {
+        if (!connection.destroyed)
+          connection.write(
+            JSON.stringify({
+              kind: "conversationToolReply",
+              id: packet.id,
+              ...reply,
+            } satisfies ConversationToolReply) + "\n",
+          );
+      };
+      if (!callConversationTool) answer({ error: "Claudex 会话管理器不可用" });
+      else
+        Promise.resolve()
+          .then(() =>
+            callConversationTool(packet.context, packet.name, packet.args),
+          )
+          .then(
+            (result) => answer({ result }),
+            (error) =>
+              answer({
+                error: error instanceof Error ? error.message : String(error),
+              }),
+          );
+    }
     if (packet.kind === "state") {
       snapshot = packet.message;
       publish();
@@ -227,7 +260,7 @@ export function createClaudeWorkerAdapter<Client>({
         const packet: WorkerPacket = JSON.parse(line);
         if (initializing && packet.kind === "state")
           latestState = packet.message;
-        else accept(packet);
+        else accept(connection, packet);
       } catch (error) {
         connection.destroy(
           error instanceof Error ? error : new Error(String(error)),
@@ -261,7 +294,11 @@ export function createClaudeWorkerAdapter<Client>({
     options.revision = await workerRevision();
     let initialized;
     try {
-      initialized = await request({ kind: "initialize", options });
+      initialized = await request({
+        kind: "initialize",
+        options,
+        conversationTools: Boolean(callConversationTool),
+      });
     } catch (error) {
       connection.destroy();
       throw error;
@@ -374,6 +411,26 @@ export function createClaudeWorkerAdapter<Client>({
   }
   return {
     capabilities: claudeCapabilities,
+    conversationManager: {
+      listActive: () => request({ kind: "conversationList" }),
+      readThread: (threadId: string) =>
+        request({ kind: "conversationRead", threadId }),
+      deliver(envelope: ConversationEnvelope): Promise<ConversationDelivery> {
+        if (!socket || socket.destroyed || !snapshot.params.ready)
+          return Promise.resolve({
+            status: "deferred",
+            reason: "Claude 执行服务尚未连接",
+          });
+        return request({ kind: "conversationDeliver", envelope }).catch(
+          (error) => ({
+            status: "unknown",
+            reason: error.message,
+          }),
+        );
+      },
+      reconcile: (envelope: ConversationEnvelope) =>
+        request({ kind: "conversationReconcile", envelope }),
+    },
     workspaceOwner: "bridge",
     releaseClient() {},
     state: () => snapshot,

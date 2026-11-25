@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import type {
   SDKMessage,
@@ -26,6 +25,14 @@ import { modelOptions } from "./model-options.mjs";
 import { recoverClaudeSessions } from "./recovery.mjs";
 import { assertConversationOperation } from "../../bridge/conversation-policy.mjs";
 import { subagentSettings } from "../../../../shared/subagent-settings.mjs";
+import type { ConversationInput } from "./conversation-protocol.d.mts";
+import {
+  assertPeerQueue,
+  peerInputState,
+  queuedInput,
+  recordPeerRejection,
+} from "./conversation-input.mjs";
+import { createPeerSteer, createSteer } from "./steer.mjs";
 
 type Run = Awaited<ReturnType<typeof createExecutionSession>> & {
   nativeSessionId: string;
@@ -42,6 +49,7 @@ export function createClaudeRuntime({
   compactions,
   questions,
   observeMessage,
+  callConversationTool,
   readSubagentSettings = async () => subagentSettings(backend),
 }: RuntimeDependencies) {
   const running = new Map<string, ActiveExecution>();
@@ -74,26 +82,17 @@ export function createClaudeRuntime({
     threadId: string,
     params: TurnRequest,
     compact = false,
+    peer?: ConversationInput,
   ) {
     if (closed) throw new Error("后端已关闭");
-    if (mutating.has(threadId)) throw new Error("正在修改对话历史，请稍后发送");
+    if (!peer && mutating.has(threadId))
+      throw new Error("正在修改对话历史，请稍后发送");
     const input = compact ? [{ type: "text", text: "/compact" }] : params.input;
     inputMessage(input);
-    const turn: QueuedInput = {
-      id: randomUUID(),
-      status: "queued",
-      input,
-      model: params.model,
-      providerId: params.providerId,
-      compact,
-      mode: params.collaborationMode?.mode || "default",
-      effort: params.effort,
-      serviceTier: params.serviceTier,
-      review: params.review === true,
-      goalId: params.goalId,
-      createdAt: Date.now() / 1000,
-    };
+    const turn = queuedInput(params, input, compact, peer);
     await save(threadId, (session) => {
+      if (peer) assertPeerQueue(session, turn.id, occupied(threadId));
+      if (peer && session.peerInputs?.[turn.id]) return session;
       if (!session) throw new Error("对话不存在");
       assertConversationOperation(
         compact ? "thread/compact/start" : "turn/start",
@@ -105,6 +104,7 @@ export function createClaudeRuntime({
       );
       return {
         ...session,
+        ...peerInputState(session, turn),
         ...(params.cwd &&
           params.cwd !== session.cwd && {
             cwd: params.cwd,
@@ -118,6 +118,11 @@ export function createClaudeRuntime({
     schedule(threadId);
     return { turn: { id: turn.id, status: "queued", items: [] } };
   }
+  const occupied = (id: string) =>
+    running.has(id) ||
+    starting.has(id) ||
+    mutating.has(id) ||
+    compactions.busy(id);
   async function settle(
     threadId: string,
     result?: SDKResultMessage | null,
@@ -162,9 +167,13 @@ export function createClaudeRuntime({
   async function drain(threadId: string) {
     if (running.has(threadId) || closed || mutating.has(threadId)) return;
     const session = (await storage.read()).sessions[threadId];
-    if (running.has(threadId)) return;
+    if (running.has(threadId) || mutating.has(threadId)) return;
     const queued = session?.queue?.[0];
     if (!queued || queued.status === "uncertain") return;
+    if (queued.peer && (session.deleted || session.archived)) {
+      await recordPeerRejection(threadId, queued.id, save, "目标会话已关闭。");
+      return;
+    }
     const turn: ExecutionTurn = {
       id: queued.id,
       status: "inProgress",
@@ -181,6 +190,7 @@ export function createClaudeRuntime({
       inputIds: new Set([queued.id]),
     };
     running.set(threadId, active);
+    let submitted = false;
     try {
       await save(threadId, (s) => ({
         ...s,
@@ -191,6 +201,7 @@ export function createClaudeRuntime({
         model: queued.model || s.model,
         providerId: queued.providerId ?? s.providerId,
         mode: queued.mode,
+        review: queued.review,
         effort: queued.effort,
         serviceTier: queued.serviceTier ?? null,
         name:
@@ -269,6 +280,7 @@ export function createClaudeRuntime({
           broadcast,
           questions,
           observeMessage,
+          callConversationTool,
           goals,
           tasks,
           current: () => running.get(threadId),
@@ -319,8 +331,16 @@ export function createClaudeRuntime({
         emit("item/completed", { threadId, turnId: turn.id, item });
       }
       process.input.push(message);
+      submitted = true;
       if (active.interrupted) await interrupt(threadId);
     } catch (error) {
+      if (queued.peer && !submitted)
+        await recordPeerRejection(
+          threadId,
+          queued.id,
+          save,
+          "Claude Code 在提交原生输入前结束了处理。",
+        );
       await settle(threadId, null, error);
     }
   }
@@ -373,46 +393,6 @@ export function createClaudeRuntime({
     if (!process || process.ended) return null;
     return process.commands.run(text);
   }
-  async function steer(
-    threadId: string,
-    params: Pick<TurnRequest, "input"> & { expectedTurnId?: string },
-  ) {
-    const active = running.get(threadId);
-    if (!active || !active.query || active.interrupted)
-      throw new Error("当前轮次已结束，请重新发送");
-    if (params.expectedTurnId && params.expectedTurnId !== active.turn.id)
-      throw new Error("当前轮次已变化，请重新发送");
-    assertConversationOperation("turn/steer", {
-      compacting: compactions.busy(threadId),
-    });
-    inputMessage(params.input);
-    const session = (await storage.read()).sessions[threadId];
-    const queued = { id: randomUUID(), input: params.input };
-    active.inputIds.add(queued.id);
-    const message = userPrompt(session, queued, "now");
-    await save(threadId, (s) => ({
-      ...s,
-      inputTurns: { ...s.inputTurns, [queued.id]: active.turn.id },
-      extraItems: {
-        ...s.extraItems,
-        [queued.id]: {
-          id: queued.id,
-          type: "userMessage",
-          turnId: active.turn.id,
-          content: inputMessage(params.input),
-        },
-      },
-    }));
-    for (const item of convertMessage(message, active.turn.id)) {
-      active.turn.items.push(item);
-      emit("item/completed", { threadId, turnId: active.turn.id, item });
-    }
-    const process = queries.get(threadId);
-    if (!process) throw new Error("当前轮次已结束，请重新发送");
-    process.input.push(message);
-    process.lastActivityAt = Date.now();
-    return { turnId: active.turn.id };
-  }
   async function interrupt(threadId: string) {
     const active = running.get(threadId);
     if (active) {
@@ -420,7 +400,19 @@ export function createClaudeRuntime({
       const receipt = active.query
         ? await interruptQueuedInput(active.query)
         : undefined;
-      for (const id of receipt?.cancelled || []) active.inputIds.delete(id);
+      for (const id of receipt?.cancelled || []) {
+        active.inputIds.delete(id);
+        if (
+          active.peerInputIds?.delete(id) ||
+          (active.queued.peer && active.turn.id === id)
+        )
+          await recordPeerRejection(
+            threadId,
+            id,
+            save,
+            "目标会话取消了尚未消费的回复。",
+          );
+      }
       if (receipt?.cancelled?.length && active.inputIds.size === 0)
         await settle(threadId);
     }
@@ -437,7 +429,14 @@ export function createClaudeRuntime({
     goals,
     tasks,
     enqueue,
-    steer,
+    steer: createSteer({ running, queries, storage, compactions, save, emit }),
+    steerPeer: createPeerSteer(
+      { running, queries, storage, compactions, save, emit },
+      (id) =>
+        !closed &&
+        !mutating.has(id) &&
+        ![...questions.values()].some((question) => question.threadId === id),
+    ),
     interrupt,
     async check() {
       await mkdir(backend.stateDir, { recursive: true, mode: 0o700 });
@@ -448,7 +447,9 @@ export function createClaudeRuntime({
       );
       return stdout.trim();
     },
-    recover: () => recoverClaudeSessions(storage),
+    async recover() {
+      for (const id of await recoverClaudeSessions(storage)) schedule(id);
+    },
     resumeQueue: schedule,
     async releaseUnusedThreads(now = Date.now()) {
       const sessions = (await storage.read()).sessions;

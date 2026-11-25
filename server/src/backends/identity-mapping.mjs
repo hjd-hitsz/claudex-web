@@ -64,6 +64,15 @@ export function nativeParams(params, backendId) {
   return result;
 }
 
+export function mapNotification(message, backendId) {
+  return {
+    ...message,
+    ...(backendId !== "codex" && { backendId }),
+    ...(message.id !== undefined && { id: resourceId(backendId, message.id) }),
+    params: mapResult(message.params, backendId, message.method),
+  };
+}
+
 export function mapState(state, backendId) {
   const key = (id) => resourceId(backendId, id);
   const keyed = (entries) =>

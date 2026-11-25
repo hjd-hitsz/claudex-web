@@ -9,8 +9,18 @@ import type {
   NativeParams,
   RequestId,
   ResumeParams,
+  RpcError,
   RpcMessage,
 } from "./native-protocol.d.mts";
+
+export class CodexRpcError extends Error {
+  readonly code: number;
+
+  constructor({ code, message }: RpcError) {
+    super(message);
+    this.code = code;
+  }
+}
 
 export function hasResumeTarget(params?: NativeParams): params is ResumeParams {
   return typeof params?.threadId === "string";
@@ -188,7 +198,7 @@ export function createUpstream({
       clearTimeout(request.timer ?? undefined);
       pending.delete(id);
       if ("resolve" in request) {
-        if (message.error) request.reject(new Error(message.error.message));
+        if (message.error) request.reject(new CodexRpcError(message.error));
         else request.resolve(message.result);
         onSettled();
       } else onResponse(request, message);
