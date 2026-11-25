@@ -217,26 +217,33 @@ export async function testQuestionInteraction(app, fixture) {
       },
     });
     assert.equal(view.root.findAllByProps({ type: "radio" }).length, 2);
+    const refusalCount = requests.filter((m) => m.id === request.id).length;
     await decline();
     assert.equal(
       view.root.findByType("fieldset").props["aria-label"],
       "希望怎样部署？",
     );
     assert(view.root.findByProps({ role: "status" }));
+    assert.equal(
+      requests.filter((m) => m.id === request.id).length,
+      refusalCount,
+    );
     await navigate("下一题");
     assert.equal(
       view.root.findByProps({ type: "password" }).props.autoComplete,
       "off",
     );
     await decline();
-    await act(async () =>
-      view.root.findByType("form").props.onSubmit(submitEvent()),
+    assert.equal(view.root.findAllByType("form").length, 0);
+    assert.equal(
+      requests.filter((m) => m.id === request.id).length,
+      refusalCount + 1,
     );
     assert.deepEqual(requests.findLast((m) => m.id === request.id).result, {
       answers: { deployment: { answers: [] }, secret: { answers: [] } },
     });
     await act(async () => view.unmount());
-    console.log("PASS 自定义回答开关和私密输入字段");
+    console.log("PASS 自定义回答开关、私密输入字段、最后一题拒答立即发送整批");
 
     await showRequest(single, {
       questions: [single, { ...single, id: "second-request" }],

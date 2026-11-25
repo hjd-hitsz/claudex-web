@@ -133,9 +133,20 @@ export function UserInputForm({
     });
     setError("");
   }
-  async function submit(event) {
+  function submit(event) {
     event.preventDefault();
-    if (locked || incomplete) return;
+    if (!incomplete) return sendAnswers(result);
+  }
+  function toggleDeclined() {
+    const declined = !answer.declined;
+    update(question.id, { declined });
+    if (!declined) return;
+    const next = { ...result, [question.id]: { answers: [] } };
+    if (Object.values(next).every(({ answers }) => answers.length === 0))
+      return sendAnswers(next);
+  }
+  async function sendAnswers(result) {
+    if (locked) return;
     setSubmitting(true);
     setError("");
     try {
@@ -269,7 +280,7 @@ export function UserInputForm({
           type="button"
           className="secondary"
           disabled={locked}
-          onClick={() => update(question.id, { declined: !answer.declined })}
+          onClick={toggleDeclined}
         >
           {answer.declined ? "恢复作答" : "拒答此题"}
         </button>
@@ -289,8 +300,6 @@ export function UserInputForm({
             )
           ) : error ? (
             <span role="alert">重试</span>
-          ) : allDeclined ? (
-            "确认拒答"
           ) : (
             "提交回答"
           )}

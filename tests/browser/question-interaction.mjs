@@ -205,6 +205,37 @@ try {
           await page.screenshot({
             path: join(output, `${stem}-submitted.png`),
           });
+          const refusal = {
+            ...request,
+            id: "question-single-refusal",
+            params: { ...request.params, questions: [questions[0]] },
+          };
+          await page.evaluate((fixtureRequest) => {
+            window.backendSocket.onmessage({
+              data: JSON.stringify(fixtureRequest),
+            });
+          }, refusal);
+          await card.getByRole("button", { name: "拒答此题" }).click();
+          await card.waitFor({ state: "detached" });
+          assert.deepEqual(
+            await page.evaluate(
+              (id) => fixtureRequests.filter((message) => message.id === id),
+              refusal.id,
+            ),
+            [
+              {
+                id: refusal.id,
+                result: { answers: { install: { answers: [] } } },
+              },
+            ],
+          );
+          await history
+            .locator("summary")
+            .getByText("已拒答", { exact: true })
+            .waitFor();
+          await page.screenshot({
+            path: join(output, `${stem}-single-refusal.png`),
+          });
         }
         results.push({ width, theme, scale, ...metrics });
       }
@@ -224,7 +255,7 @@ try {
     ),
   );
   console.log(
-    `PASS ${results.length} 个生产页面场景，三题自由切换、逐题拒答、唯一提交按钮与结果回显`,
+    `PASS ${results.length} 个生产页面场景，三题自由切换、逐题拒答、单题拒答立即发送、唯一提交按钮与结果回显`,
   );
 } finally {
   await context?.close();
