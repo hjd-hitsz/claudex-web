@@ -1,3 +1,8 @@
+import { readPromptSections } from "../../prompts.mjs";
+import {
+  createPermissionCheck,
+  delegationToolOptions,
+} from "./delegation-permission.mjs";
 import { spawn } from "node:child_process";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKAssistantMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -29,6 +34,9 @@ import {
   providerRuntimeEnvironment,
 } from "./provider-transport.mjs";
 
+const executionPrompt = readPromptSections("backends/claude/execution.md");
+const planMode = executionPrompt("planMode");
+const reviewMode = executionPrompt("reviewMode");
 export async function createExecutionSession({
   backend,
   session,
@@ -148,10 +156,13 @@ export async function createExecutionSession({
         : { sessionId: session.nativeSessionId || threadId }),
       model,
       permissionMode:
-        queued.mode === "plan" || queued.review ? "plan" : "bypassPermissions",
-      planModeInstructions: queued.review
-        ? "只读审查当前项目变更，核对相关实现及项目约定，给出问题、位置、触发条件及修复建议。保持只读权限，省略 ExitPlanMode 调用。"
-        : "调查用户需求并制定完整方案。遵守只读计划模式。最终回复直接给出完整 Markdown 方案，等待用户通过网页批准或提出修改意见。保持计划模式，省略 ExitPlanMode 调用。",
+        queued.mode === "plan" || queued.review
+          ? "plan"
+          : queued.delegation
+            ? "default"
+            : "bypassPermissions",
+      planModeInstructions: queued.review ? reviewMode : planMode,
+      ...delegationToolOptions(queued.delegation),
       ...(queued.review && {
         disallowedTools: ["Write", "Edit", "NotebookEdit"],
       }),
@@ -164,7 +175,6 @@ export async function createExecutionSession({
         },
       },
       extraArgs: { "thinking-display": "summarized" },
-      allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
       enableFileCheckpointing: true,
       perTaskStopAffordance: true,
@@ -175,13 +185,12 @@ export async function createExecutionSession({
       }),
       systemPrompt: { type: "preset", preset: "claude_code" },
       settingSources: ["user", "project", "local"],
-      canUseTool: async (name, toolInput) =>
-        current()?.turn.mode === "plan" || current()?.queued.review
-          ? {
-              behavior: "deny",
-              message: "当前任务处于只读模式，请使用读取和调查工具。",
-            }
-          : { behavior: "allow", updatedInput: toolInput },
+      canUseTool: createPermissionCheck({
+        current,
+        threadId,
+        questions,
+        broadcast,
+      }),
       hooks: createRunHooks({
         threadId,
         context,
@@ -189,6 +198,7 @@ export async function createExecutionSession({
         broadcast,
         questions,
         goalBeforeTool: () => goals.beforeTool(threadId),
+        delegationContext: () => current()?.queued.delegationContext,
         conversationToolGuard: callConversationTool
           ? [conversationToolGuard()]
           : [],

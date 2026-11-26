@@ -2,6 +2,7 @@ import { testClaudeLargeFile } from "./dual-backends-large-file.mjs";
 import { testClaudeNativeSkill } from "./dual-backends-native-skill.mjs";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
+import { switchComposerBackend } from "../helpers/settings-navigation.mjs";
 export async function testDualConversation({
   page,
   url,
@@ -22,19 +23,20 @@ export async function testDualConversation({
   const input = () => page.locator(".markdown-composer .ProseMirror");
   await input().waitFor();
   await input().fill("Codex 草稿");
+  await switchComposerBackend(page, "Claude Code");
   await page
     .getByLabel("模型", { exact: true })
     .selectOption({ label: "测试供应商/fixture-model" });
 
   await input().fill("Claude 草稿");
+  await switchComposerBackend(page, "Codex");
   await page
     .getByLabel("模型", { exact: true })
     .selectOption({ label: "ChatGPT/GPT Test" });
   await page.waitForFunction(() =>
-    document
-      .querySelector(".ProseMirror")
-      ?.textContent?.includes("Claude 草稿"),
+    document.querySelector(".ProseMirror")?.textContent?.includes("Codex 草稿"),
   );
+  await switchComposerBackend(page, "Claude Code");
   await page
     .getByLabel("模型", { exact: true })
     .selectOption({ label: "测试供应商/fixture-model" });

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { annotationMessage } from "../../client/src/domain/annotations.js";
+import "../helpers/prompt-markdown.mjs";
+
+const { annotationMessage } =
+  await import("../../client/src/domain/annotations.js");
 
 export const contextItems = [
   {
@@ -70,6 +73,16 @@ export async function verifyUserContext({
       return {x,y,width:Math.max(...boxes.map(r=>r.right))-x+8,height:Math.max(...boxes.map(r=>r.bottom))-y+8,scale:1};
     })()`);
     await screenshot(name, clip);
+  };
+  const composer = '.composer .ProseMirror[aria-label="消息"]';
+  const reloadHistory = async () => {
+    const previous = await evaluate("performance.timeOrigin");
+    await page("Page.reload");
+    await waitFor(
+      `performance.timeOrigin !== ${previous} &&
+       document.querySelectorAll('.user-file-reference').length === 2 &&
+       document.querySelector(${JSON.stringify(composer)})?.getBoundingClientRect().height > 0`,
+    );
   };
   const bubble = `[...document.querySelectorAll('.user-bubble')].map(e=>e.innerText).join('\\n')`;
   if (before) {
@@ -214,32 +227,25 @@ export async function verifyUserContext({
       ),
       0,
     );
-    await page("Page.reload");
-    await waitFor(
-      `document.querySelectorAll('.user-file-reference').length===2`,
-    );
+    await reloadHistory();
     assert(!(await evaluate(bubble)).includes("按需读取"));
-    await fill('.composer [aria-label="消息"]', "@global");
+    await fill(composer, "检查 @global");
     await waitFor(`document.querySelector('[role="option"]')`);
     await click('[role="option"]');
-    await fill(
-      '.composer [aria-label="消息"]',
-      "检查 @global_planner 的悬停约束。",
-    );
+    await page("Input.insertText", { text: "的悬停约束。" });
     await click(".send-button");
     await waitFor(
-      `document.querySelectorAll('.user-file-reference').length===3`,
+      `document.querySelector('.user-bubble .inline-reference[data-reference-kind="directory"][title^="/fixture/annotations/global_planner"]')`,
     );
     assert(!(await evaluate(bubble)).includes("请根据任务按需读取。"));
     const referenceSent = await evaluate(
       `annotationFixture.requests.filter(r=>r.method==='turn/start').at(-1).params.input`,
     );
-    assert(referenceSent[1].text.includes("global_planner"));
-    await screenshot("after-reference-submit");
-    await page("Page.reload");
-    await waitFor(
-      `document.querySelectorAll('.user-file-reference').length===2`,
+    assert(
+      referenceSent[0].text.includes("/fixture/annotations/global_planner"),
     );
+    await screenshot("after-reference-submit");
+    await reloadHistory();
     for (const theme of ["light", "dark"]) {
       await evaluate(`document.documentElement.dataset.theme='${theme}'`);
       await click(

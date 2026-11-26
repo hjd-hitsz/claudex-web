@@ -46,7 +46,7 @@ export function CompactionStatus({ entry }) {
     completed: "上下文整理完成",
     failed: "上下文整理失败",
     interrupted: "上下文整理已中断",
-    unconfirmed: "整理结果待确认",
+    unconfirmed: entry.commandFinished ? "整理命令已执行" : "整理结果待确认",
   };
   return (
     <div

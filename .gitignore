@@ -54,3 +54,6 @@ packages/translation-engine/bin/tokenizer-linux-*
 /server/src/backends/claude/conversation-tools.mjs
 /server/src/backends/claude/steer.mjs
 /server/src/backends/claude/worker-conversation-tools.mjs
+/server/src/backends/claude/delegation-permission.mjs
+/packages/background-terminal/prompt/
+/packages/background-terminal/prompt-sections.generated.mjs

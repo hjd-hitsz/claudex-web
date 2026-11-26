@@ -126,3 +126,45 @@
     padding-inline: 0;
   }
 }
+
+.backend-model-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.modal-settings .backend-settings-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  gap: 0.375rem;
+  padding: 0.375rem;
+  border-radius: 0.75rem;
+  background: var(--subtle);
+}
+.modal-settings .backend-settings .backend-settings-selector > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  min-block-size: 2.5rem;
+  border-color: transparent;
+  background: transparent;
+  overflow-wrap: anywhere;
+}
+.modal-settings
+  .backend-settings
+  .backend-settings-selector
+  > button[aria-pressed="true"] {
+  background: var(--settings-card);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+.modal-settings [data-backend="agy"].backend-card {
+  container-type: inline-size;
+}
+.modal-settings .backend-card[data-backend="agy"] > .backend-model-settings {
+  max-inline-size: none;
+}

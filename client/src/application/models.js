@@ -8,7 +8,9 @@ import { uid } from "../domain/format.js";
 export function createModelPreferences({ get, set, rpc, transport, report }) {
   const storageKey = (name, id = get().backendId) =>
     !id || id === "codex" ? name : `${name}-${id}`;
-  let defaultModelSelection = { model: "", effort: "" };
+  const defaultModelSelections = new Map();
+  const emptySelection = { model: "", effort: "" };
+  const defaultsKey = () => JSON.stringify([get().backendId, get().providerId]);
   let modelSelectionRevision = 0;
   let projectModelsRemote = false;
   const projectModelsWriting = new Map();
@@ -163,10 +165,10 @@ export function createModelPreferences({ get, set, rpc, transport, report }) {
       return modelSelectionRevision;
     },
     get defaults() {
-      return defaultModelSelection;
+      return defaultModelSelections.get(defaultsKey()) || emptySelection;
     },
     configure(selection) {
-      defaultModelSelection = selection;
+      defaultModelSelections.set(defaultsKey(), selection);
     },
     disconnect() {
       projectModelsRemote = false;

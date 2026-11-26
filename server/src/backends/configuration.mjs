@@ -3,9 +3,13 @@ import { createStorage } from "./storage.mjs";
 import { validateNetworkProxy } from "./network-proxy.mjs";
 import { subagentSettings } from "../../../shared/subagent-settings.mjs";
 
+import { validateAgyBackend } from "./agy/configuration.mjs";
+
 export function validateBackend(input, config) {
+  if (input.id === "agy" && input.type === "agy")
+    return validateAgyBackend(input, config);
   if (!["codex", "claude"].includes(input.id) || input.id !== input.type)
-    throw new Error("仅支持 Codex 与 Claude Code 两个固定后端");
+    throw new Error("未知的后端类型或标识");
   if (
     input.subagentModel !== undefined &&
     (typeof input.subagentModel !== "string" ||
@@ -135,16 +139,16 @@ export function createBackendConfiguration(config) {
     const ids = new Set();
     for (const backend of data.backends) {
       if (
-        !["codex", "claude"].includes(backend.id) ||
+        !["codex", "claude", "agy"].includes(backend.id) ||
         backend.type !== backend.id ||
         ids.has(backend.id)
       )
-        throw new Error("配置仅支持一个 Codex 和一个 Claude Code 后端");
+        throw new Error("配置中的后端类型或标识无效");
       ids.add(backend.id);
     }
     return {
       ...data,
-      backends: ["codex", "claude"].map((id) =>
+      backends: ["codex", "claude", "agy"].map((id) =>
         validateBackend(
           {
             ...data.backends.find((b) => b.id === id),

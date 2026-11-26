@@ -121,7 +121,7 @@ export function ReplyActions({ item }) {
       />
       <IconButton
         icon={GitBranch}
-        title="从这里创建分支"
+        title={get().backendId === "agy" ? "从这里继续" : "从这里创建分支"}
         onClick={() => fork(get().current, item.turnId).catch(report)}
       />
     </div>

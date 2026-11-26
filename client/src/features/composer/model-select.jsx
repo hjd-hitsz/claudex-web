@@ -21,7 +21,6 @@ export const ModelSelect = React.memo(function ModelSelect() {
   const modelId = useStoreSelector((state) => state.model);
   const backendId = useStoreSelector((state) => state.backendId);
   const providerId = useStoreSelector((state) => state.providerId);
-  const inConversation = useStoreSelector((state) => Boolean(state.current));
   const active = useStoreSelector((state) =>
     Boolean(state.active[state.current?.id]),
   );
@@ -30,12 +29,8 @@ export const ModelSelect = React.memo(function ModelSelect() {
   const hidden = isModelHidden(backend, modelId, providerId);
   const choices = (modelChoices || []).filter(
     (choice) =>
-      (!inConversation || choice.backendId === backendId) &&
-      !isModelHidden(
-        backends.find((entry) => entry.id === choice.backendId),
-        choice.model,
-        choice.providerId,
-      ),
+      choice.backendId === backendId &&
+      !isModelHidden(backend, choice.model, choice.providerId),
   );
   const selected = modelChoices?.find(
     (choice) =>
@@ -55,8 +50,11 @@ export const ModelSelect = React.memo(function ModelSelect() {
     ? hidden
       ? `当前模型已隐藏：${selectedLabel}`
       : `当前模型不可用：${selectedLabel}`
-    : "请选择模型";
-  const catalogueAvailable = choices.length > 0 || hidden;
+    : choices.length
+      ? "请选择模型"
+      : "暂无可选模型";
+  const catalogueAvailable =
+    choices.length > 0 || hidden || backendId === "agy";
   const label = current
     ? selectedLabel
     : catalogueAvailable

@@ -1,5 +1,10 @@
 import React, { useEffect, useId, useState } from "react";
-import { useStoreSelector, rpc, saveBackend } from "../../store.js";
+import {
+  useStoreSelector,
+  rpc,
+  readAgyCatalogue,
+  saveBackend,
+} from "../../store.js";
 import {
   isModelHidden,
   modelChoiceLabel,
@@ -32,32 +37,48 @@ function organizeModels(models) {
   };
 }
 
-export function BackendModelSettings({ backend }) {
+export function BackendModelSettings({ backend, active = true }) {
   const cwd = useStoreSelector((state) => state.cwd);
   const catalogue = useStoreSelector((state) => state.modelChoices);
   const codex = backend.id === "codex";
+  const agy = backend.id === "agy";
+  const fetchCatalogue =
+    codex || (agy && active && backend.enabled && backend.ready);
   const titleId = useId();
-  const [codexModels, setCodexModels] = useState(null);
+  const [nativeModels, setNativeModels] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (!codex) return;
-    let active = true;
-    rpc("model/list", { backendId: backend.id, cwd }).then(
-      (result) => {
-        if (active) {
-          setCodexModels(result.data);
-          setError("");
+    if (!fetchCatalogue) return;
+    let current = true;
+    setLoading(true);
+    setError("");
+    const read = agy
+      ? readAgyCatalogue(cwd)
+      : rpc("model/list", { backendId: backend.id, cwd }).then(
+          ({ data }) => data,
+        );
+    read.then(
+      (data) => {
+        if (current) {
+          if (!agy) setNativeModels(data);
+          setLoading(false);
         }
       },
       (error) => {
-        if (active) setError(error.message);
+        if (current) {
+          setNativeModels(null);
+          setLoading(false);
+          setError(error.message);
+        }
       },
     );
     return () => {
-      active = false;
+      current = false;
     };
-  }, [codex, backend.id, backend.ready, cwd]);
+  }, [agy, fetchCatalogue, backend.id, backend.ready, cwd, retry]);
   async function toggle(models, shown) {
     if (busy) return;
     setBusy(true);
@@ -80,9 +101,12 @@ export function BackendModelSettings({ backend }) {
       setBusy(false);
     }
   }
-  const models = codex
-    ? codexModels
-    : catalogue?.filter((entry) => entry.backendId === backend.id);
+  const models =
+    agy && !fetchCatalogue
+      ? null
+      : codex
+        ? nativeModels
+        : catalogue?.filter((entry) => entry.backendId === backend.id);
   const { generations, otherModels } = codex
     ? organizeModels(models || [])
     : { generations: [], otherModels: models || [] };
@@ -90,9 +114,9 @@ export function BackendModelSettings({ backend }) {
     (model) => !isModelHidden(backend, model.model, model.providerId),
   ).length;
   function option(model, showName = false) {
-    const name = modelChoiceLabel(
-      codex ? { ...model, providerName: "ChatGPT" } : model,
-    );
+    const name = agy
+      ? model.displayName || model.model
+      : modelChoiceLabel(codex ? { ...model, providerName: "ChatGPT" } : model);
     return (
       <label className="codex-model-option" title={name}>
         <input
@@ -102,7 +126,7 @@ export function BackendModelSettings({ backend }) {
           checked={!isModelHidden(backend, model.model, model.providerId)}
           onChange={(event) => toggle([model], event.target.checked)}
         />
-        {showName && name}
+        {showName && (agy ? model.displayName || model.model : name)}
       </label>
     );
   }
@@ -179,11 +203,28 @@ export function BackendModelSettings({ backend }) {
           </ul>
         </div>
       )}
-      {models?.length === 0 && !error && <p>暂无可用模型</p>}
-      {error && (
-        <p className="inline-error" role="alert">
-          {error}
+      {models?.length === 0 && !loading && !error && <p>暂无可用模型</p>}
+      {agy && (!models || (loading && !models.length)) && !error && (
+        <p role="status">
+          {fetchCatalogue || loading
+            ? "正在读取原生模型…"
+            : "后端连接后显示可用模型"}
         </p>
+      )}
+      {error && (
+        <div className="backend-model-error">
+          <p className="inline-error" role="alert">
+            {error}
+          </p>
+          {agy && (
+            <button
+              type="button"
+              onClick={() => setRetry((value) => value + 1)}
+            >
+              重试
+            </button>
+          )}
+        </div>
       )}
     </section>
   );

@@ -1,3 +1,4 @@
+import { composerPrompt } from "../../domain/prompt-text.js";
 import { newDraftKey } from "../../infrastructure/backend-storage.js";
 import * as store from "../../store.js";
 import { isCompacting } from "../../domain/compaction.js";
@@ -94,6 +95,11 @@ export function parseComposerCommand(text, native = []) {
 }
 
 export function commandAvailable(command, state) {
+  if (
+    state.backendId === "agy" &&
+    ["plan", "goal", "review", "skills", "stop"].includes(command.id)
+  )
+    return false;
   return (
     (!command.current || !!state.current) &&
     (!command.active || !!state.active[state.current?.id])
@@ -125,11 +131,7 @@ export async function commandPages(method, params, isCurrent = () => true) {
   return rows;
 }
 
-const initPrompt = `请为当前工作目录中的项目生成 AGENTS.md，作为今后参与此项目的代理和贡献者的指南。
-写入前检查当前目录是否已有 AGENTS.md；已有时保留其全部内容并告知位置。
-阅读实际源码结构、配置、构建脚本、测试和近期 Git 提交约定，再编写简洁、独立可读的 Markdown 文档。
-按项目实际情况涵盖：项目结构与入口、构建及开发命令、代码风格、测试与验证要求、提交和合并请求约定，以及必要的配置注意事项。
-提供可执行的命令和准确的目录示例，省略不适用的章节，遵循项目现有语言与规范。`;
+const initPrompt = composerPrompt("initProject");
 
 let dispatching = false;
 export async function runComposerCommand(text, { onFailure } = {}) {
@@ -153,6 +155,8 @@ async function executeCommand(text) {
   const { command, name, args } = parsed;
   if (!command) throw new Error(`未识别的命令 /${name}。输入 / 查看可用命令。`);
   let s = store.get();
+  if (s.backendId === "agy" && !commandAvailable(command, s))
+    throw new Error(`Antigravity 当前无法使用 /${name}。`);
   if (command.id === "goal" && !s.current) {
     if (!args) {
       store.set({ goalMode: true, mode: "default" });

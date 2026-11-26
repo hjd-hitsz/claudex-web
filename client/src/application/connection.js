@@ -66,6 +66,19 @@ export function createConnection({
         previousBackends.length > 0 &&
         Boolean(nextBackends) &&
         enabledBackendKey(previousBackends) !== enabledBackendKey(nextBackends);
+      const backendRecovered = nextBackends?.some(
+        (backend) =>
+          backend.enabled &&
+          backend.ready &&
+          (get().threadListLoading ||
+            get().threadListErrors?.some(
+              (error) => error.backendId === backend.id,
+            )) &&
+          previousBackends.some(
+            (before) =>
+              before.id === backend.id && before.enabled && !before.ready,
+          ),
+      );
       const selectedWasReady = get().backends.find(
         (backend) => backend.id === get().backendId,
       )?.ready;
@@ -100,6 +113,7 @@ export function createConnection({
           m.params.projectlessRoots ||
           [m.params.projectlessRoot].filter(Boolean),
         connected: ready,
+        nativeDelegation: m.params.nativeDelegation === true,
         ...(m.params.backends && {
           backends: m.params.backends,
           backendId: m.params.backends.some(
@@ -140,7 +154,6 @@ export function createConnection({
         )
           navigation.newChat(undefined, { applyModelSelection: false });
         if (selectedDisabled) activateBackend(get().backendId).catch(report);
-        catalog.loadThreads().catch(() => {});
       }
       if (m.params.ready)
         for (const [threadId, entry] of Object.entries(get().compactions))
@@ -151,6 +164,8 @@ export function createConnection({
         (!was || (selectedWasReady === false && selectedNowReady === true))
       )
         boot();
+      else if (backendsChanged || (ready && backendRecovered))
+        catalog.loadThreads().catch(() => {});
       return;
     }
     events.handle(m);

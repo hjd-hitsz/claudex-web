@@ -4,7 +4,7 @@
 
 ## 系统组成
 
-Claudex Web 是连接一个 Codex app-server 和一个 Claude Code 运行时的浏览器工作台。React 前端提供统一交互，Node.js 网页桥接负责身份验证、请求路由与主机工作区；两个原生后端各自执行模型任务并保存历史。
+Claudex Web 是连接 Codex app-server、Claude Code 和可选 Antigravity CLI 的浏览器工作台。React 前端提供统一交互，Node.js 网页桥接负责身份验证、请求路由与主机工作区；各原生运行时执行模型轮次并保存历史。
 
 ```mermaid
 flowchart LR
@@ -16,6 +16,9 @@ flowchart LR
   Web <-->|JSON-RPC| Codex[Codex app-server]
   Web <-->|本机 IPC| Worker[Claude 独立执行服务]
   Worker <--> SDK[Claude Agent SDK]
+  Web <-->|本机 IPC| Agy[agy 独立服务]
+  Agy <-->|ACP| Antigravity[Antigravity CLI]
+  Agy -->|委派| Router
 ```
 
 网页关闭或桥接重启时，原生模型任务继续由所属运行时持有。Claude 执行服务独立于桥接进程；Codex 后台终端扩展的任务服务负责后台结果投递。本地翻译在独立子进程中执行 CPU 推理。
@@ -24,7 +27,7 @@ flowchart LR
 
 - `client/src/app` 组装应用外壳与路由，`features` 组织业务界面并通过参数取得外壳操作，`ui` 提供基础控件。`main.jsx` 只挂载，`store.js` 连接 React 订阅与应用动作。
 - 前端核心依赖方向为 `application → infrastructure → domain → shared`，应用层也可直接使用领域规则。`application` 管理用例与请求生命周期，`infrastructure` 访问 RPC 和浏览器存储，`domain` 维护纯规则。核心三层保持与 React 无关；`ui` 只依赖本层与领域层。
-- `server/src/server.mjs` 与 `application.mjs` 组装服务。`http` 处理 HTTP，`bridge` 维护公共网页操作，`backends/manager.mjs` 路由固定的两个后端，`workspace` 提供主机文件和网页交互终端。
+- `server/src/server.mjs` 与 `application.mjs` 组装服务。`http` 处理 HTTP，`bridge` 维护公共网页操作，`backends/manager.mjs` 路由固定的执行后端和可选秘书后端，`workspace` 提供主机文件和网页交互终端。
 - `server/src/conversation-manager` 位于后端路由上层，通过注入的适配器发现会话、异步投递消息并核对回执。适配器持有原生协议，应用负责组装与关闭。
 - HTTP 与公共桥接通过参数取得所需服务和状态；`backends/codex` 与 `backends/claude` 分别管理自己的原生传输、订阅与执行。公共桥接保持与具体后端解耦，两个原生适配器保持独立。
 - `shared` 提供跨端纯逻辑，只依赖本层；前后端通过协议协作。`packages/background-terminal` 与 `packages/translation-engine` 各自只依赖本子项目及外部包。
@@ -59,6 +62,7 @@ flowchart LR
   - [对话与历史](architecture/behavior.md#对话项目与历史)、[输入与草稿](architecture/behavior.md#输入草稿与执行)、[计划](architecture/behavior.md#计划模式)及[目标](architecture/behavior.md#目标交互)。
   - [工作区、文件与终端](architecture/behavior.md#工作区文件与终端)、[子代理与渲染](architecture/behavior.md#子代理与共享渲染)、[账户与界面](architecture/behavior.md#账户登录与外观)。
 - **原生后端**：[双后端产品契约与实施](architecture/backends.md)，包含适配器职责、执行生命周期与协议差异；[回归审查](architecture/backend-regressions.md)保留兼容基线与验证依据。
+  - [Antigravity 委派](architecture/backends.md#antigravity-委派)维护秘书会话、后台任务和原生审批的契约。
   - [通用会话管理器](architecture/backends.md#通用会话管理器)维护活跃会话发现、会话间通信与投递恢复契约。
   - [命令覆盖](cli-command-coverage.md)维护快捷命令及原生扩展；[Codex 后台终端](background-tasks.md)维护独立任务扩展；[翻译引擎](../packages/translation-engine/README.md)维护独立翻译子项目。
 - **开发与交付**：[开发者指南](development.md)提供本地环境、测试入口和源码服务操作。

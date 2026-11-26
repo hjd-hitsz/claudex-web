@@ -51,7 +51,7 @@ try {
     format: "esm",
     outfile: cache + "/client.mjs",
     external: ["react", "react-dom/client"],
-    loader: { ".css": "empty", ".svg": "dataurl" },
+    loader: { ".css": "empty", ".svg": "dataurl", ".md": "text" },
     plugins: [
       {
         name: "component-fixtures",
@@ -75,7 +75,11 @@ try {
   });
   const result = spawnSync(
     process.execPath,
-    [root + "tests/components/client.mjs"],
+    [
+      "--import",
+      root + "tests/helpers/prompt-markdown.mjs",
+      root + "tests/components/client.mjs",
+    ],
     {
       stdio: "inherit",
       env: { ...process.env, CODEX_COMPONENT_BUNDLE: cache + "/client.mjs" },

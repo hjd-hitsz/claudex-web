@@ -144,7 +144,7 @@ npm install -g @anthropic-ai/claude-code
 
 CLI 自动从当前 Node.js 的安装目录、服务 PATH 和用户 `~/.local/bin` 查找。systemd 服务安装时记录当前 Node.js 和 PATH；更换 Node.js 安装后重新执行 `claudex-web service install` 并在空闲时重启网页服务。Claude Code 复用 `CLAUDE_CONFIG_DIR`（默认 `~/.claude`）中的认证、技能、插件和历史；Codex 沿用 `CODEX_HOME`（默认 `~/.codex`）及既有 app-server 连接。使用原生账户时，先在服务电脑以同一账户完成 CLI 登录。
 
-在「设置 → 模型服务商」点击「添加供应商」，填写名称、API 地址、凭据和模型标识。可在 Claude Code 停用时配置供应商。启用 Claude Code 后，在输入框的模型菜单选择「供应商/模型」以新建对话。已有 Claude 对话可在任务结束后更换供应商或模型并继续。
+在「设置 → 模型服务商」点击「添加供应商」，填写名称、API 地址、凭据和模型标识。可在 Claude Code 停用时配置供应商。启用后，点击顶部文件夹左侧的后端图标选择 Claude Code，再从输入框选择「供应商/模型」。已有 Claude 对话可在任务结束后更换供应商或模型并继续。
 
 API 地址需支持 Messages 请求及工具调用，填写服务基地址，例如 `https://model.example`，请求路径会追加 `/v1/messages`；服务有统一路径前缀时将其保留在基地址中。默认选择“Message API”使用原生请求，选择“Message API （兼容）”会将消息中的系统指令合并到顶层 `system`，用于要求这种布局的服务。模型标识和支持的思考强度、速度档位以服务实际配置为准。API Key 保存在服务器，编辑时留空保留原凭据，勾选清除会移除已保存凭据。
 
@@ -160,7 +160,15 @@ Claude Code 的对话、配置和原生账户状态继续保存在本机 CLI 原
 
 `/init` 检查并保留当前目录已有的 `AGENTS.md`，缺少时生成项目指令。Claude Code 每次提交读取当前目录及祖先目录的 `AGENTS.override.md` 或 `AGENTS.md`，同目录优先 override，更具体目录的规则优先；文件修改和删除从下一轮生效。已有的 `CLAUDE.md` 继续生效。
 
-后端和供应商配置默认保存至 `CLAUDEX_WEB_CONFIG_DIR/backends.json`，可通过 `CLAUDEX_WEB_BACKENDS_FILE` 指定文件位置。配置包含固定的 `codex`、`claude` 两项，网页保存启停选择和 Claude Code 网络代理。CLI 程序自动检测，原生配置目录和 Codex 连接地址由服务环境统一取得，旧网页记录中的程序路径、参数及目录覆盖会自动归一化。供应商配置独立保留。变更启停前等待所属后端的任务结束。
+后端和供应商配置默认保存至 `CLAUDEX_WEB_CONFIG_DIR/backends.json`，可通过 `CLAUDEX_WEB_BACKENDS_FILE` 指定文件位置。配置包含固定的 `codex`、`claude`、`agy`，网页保存各后端的启停选择，以及 Claude Code 和 Antigravity 各自的网络代理。CLI 程序自动检测，原生配置目录和 Codex 连接地址由服务环境统一取得，旧网页记录中的程序路径、参数及目录覆盖会自动归一化。供应商配置独立保留。变更启停前等待所属后端的任务结束。
+
+## Antigravity 与委派
+
+安装官方 Antigravity CLI，使桥接服务可从运行环境发现 `agy`。在「设置 → 后端 → Antigravity」启用后端、选择显示的原生模型并按需设置代理。执行服务连接本机 `agy acp`，CLI 使用自己的认证。代理只作用于 Antigravity 进程，Codex 和 Claude Code 继续使用各自的网络配置。
+
+在「设置 → 委派」配置 Codex 和 Claude Code 的接收开关、模型与思考强度，再为各发起端选择提示词。Codex 和 Claude Code 双向委派共用本机工作区，各自在输入区开启「委派模式」后向另一端派单。Antigravity 在输入区选择接收端，两路都启用时默认显示 Codex，点击图标在两端切换。独立 agy 服务在 `backends/agy` 保存会话映射、委派任务和回执，Codex 与 Claude Code 发起的任务保存在配置目录的 `delegation`。systemd 部署为 agy 使用独立用户单元，普通进程部署使用独立后台进程。侧栏账户组件显示 Antigravity CLI 提供的额度。
+
+在「设置 → 委派 → 提示词预设」编辑默认提示词或添加具名预设。默认提示词适用于未选择具名预设的发起端，也可在 Antigravity 停用时编辑。自定义默认正文以 `0600` 权限保存在配置目录的 `backends/agy/secretary.md`。载入内置模板并保存后清除该覆盖文件。新设定从下一轮生效。Antigravity 的工具白名单由随版本提供的 `secretary-agent.md` 管理。
 
 ## 配置
 

@@ -70,7 +70,7 @@ test("配置恢复、独立凭据及失败写入保留旧配置", async (t) => {
   );
   await assert.rejects(
     settings.save({ id: "second", type: "claude", name: "Second" }),
-    /两个固定后端/,
+    /未知的后端类型或标识/,
   );
   await assert.rejects(
     providers.save({ backendId: "codex" }),
@@ -136,7 +136,7 @@ test("配置恢复、独立凭据及失败写入保留旧配置", async (t) => {
   assert.equal((await stat(config.backendsFile)).mode & 0o777, 0o600);
   assert.equal(
     (await createBackendConfiguration(config).read()).backends.length,
-    2,
+    3,
   );
 });
 

@@ -3,6 +3,11 @@ import type { CallResult } from "./native-protocol.d.mts";
 
 type ResumeOptions = { cwd?: string | null; inheritPermissions?: boolean };
 
+export const codexFullAccess = {
+  approvalPolicy: "never",
+  sandbox: "danger-full-access",
+} as const;
+
 type SubscriptionDependencies = {
   transport: Pick<
     ReturnType<typeof createUpstream>,
@@ -42,10 +47,7 @@ export function createSubscriptions({
           threadId,
           ...(cwd && { cwd }),
           excludeTurns: true,
-          ...(!inheritPermissions && {
-            approvalPolicy: "never",
-            sandbox: "danger-full-access",
-          }),
+          ...(!inheritPermissions && codexFullAccess),
           config: { thread_unload_delay_secs: 0 },
         })
         .then(({ thread }) => {

@@ -300,7 +300,9 @@ export function createClaudeRuntime({
         await process.query.setPermissionMode(
           queued.mode === "plan" || queued.review
             ? "plan"
-            : "bypassPermissions",
+            : queued.delegation
+              ? "default"
+              : "bypassPermissions",
         );
         const model = queued.model || session.model;
         if (model && process.model !== model) {
@@ -324,6 +326,10 @@ export function createClaudeRuntime({
       }
       active.query = process.query;
       await goals.prepare(threadId, process);
+      if (active.interrupted) {
+        await settle(threadId);
+        return;
+      }
       process.lastActivityAt = Date.now();
       const message = userPrompt(session, queued);
       for (const item of convertMessage(message, turn.id)) {
@@ -332,7 +338,6 @@ export function createClaudeRuntime({
       }
       process.input.push(message);
       submitted = true;
-      if (active.interrupted) await interrupt(threadId);
     } catch (error) {
       if (queued.peer && !submitted)
         await recordPeerRejection(

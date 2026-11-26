@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBackendManager } from "../src/backends/manager.mjs";
@@ -94,8 +94,11 @@ test("相同原生会话 ID 按实例路由，单实例故障保留另一实例�
     threadId: resourceId("claude", "same"),
     backendId: "codex",
   });
-  assert.equal(seen.at(-1)[0], "claude");
-  assert.equal(seen.at(-1)[1].params.threadId, "same");
+  const [readBackend, readRequest] = seen.find(
+    ([, { method, id }]) => method === "thread/read" && id === sequence,
+  );
+  assert.equal(readBackend, "claude");
+  assert.equal(readRequest.params.threadId, "same");
   const first = await call("thread/list", {}),
     second = await call("thread/list", { cursor: first.nextCursor });
   assert.equal(first.data[0].id, "same");
@@ -105,7 +108,33 @@ test("相同原生会话 ID 按实例路由，单实例故障保留另一实例�
     (await call("thread/read", { threadId: "same" })).thread.id,
     "same",
   );
-  assert.equal((await call("lan/backends/list", {})).backends.length, 2);
+  const fixedBackends = (await call("lan/backends/list", {})).backends;
+  assert.deepEqual(
+    fixedBackends.map(({ id }) => id),
+    ["codex", "claude", "agy"],
+  );
+  assert.equal(fixedBackends[2].enabled, false);
+  const rolePath = join(directory, "backends", "agy", "secretary.md");
+  const readRole = () => call("lan/backends/agy/role/read", {});
+  const saveRole = (content) => call("lan/backends/agy/role/save", { content });
+  const defaults = await readRole();
+  assert.equal(defaults.customized, false);
+  assert.equal(defaults.content, defaults.defaultContent);
+  assert.match(defaults.content, /你是用户的秘书/);
+  assert.ok(defaults.content.includes("根目录 `prompt/`"));
+  assert.match(defaults.content, /禁止在业务源码中硬编码提示词/);
+  const custom = await saveRole("# 自定义角色\n\n保留行尾空格。  \n");
+  assert.equal(custom.customized, true);
+  assert.deepEqual(await readRole(), custom);
+  assert.equal(await readFile(rolePath, "utf8"), custom.content);
+  assert.equal((await stat(rolePath)).mode & 0o777, 0o600);
+  for (const invalid of ["  ", null, "a\0b", "字".repeat(25000)]) {
+    await assert.rejects(saveRole(invalid), /角色设定/);
+    assert.deepEqual(await readRole(), custom);
+  }
+  assert.deepEqual(await saveRole(defaults.content), defaults);
+  await assert.rejects(stat(rolePath), { code: "ENOENT" });
+  assert.deepEqual(await readRole(), defaults);
   adapters.get("claude").notify({
     method: "item/completed",
     params: {

@@ -1,3 +1,4 @@
+import { referencePrompt } from "./prompt-text.js";
 import {
   CODE_LINE_FILE_LIMIT,
   isCodeLineSnippet,
@@ -5,10 +6,14 @@ import {
 import { uid } from "./format.js";
 
 const legacyHeading = "粘贴代码的匹配文件候选：\n";
-const sourceHeading =
-  "粘贴代码已定位。需要源码上下文时，请直接读取以下绝对路径和行号。";
-const candidateHeading =
-  "同一段粘贴代码匹配到多处。需要源码上下文时，请直接读取以下候选位置并核对。";
+const codeLocations = [
+  referencePrompt("codeLocation"),
+  referencePrompt("legacyCodeLocation"),
+];
+const codeCandidates = [
+  referencePrompt("codeCandidates"),
+  referencePrompt("legacyCodeCandidates"),
+];
 const sourceId = "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}";
 const sourceIdPattern = new RegExp(`^${sourceId}$`, "i");
 const sourceMarkers = new RegExp(
@@ -39,7 +44,9 @@ export function codeLineKey({ code, matches }) {
 
 export function codeLineContext({ matches }) {
   return [
-    matches.length === 1 ? sourceHeading : candidateHeading,
+    matches.length === 1
+      ? referencePrompt("codeLocation")
+      : referencePrompt("codeCandidates"),
     ...matches.map(({ path, line }) => `- ${path}:${line}`),
   ].join("\n");
 }
@@ -89,13 +96,19 @@ export function readCodeLineAttachment(input, index) {
       );
       return codeLineAttachment(code, matches, id, anchors);
     }
-    if (!text.startsWith(sourceHeading) && !text.startsWith(candidateHeading))
-      return null;
-    const [context, metadata, trailing] = text.split("\n\n");
-    const [heading, ...locations] = context.split("\n");
+    const heading = [...codeLocations, ...codeCandidates].find((value) =>
+      text.startsWith(value + "\n"),
+    );
+    if (!heading) return null;
+    const [context, metadata, trailing] = text
+      .slice(heading.length + 1)
+      .split("\n\n");
+    const locations = context.split("\n");
     if (
       trailing !== undefined ||
-      heading !== (locations.length === 1 ? sourceHeading : candidateHeading)
+      !(locations.length === 1 ? codeLocations : codeCandidates).includes(
+        heading,
+      )
     )
       return null;
     const matches = locations.map((location) => {

@@ -19,8 +19,15 @@ export async function readWorkspaceFile({
   rpc,
   request = globalThis.fetch,
 }) {
+  const url = "/api/files?" + new URLSearchParams({ path });
+  const readLocal = async () => {
+    const response = await request(url, { credentials: "same-origin" });
+    if (!response.ok)
+      throw new Error(`文件读取失败（HTTP ${response.status}）`);
+    return new Uint8Array(await response.arrayBuffer());
+  };
+  if (backendId === "agy") return readLocal();
   if (backendId === "claude") {
-    const url = "/api/files?" + new URLSearchParams({ path });
     const metadata = await request(url, {
       method: "HEAD",
       credentials: "same-origin",
@@ -31,12 +38,7 @@ export async function readWorkspaceFile({
     const size = length === null ? NaN : Number(length);
     if (!Number.isSafeInteger(size) || size < 0)
       throw new Error("文件长度信息无效");
-    if (size > nativeReadBytes) {
-      const response = await request(url, { credentials: "same-origin" });
-      if (!response.ok)
-        throw new Error(`文件读取失败（HTTP ${response.status}）`);
-      return new Uint8Array(await response.arrayBuffer());
-    }
+    if (size > nativeReadBytes) return readLocal();
   }
   const { dataBase64 } = await rpc("fs/readFile", {
     path,

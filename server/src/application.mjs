@@ -23,6 +23,7 @@ export function createWebApplication({
   runP2pTunnel,
 }) {
   let requestsInFlight = 0;
+  let closing = false;
   const conversations = createConversationManager({
     configDir: config.configDir,
   });
@@ -40,12 +41,13 @@ export function createWebApplication({
   const peers = new Set();
   function canSend(client) {
     return (
-      (!client.authLinkId && !client.authSessionId) ||
-      authentication.valid(
-        client.authSessionId,
-        client.authLinkId,
-        client.authLocal,
-      )
+      !closing &&
+      ((!client.authLinkId && !client.authSessionId) ||
+        authentication.valid(
+          client.authSessionId,
+          client.authLinkId,
+          client.authLocal,
+        ))
     );
   }
   function sendText(client, text) {
@@ -259,6 +261,7 @@ export function createWebApplication({
       await bridge.connect();
     },
     async close() {
+      closing = true;
       clearInterval(heartbeat);
       maintenance.close();
       await p2p.close();

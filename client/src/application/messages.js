@@ -1,3 +1,4 @@
+import { selectedDelegate } from "../domain/delegation.js";
 import { readAttachment, attachmentInputs } from "./attachments.js";
 import { referenceInputs } from "./reference-input.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
@@ -67,6 +68,22 @@ export function createMessages({
         throw new Error("回答提交时连接尚未就绪，请重试。");
       if (!get().questions.some((q) => String(q.id) === String(request.id)))
         throw new Error("此请求已结束，请查看最新消息。");
+      const agy = resourceTarget(request.params.threadId).backendId === "agy";
+      if (agy || request.params.delegationTaskId)
+        return rpc(agy ? "lan/agy/respond" : "lan/delegation/respond", {
+          threadId: request.params.threadId,
+          requestId: request.id,
+          result,
+          error,
+        })
+          .then(() => {
+            recordInputRequest(request, error ? undefined : result?.answers);
+            return true;
+          })
+          .catch((error) => {
+            onFailure(error);
+            return false;
+          });
       transport.connection.send(
         JSON.stringify({ id: request.id, ...(error ? { error } : { result }) }),
       );
@@ -152,6 +169,7 @@ export function createMessages({
         ...references.inputs,
       ];
       const running = get().active[thread.id];
+      const delegationMode = submission.delegationMode && !implementation;
       if (get().current?.id === thread.id)
         put({
           id: "optimistic-" + uid(),
@@ -163,6 +181,10 @@ export function createMessages({
         });
       const params = {
         threadId: thread.id,
+        ...(submission.backendId === "agy" && {
+          delegateTo: selectedDelegate(submission),
+        }),
+        ...(delegationMode && { delegationMode: true }),
         input,
         model: submission.model || undefined,
         providerId: submission.providerId,
@@ -172,7 +194,10 @@ export function createMessages({
           submission.models.find((m) => m.model === submission.model),
         ),
         collaborationMode: {
-          mode: implementation ? "default" : submission.mode,
+          mode:
+            implementation || submission.backendId === "agy"
+              ? "default"
+              : submission.mode,
           settings: {
             model: submission.model,
             reasoning_effort: submission.effort || null,
@@ -188,9 +213,9 @@ export function createMessages({
       }
       const r = await rpc(
         running ? "turn/steer" : "turn/start",
-        running
+        running && submission.backendId !== "agy"
           ? { threadId: thread.id, expectedTurnId: running, input }
-          : params,
+          : { ...params, ...(running && { expectedTurnId: running }) },
       );
       if (implementation) setThreadMode(thread.id, "default");
       const observedTurn = r.turn && get().turnTimings[thread.id]?.[r.turn.id];

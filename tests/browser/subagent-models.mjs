@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
-import { settingsPage } from "../helpers/settings-navigation.mjs";
+import {
+  settingsBackend,
+  openSettingsPage,
+  switchComposerBackend,
+} from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const build = process.env.BROWSER_BUILD_DIR || join(root, "client/dist");
@@ -140,14 +144,15 @@ try {
   page.setDefaultTimeout(10000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  async function open() {
+  async function open(backend = "Codex") {
     await page.locator(".composer .ProseMirror").waitFor();
     const sidebar = page.getByRole("button", { name: "显示侧栏", exact: true });
     if (await sidebar.isVisible()) await sidebar.click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await settingsPage(page, "后端").click();
+    await openSettingsPage(page, "后端");
+    await settingsBackend(page, backend).click();
     await page
-      .getByRole("form", { name: "Claude Code 子代理模型", exact: true })
+      .getByRole("form", { name: `${backend} 子代理模型`, exact: true })
       .waitFor();
   }
   await page.goto(`http://127.0.0.1:${server.address().port}`);
@@ -209,6 +214,7 @@ try {
     await codex.locator("option").filter({ hasText: "GPT-6.2-Astra" }).count(),
     0,
   );
+  await astra.and(page.locator("input:not([aria-disabled])")).waitFor();
   await astra.press("Space");
   await astra.and(page.locator("input:checked")).waitFor();
   await codexCard
@@ -272,6 +278,7 @@ try {
     await codex.getByLabel("子代理模型", { exact: true }).inputValue(),
     JSON.stringify(["", "second"]),
   );
+  await settingsBackend(page, "Claude Code").click();
   assert.equal(
     await claude.getByLabel("子代理模型", { exact: true }).inputValue(),
     "",
@@ -344,7 +351,11 @@ try {
   await page
     .getByRole("button", { name: "在当前目录新建对话", exact: true })
     .click();
+  await switchComposerBackend(page, "Claude Code");
   const candidates = page.getByLabel("模型", { exact: true }).locator("option");
+  await page
+    .getByRole("option", { name: "同名模型供应商/同名模型", exact: true })
+    .waitFor({ state: "attached" });
   assert.ok(
     (await candidates.allTextContents()).includes("同名模型供应商/同名模型"),
   );
@@ -352,7 +363,7 @@ try {
     !(await candidates.allTextContents()).includes("另一家供应商/同名模型"),
   );
   await page.reload();
-  await open();
+  await open("Claude Code");
   await hiddenChoice.waitFor();
   assert.equal(await hiddenChoice.isChecked(), false);
   assert.ok(await otherChoice.isChecked());
@@ -377,12 +388,13 @@ try {
     "high",
   );
   assert.equal(
-    await claude.getByLabel("子代理思考强度", { exact: true }).inputValue(),
-    "low",
-  );
-  assert.equal(
     await codex.getByLabel("子代理模型", { exact: true }).inputValue(),
     JSON.stringify(["", "second"]),
+  );
+  await settingsBackend(page, "Claude Code").click();
+  assert.equal(
+    await claude.getByLabel("子代理思考强度", { exact: true }).inputValue(),
+    "low",
   );
   assert.equal(
     await claude.getByLabel("子代理模型", { exact: true }).inputValue(),
@@ -416,6 +428,7 @@ try {
           layout.aligned && layout.scroll <= layout.width + 1,
           JSON.stringify({ width, theme, scale, layout }),
         );
+        await settingsBackend(page, "Claude Code").click();
         await claudeModels.scrollIntoViewIfNeeded();
         const size = await page.locator(".settings-body").evaluate((el) => ({
           width: el.clientWidth,
@@ -457,16 +470,17 @@ try {
   }
   await zoom.selectOption("1");
   await page.reload();
-  await open();
+  await open("Claude Code");
   await claude.getByLabel("子代理模型", { exact: true }).selectOption("");
   await claude.getByRole("button", { name: "保存", exact: true }).click();
   await claude.getByRole("button", { name: "保存", exact: true }).waitFor();
   await page.reload();
-  await open();
+  await open("Claude Code");
   assert.equal(
     await claude.getByLabel("子代理模型", { exact: true }).inputValue(),
     "",
   );
+  await settingsBackend(page, "Codex").click();
   assert.equal(
     await codex.getByLabel("子代理模型", { exact: true }).inputValue(),
     JSON.stringify(["", "second"]),

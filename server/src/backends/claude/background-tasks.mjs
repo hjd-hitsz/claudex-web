@@ -5,7 +5,7 @@ import {
   recoverNativeProcesses,
 } from "./process-ownership.mjs";
 
-const shellTask = (task) =>
+export const shellTask = (task) =>
   task?.is_backgrounded &&
   !task.ambient &&
   ["local_bash", "shell", "local_shell"].includes(task.task_type);
@@ -101,8 +101,10 @@ export function createBackgroundTasks({ storage, save, emit }) {
             ...s.backgroundTasks?.[id],
             ...message,
             ...message.patch,
+            ...(subtype === "task_notification" && { notifiedAt: Date.now() }),
             ...(subtype === "task_started" && {
               status: "running",
+              notifiedAt: undefined,
               startedAt: s.backgroundTasks?.[id]?.startedAt ?? Date.now(),
             }),
           },

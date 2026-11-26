@@ -99,6 +99,15 @@ export function backendFixture(data) {
     installation: data.backendInstallations?.[id],
     ...data.backendSettings?.[id],
   }));
+  if (data.nativeDelegation)
+    backends.push({
+      id: "agy",
+      type: "agy",
+      name: "Antigravity",
+      enabled: false,
+      ready: false,
+      ...JSON.parse(sessionStorage.delegationSettings || "{}"),
+    });
   let providers =
     data.providers ||
     (data.providerModelNames
@@ -120,6 +129,7 @@ export function backendFixture(data) {
   const state = () => ({
     ready: backends.some((backend) => backend.ready),
     bridgeReady: true,
+    nativeDelegation: data.nativeDelegation,
     backends,
     defaultBackendId:
       backends.find((backend) => backend.enabled)?.id || "codex",
@@ -164,9 +174,33 @@ export function backendFixture(data) {
       const thread = threads.find((t) => t.id === p.threadId);
       let result = { data: [] };
       if (m.method === "lan/backends/list") result = { backends };
+      if (
+        data.delegationDefaultPrompt &&
+        m.method === "lan/backends/agy/role/save"
+      ) {
+        if (p.content === data.delegationDefaultPrompt)
+          delete sessionStorage.delegationRole;
+        else sessionStorage.delegationRole = p.content;
+      }
+      if (
+        data.delegationDefaultPrompt &&
+        m.method.startsWith("lan/backends/agy/role/")
+      )
+        result = {
+          content:
+            sessionStorage.delegationRole ?? data.delegationDefaultPrompt,
+          defaultContent: data.delegationDefaultPrompt,
+          customized: "delegationRole" in sessionStorage,
+        };
       if (m.method === "lan/backends/save") {
         const backend = backends.find((b) => b.id === p.id);
         Object.assign(backend, p);
+        if (data.nativeDelegation && p.delegates)
+          sessionStorage.delegationSettings = JSON.stringify({
+            delegates: p.delegates,
+            delegationPrompts: p.delegationPrompts,
+            delegationSourcePrompts: p.delegationSourcePrompts,
+          });
         if (Object.hasOwn(p, "enabled")) backend.ready = p.enabled;
         this.emit("lan/state", state());
         result = { backends };
@@ -306,6 +340,28 @@ export function backendFixture(data) {
             turnId: item.turnId,
             item,
           })),
+        };
+      if (m.method === "lan/delegation/tasks") result = { items: [] };
+      if (m.method === "lan/projectless/prepare" && data.nativeDelegation)
+        result = {
+          cwd: "/web/workspaces/delegation-fixture",
+          root: "/web/workspaces",
+        };
+      if (m.method === "thread/start" && data.nativeDelegation)
+        result = {
+          thread: {
+            id: "backend:claude:new-delegation",
+            backendId: "claude",
+            cwd: p.cwd,
+          },
+        };
+      if (m.method === "turn/start" && data.nativeDelegation)
+        result = {
+          turn: {
+            id: "delegation-browser-turn",
+            status: "completed",
+            items: [],
+          },
         };
       if (m.method === "thread/backgroundTasks/list")
         result = { tasks: data.backgroundTasks?.[p.threadId] || [] };

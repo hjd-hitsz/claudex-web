@@ -2,6 +2,27 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readWorkspaceFile } from "../src/infrastructure/workspace-files.js";
 
+test("Antigravity 新建及已有对话通过工作区文件接口读取原始字节", async () => {
+  const bytes = new Uint8Array([0xe4, 0xb8, 0xad]);
+  for (const threadId of [null, "backend:agy:saved"]) {
+    const result = await readWorkspaceFile({
+      path: "/folder/测试 #1.md",
+      backendId: "agy",
+      threadId,
+      rpc: () => assert.fail("本机文件由文件接口读取"),
+      request: async (url, options) => {
+        assert.equal(
+          new URLSearchParams(url.split("?")[1]).get("path"),
+          "/folder/测试 #1.md",
+        );
+        assert.deepEqual(options, { credentials: "same-origin" });
+        return new Response(bytes);
+      },
+    });
+    assert.deepEqual(result, bytes);
+  }
+});
+
 test("Codex文件读取保留原生参数，Claude小文件使用原生完整base64读取", async () => {
   const calls = [];
   const rpc = async (method, params) => {

@@ -44,7 +44,7 @@ export function ProxySettings({ backend, disabled }) {
     <form
       className="backend-form proxy-settings"
       onSubmit={submit}
-      aria-label="Claude Code 网络代理"
+      aria-label={backend.name + " 网络代理"}
     >
       <div className="proxy-row">
         <label className="proxy-protocol">

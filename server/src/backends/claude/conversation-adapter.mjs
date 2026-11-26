@@ -1,5 +1,5 @@
 import { formatConversationMessage } from "../../conversation-manager/message.mjs";
-import { claudeConversationServerName } from "./conversation-tools.mjs";
+import { claudeConversationServerName } from "../../conversation-manager/tools.mjs";
 import { nativeProcessesAlive } from "./process-ownership.mjs";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

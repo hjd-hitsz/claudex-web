@@ -24,3 +24,8 @@ export const conversationMethods = Object.freeze([
   "thread/revert",
   "thread/rollback",
 ]);
+
+export const agyDelegationMethods = Object.freeze([
+  "lan/agy/delegation/cancel",
+  "lan/agy/respond",
+]);

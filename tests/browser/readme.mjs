@@ -68,7 +68,13 @@ assert(process.env.CHROME_PATH, "通过 CHROME_PATH 指定 Chromium 可执行文
 const buildDirectory = await mkdtemp(
   join(tmpdir(), "claudex-web-readme-build-"),
 );
-await cp(join(root, "client/dist"), buildDirectory, { recursive: true });
+await cp(
+  process.env.BROWSER_BUILD_DIR || join(root, "client/dist"),
+  buildDirectory,
+  {
+    recursive: true,
+  },
+);
 const buildInfo = JSON.parse(
   await readFile(join(root, "build-info.json"), "utf8"),
 );
@@ -97,6 +103,34 @@ function fixture(data) {
               method: "lan/state",
               params: {
                 ready: true,
+                nativeDelegation: true,
+                defaultBackendId: "codex",
+                backends: [
+                  {
+                    id: "codex",
+                    type: "codex",
+                    name: "Codex",
+                    ready: true,
+                    enabled: true,
+                  },
+                  {
+                    id: "claude",
+                    type: "claude",
+                    name: "Claude Code",
+                    ready: true,
+                    enabled: true,
+                  },
+                  {
+                    id: "agy",
+                    type: "agy",
+                    name: "Antigravity",
+                    enabled: false,
+                    delegates: {
+                      codex: { enabled: true },
+                      claude: { enabled: true },
+                    },
+                  },
+                ],
                 defaultCwd: thread.cwd,
                 activeTurns: {},
                 questions: [],
@@ -110,6 +144,7 @@ function fixture(data) {
       const m = JSON.parse(raw);
       window.demoRequests.push(m);
       let result = {};
+      if (m.method === "lan/delegation/tasks") result = { items: [] };
       if (m.method === "thread/list")
         result = {
           data: m.params.archived

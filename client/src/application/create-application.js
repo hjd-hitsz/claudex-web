@@ -206,6 +206,19 @@ export function createApplication() {
     report,
     notice,
   });
+  async function switchBackend(id) {
+    const state = get();
+    if (state.backendId === id || state.busy || state.loading) return;
+    const backend = state.backends.find((entry) => entry.id === id);
+    if (!backend?.enabled || backend.ready === false)
+      throw new Error("所选后端尚未连接");
+    if (state.current) models.rememberModelSelection();
+    navigation.newChat(undefined, {
+      reuseDirectory: true,
+      applyModelSelection: false,
+    });
+    await backends.activateBackend(id);
+  }
   const messages = createMessages({
     setThreadMode: store.setThreadMode,
     get,
@@ -250,6 +263,7 @@ export function createApplication() {
     report,
     notice,
     notifications,
+    updateAgyCatalogue: backends.updateAgyCatalogue,
   });
   const connection = createConnection({
     get,
@@ -290,6 +304,8 @@ export function createApplication() {
     openSubAgent,
     loadSkills,
     setReadingThread: records.setReadingThread,
+    switchBackend,
+    readAgyCatalogue: backends.readAgyCatalogue,
     selectModel: models.selectModel,
     selectEffort: models.selectEffort,
     syncProjectModels: models.syncProjectModels,

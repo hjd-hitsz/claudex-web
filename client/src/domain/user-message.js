@@ -1,6 +1,7 @@
+import { referencePrompt } from "./prompt-text.js";
 import {
   textReferences,
-  threadReferenceInstructions,
+  isThreadReferenceInstruction,
 } from "./inline-references.js";
 import { planApprovalLabel } from "./plans.js";
 import { parseAnnotations } from "./annotations.js";
@@ -13,7 +14,7 @@ import {
 export function fileReferenceInput(file) {
   return {
     type: "text",
-    text: `引用本机${file.directory ? "目录" : "文件"}：${file.path}\n请根据任务按需读取。`,
+    text: `引用本机${file.directory ? "目录" : "文件"}：${file.path}\n${referencePrompt("readFile")}`,
     text_elements: [],
   };
 }
@@ -49,7 +50,7 @@ export function parseUserMessage(content = []) {
     }
     if (
       inline.some((ref) => ref.kind === "thread") &&
-      part.text === threadReferenceInstructions(inline)
+      isThreadReferenceInstruction(part.text, inline)
     )
       continue;
     const snapshot =
@@ -96,18 +97,25 @@ export function parseUserMessage(content = []) {
         text = text.slice(desktop[0].length);
       }
     }
-    const legacyPattern =
-      /(?:^|\r?\n)引用本机(目录|文件)：([^\r\n]+)\r?\n请根据任务按需读取。\s*$/;
+    const filePattern = /(?:^|\r?\n)引用本机(目录|文件)：([^\r\n]+)(?=\r?\n)/g;
     const files = [];
-    let legacy;
-    while ((legacy = legacyPattern.exec(text))) {
-      const path = legacy[2];
+    for (const reference of [...text.matchAll(filePattern)].reverse()) {
+      const tail = text
+        .slice(reference.index + reference[0].length)
+        .replace(/^\r?\n/, "")
+        .trimEnd();
+      if (
+        tail !== referencePrompt("readFile") &&
+        tail !== referencePrompt("legacyReadFile")
+      )
+        continue;
+      const path = reference[2];
       files.unshift({
         name: path.replace(/\/$/, "").split("/").at(-1),
         path,
-        directory: legacy[1] === "目录",
+        directory: reference[1] === "目录",
       });
-      text = text.slice(0, legacy.index);
+      text = text.slice(0, reference.index);
     }
     references.push(...files);
     if (text.trim()) texts.push(text.trimEnd());

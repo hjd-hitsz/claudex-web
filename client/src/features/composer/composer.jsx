@@ -37,6 +37,8 @@ import {
 import { IconButton } from "../../ui/primitives.jsx";
 import { useComposerShortcuts } from "../commands/shortcuts.jsx";
 import { submitComposer } from "../commands/composer-commands.js";
+import { DelegationToggle } from "./delegation-toggle.jsx";
+import { DelegationTarget } from "./delegation-target.jsx";
 import { ServiceTierToggle } from "./service-tier-toggle.jsx";
 import { ReasoningEffortControl } from "./reasoning-effort.jsx";
 import { ComposerAnnotations } from "../annotations/message-annotations.jsx";
@@ -149,7 +151,7 @@ export function Composer({ inputRef }) {
       onClose={() => setEnlarged(false)}
     >
       <InputQueue />
-      <GoalSummary />
+      {backendCapability(s, "goal") && <GoalSummary />}
       {compaction && !compaction.dismissed && (
         <CompactionStatus
           key={s.current?.id + compaction.id}
@@ -330,19 +332,27 @@ export function Composer({ inputRef }) {
               />
               <ModelSelect />
               <ReasoningEffortControl />
-              <ServiceTierToggle />
-              <IconButton
-                icon={ListChecks}
-                title="计划模式"
-                aria-pressed={s.mode === "plan"}
-                active={s.mode === "plan"}
-                onClick={() =>
-                  set({
-                    mode: s.mode === "plan" ? "default" : "plan",
-                    goalMode: false,
-                  })
-                }
-              />
+              {s.backendId === "agy" ? (
+                <DelegationTarget />
+              ) : (
+                <ServiceTierToggle />
+              )}
+              <DelegationToggle />
+              {s.backendId !== "agy" && (
+                <IconButton
+                  icon={ListChecks}
+                  title="计划模式"
+                  aria-pressed={s.mode === "plan"}
+                  active={s.mode === "plan"}
+                  onClick={() =>
+                    set({
+                      mode: s.mode === "plan" ? "default" : "plan",
+                      goalMode: false,
+                      delegationMode: false,
+                    })
+                  }
+                />
+              )}
               <ComposerActivity
                 items={s.items}
                 expanded={s.contextOpen && !s.panel}
@@ -372,7 +382,9 @@ export function Composer({ inputRef }) {
                   目标 <X size={12} />
                 </button>
               )}
-              {s.mode === "plan" && <span className="mode-badge">计划</span>}
+              {s.backendId !== "agy" && s.mode === "plan" && (
+                <span className="mode-badge">计划</span>
+              )}
               {active && (
                 <button
                   className="stop-button"

@@ -6,7 +6,11 @@ import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
-import { settingsPage } from "../helpers/settings-navigation.mjs";
+import {
+  settingsBackend,
+  settingsPage,
+  openSettingsPage,
+} from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const main = process.env.UI_MAIN === "1";
@@ -105,6 +109,7 @@ try {
       .waitFor();
     await page.getByText("示例供应商", { exact: true }).waitFor();
     await settingsPage(page, "后端").click();
+    await settingsBackend(page, "Codex").click();
     assert.equal(
       await page
         .getByRole("button", { name: "添加供应商", exact: true })
@@ -134,6 +139,7 @@ try {
     await codex
       .getByRole("checkbox", { name: "启用 Codex", exact: true })
       .click();
+    await settingsBackend(page, "Claude Code").click();
     await claude.getByRole("button", { name: "一键安装", exact: true }).click();
     await claude
       .locator(".backend-version")
@@ -251,7 +257,8 @@ try {
           });
           if (await openSidebar.isVisible()) await openSidebar.click();
           await page.getByRole("button", { name: "设置", exact: true }).click();
-          await settingsPage(page, "后端").click();
+          await openSettingsPage(page, "后端");
+          await settingsBackend(page, "Claude Code").click();
           const proxy = page.getByRole("form", {
             name: "Claude Code 网络代理",
           });

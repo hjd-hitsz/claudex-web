@@ -16,7 +16,7 @@ const packages = {
   claude: "@anthropic-ai/claude-code",
 };
 export async function findCli(id) {
-  if (!packages[id]) throw new Error("未知后端");
+  if (!packages[id] && id !== "agy") throw new Error("未知后端");
   const directories = [
     dirname(process.execPath),
     ...(process.env.PATH || "").split(delimiter),
@@ -31,6 +31,8 @@ export async function findCli(id) {
       if (!["ENOENT", "EACCES", "ENOTDIR"].includes(error.code)) throw error;
     }
   }
+  if (id === "agy")
+    throw new Error("运行环境找不到官方 Antigravity CLI（agy）");
   throw new Error(
     `未找到 ${id}，请点击一键安装，或执行 npm install -g ${packages[id]}`,
   );
@@ -60,7 +62,7 @@ export function createCliInstallation({
     changed();
   }
   function refresh(id) {
-    if (!packages[id]) throw new Error("未知后端");
+    if (!packages[id] && id !== "agy") throw new Error("未知后端");
     if (pending.has(id)) return pending.get(id);
     const operation = (async () => {
       patch(id, { checking: true, error: "", latestError: "" });
@@ -75,7 +77,7 @@ export function createCliInstallation({
           if (!version) throw new Error("无法识别 CLI 版本：" + stdout.trim());
           return { executable, currentVersion: version };
         })(),
-        fetchVersion(packages[id]),
+        id === "agy" ? Promise.resolve("") : fetchVersion(packages[id]),
       ]);
       patch(id, {
         checking: false,
@@ -85,7 +87,10 @@ export function createCliInstallation({
           : {
               currentVersion: "",
               executable: null,
-              error: `${id === "codex" ? "Codex" : "Claude Code"} CLI 无法运行，可点击一键安装修复。`,
+              error:
+                id === "agy"
+                  ? "运行环境找不到可用的 agy 命令。"
+                  : `${id === "codex" ? "Codex" : "Claude Code"} CLI 无法运行，可点击一键安装修复。`,
               errorDetails:
                 local.reason.details ||
                 local.reason.stderr ||
@@ -129,7 +134,8 @@ export function createCliInstallation({
   function start() {
     if (timer) return;
     const check = () => {
-      for (const id of Object.keys(packages)) refresh(id).catch(() => {});
+      for (const id of [...Object.keys(packages), "agy"])
+        refresh(id).catch(() => {});
     };
     timer = setInterval(check, 60 * 60 * 1000);
     timer.unref();

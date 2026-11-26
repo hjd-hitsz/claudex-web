@@ -6,6 +6,7 @@ type BackendActivity = {
   backends?: readonly { installation?: { installing?: boolean } }[];
   activeTurns?: object;
   backgroundTasks?: object;
+  delegationTasks?: object;
   queuedInputs?: object;
   internalCommands?: readonly unknown[];
   questions?: readonly unknown[];
@@ -19,6 +20,7 @@ export function hasBackendWork(state: BackendActivity = {}) {
     state.backends?.some((backend) => backend.installation?.installing) ||
     Object.keys(state.activeTurns || {}).length ||
     Object.keys(state.backgroundTasks || {}).length ||
+    Object.keys(state.delegationTasks || {}).length ||
     Object.keys(state.queuedInputs || {}).length ||
     state.internalCommands?.length ||
     state.questions?.length ||

@@ -36,6 +36,7 @@
 
 @import "./styles/backends.css";
 @import "./styles/backend-model-settings.css";
+@import "./styles/delegation-settings.css";
 @import "./styles/settings-layout.css";
 @import "./styles/settings-provider.css";
 @import "./styles/service-maintenance.css";

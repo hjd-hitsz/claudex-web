@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  annotationMessage,
-  parseAnnotations,
-} from "../../client/src/domain/annotations.js";
+import "../helpers/prompt-markdown.mjs";
+
+const { annotationMessage, parseAnnotations } =
+  await import("../../client/src/domain/annotations.js");
 
 const expression = String.raw`D = \sqrt{L_g^2 + L_a^2}`;
 const reply = {

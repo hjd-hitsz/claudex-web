@@ -1,3 +1,4 @@
+import { readPromptSections } from "../../prompts.mjs";
 import { createClaudeAccount } from "./account.mjs";
 import { configuredTokenUsage } from "./token-usage.mjs";
 import { createClaudeCatalogue } from "./catalogue.mjs";
@@ -159,7 +160,9 @@ export function createClaudeAdapter({
         input: [
           {
             type: "text",
-            text: "/code-review 当前项目所有未提交的变更，包含暂存、未暂存和未跟踪文件。读取项目约定及相关实现，检查正确性、回归、安全和测试缺口。按严重程度列出可核查的问题、文件位置、触发条件和修复建议；没有发现问题时明确说明。仅进行审查，保持项目文件不变。",
+            text: readPromptSections("backends/claude/execution.md")(
+              "reviewRequest",
+            ),
           },
         ],
         review: true,
@@ -348,6 +351,18 @@ export function createClaudeAdapter({
         const q = questions.get(String(message.id));
         if (q) {
           questions.delete(String(message.id));
+          if (q.permission) {
+            q.resolve(
+              message.result?.optionId === "allow" && !message.error
+                ? { behavior: "allow", updatedInput: q.input }
+                : { behavior: "deny", message: "用户拒绝操作" },
+            );
+            notify("serverRequest/resolved", {
+              requestId: message.id,
+              threadId: q.threadId,
+            });
+            return;
+          }
           const answers = Object.fromEntries(
             q.input.questions.flatMap((question, index) => {
               const values = message.result?.answers?.[index]?.answers;

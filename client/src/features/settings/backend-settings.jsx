@@ -11,6 +11,10 @@ export function BackendSettings() {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [selected, setSelected] = useState(s.backendId);
+  const active = s.backends.some(({ id }) => id === selected)
+    ? selected
+    : s.backends[0]?.id;
   const previousInstallations = useRef(new Map());
   const installationAttempts = useRef(new Set());
   useEffect(() => {
@@ -61,6 +65,39 @@ export function BackendSettings() {
       className="backend-settings"
       aria-labelledby="settings-backends-title"
     >
+      {s.backends.length > 1 && (
+        <>
+          <select
+            className="backend-settings-compact-selector"
+            aria-label="选择要配置的后端"
+            value={active}
+            onChange={(event) => setSelected(event.target.value)}
+          >
+            {s.backends.map(({ id, name }) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <div
+            className="backend-settings-selector"
+            role="group"
+            aria-label="选择要配置的后端"
+          >
+            {s.backends.map(({ id, name }) => (
+              <button
+                type="button"
+                key={id}
+                aria-pressed={active === id}
+                onClick={() => setSelected(id)}
+              >
+                <BackendBadge backendId={id} />
+                <span>{name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {s.backends.map((backend) => {
         const cli = backend.installation || {};
         const working = busy || cli.installing;
@@ -80,7 +117,12 @@ export function BackendSettings() {
                 ? "已连接"
                 : "连接失败";
         return (
-          <section className="backend-card" key={backend.id}>
+          <section
+            className="backend-card"
+            data-backend={backend.id}
+            key={backend.id}
+            hidden={active !== backend.id}
+          >
             <div className="backend-heading">
               <div className="backend-identity">
                 <BackendBadge backendId={backend.id} />
@@ -104,33 +146,35 @@ export function BackendSettings() {
                 </span>
               </div>
               <div className="backend-actions">
-                <button
-                  data-update={updateAvailable}
-                  data-current={cli.installed === true && !updateAvailable}
-                  title={
-                    cli.latestVersion
-                      ? `最新版本 ${cli.latestVersion}`
-                      : undefined
-                  }
-                  disabled={
-                    working || (cli.installed !== false && !updateAvailable)
-                  }
-                  onClick={() =>
-                    action(async () => {
-                      await rpc("lan/backends/install", { id: backend.id });
-                    }, backend.id)
-                  }
-                >
-                  {cli.installing
-                    ? "正在安装…"
-                    : cli.installed === false
-                      ? "一键安装"
-                      : updateAvailable
-                        ? `更新至 ${cli.latestVersion}`
-                        : cli.latestVersion && cli.currentVersion
-                          ? "无需更新"
-                          : "待检查"}
-                </button>
+                {backend.id !== "agy" && (
+                  <button
+                    data-update={updateAvailable}
+                    data-current={cli.installed === true && !updateAvailable}
+                    title={
+                      cli.latestVersion
+                        ? `最新版本 ${cli.latestVersion}`
+                        : undefined
+                    }
+                    disabled={
+                      working || (cli.installed !== false && !updateAvailable)
+                    }
+                    onClick={() =>
+                      action(async () => {
+                        await rpc("lan/backends/install", { id: backend.id });
+                      }, backend.id)
+                    }
+                  >
+                    {cli.installing
+                      ? "正在安装…"
+                      : cli.installed === false
+                        ? "一键安装"
+                        : updateAvailable
+                          ? `更新至 ${cli.latestVersion}`
+                          : cli.latestVersion && cli.currentVersion
+                            ? "无需更新"
+                            : "待检查"}
+                  </button>
+                )}
                 <input
                   className="settings-switch"
                   type="checkbox"
@@ -167,9 +211,20 @@ export function BackendSettings() {
                 <pre>{diagnostic}</pre>
               </details>
             )}
-            <SubagentModelSettings backend={backend} disabled={working} />
-            <BackendModelSettings backend={backend} />
-            {backend.type === "claude" && (
+            {backend.id === "agy" ? (
+              <>
+                <BackendModelSettings
+                  backend={backend}
+                  active={active === backend.id}
+                />
+              </>
+            ) : (
+              <>
+                <SubagentModelSettings backend={backend} disabled={working} />
+                <BackendModelSettings backend={backend} />
+              </>
+            )}
+            {["claude", "agy"].includes(backend.type) && (
               <ProxySettings backend={backend} disabled={working} />
             )}
           </section>

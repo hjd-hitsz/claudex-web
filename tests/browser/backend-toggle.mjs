@@ -6,7 +6,10 @@ import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
-import { settingsPage } from "../helpers/settings-navigation.mjs";
+import {
+  settingsBackend,
+  settingsPage,
+} from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const before = process.env.UI_BEFORE === "1";
@@ -105,7 +108,10 @@ try {
   }
   async function toggleClaude() {
     await settings.click();
-    if (!before) await settingsPage(page, "后端").click();
+    if (!before) {
+      await settingsPage(page, "后端").click();
+      await settingsBackend(page, "Claude Code").click();
+    }
     await claudeToggle.click();
   }
   async function expectDisabled() {
@@ -218,6 +224,7 @@ try {
   if (!before) {
     await settings.click();
     await settingsPage(page, "后端").click();
+    await settingsBackend(page, "Codex").click();
     const codexToggle = page.getByRole("checkbox", {
       name: "启用 Codex",
       exact: true,
@@ -232,6 +239,7 @@ try {
     assert.equal(await page.locator(".thread-row").count(), 0);
     await settings.click();
     await settingsPage(page, "后端").click();
+    await settingsBackend(page, "Codex").click();
     await codexToggle.click();
     await page
       .locator(".backend-card")

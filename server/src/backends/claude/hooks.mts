@@ -1,3 +1,4 @@
+import { textPatch } from "../../file-diff.mjs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -27,19 +28,7 @@ async function contents(path: string) {
     throw error;
   }
 }
-function patch(before: string, after: string) {
-  const lines = (text: string, prefix: string) => {
-    const rows = text.split("\n");
-    if (rows.at(-1) === "") rows.pop();
-    return (
-      rows.map((line) => prefix + line + "\n").join("") +
-      (text && !text.endsWith("\n") ? "\\ No newline at end of file\n" : "")
-    );
-  };
-  const count = (text: string) =>
-    text ? text.split("\n").length - Number(text.endsWith("\n")) : 0;
-  return `--- a/file\n+++ b/file\n@@ -${before ? 1 : 0},${count(before)} +${after ? 1 : 0},${count(after)} @@\n${lines(before, "-")}${lines(after, "+")}`;
-}
+
 type HookOptions = {
   threadId: string;
   context: () => { turnId: string; readOnly?: boolean };
@@ -47,6 +36,7 @@ type HookOptions = {
   broadcast: SessionDependencies["broadcast"];
   questions: Map<string, PendingQuestion>;
   goalBeforeTool: HookCallback;
+  delegationContext: () => string | undefined;
   conversationToolGuard?: NonNullable<Options["hooks"]>["PreToolUse"];
   onPromptFailure: (error: unknown) => void;
 };
@@ -62,6 +52,7 @@ export function createRunHooks({
   broadcast,
   questions,
   goalBeforeTool,
+  delegationContext,
   conversationToolGuard = [],
   onPromptFailure,
 }: HookOptions): NonNullable<Options["hooks"]> {
@@ -195,7 +186,9 @@ export function createRunHooks({
           path: previous.path,
           kind: { type: previous.before === null ? "add" : "update" },
           diff:
-            previous.before === null ? after : patch(previous.before, after),
+            previous.before === null
+              ? after
+              : textPatch(previous.before, after),
         },
       ],
     });
@@ -236,7 +229,12 @@ export function createRunHooks({
       return {
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
-          additionalContext: await readProjectInstructions(input.cwd),
+          additionalContext: [
+            await readProjectInstructions(input.cwd),
+            delegationContext(),
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
         },
       };
     } catch (error) {

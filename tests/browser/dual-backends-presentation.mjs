@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { settingsPage } from "../helpers/settings-navigation.mjs";
+import {
+  settingsPage,
+  switchComposerBackend,
+} from "../helpers/settings-navigation.mjs";
 export async function testDualPresentation({
   page,
   input,
@@ -47,8 +50,8 @@ export async function testDualPresentation({
     await (backend === "claude" ? claudeRow : codexRow).click();
     await page.waitForFunction(
       (backend) =>
-        document.querySelector(".topbar > .backend-badge")?.dataset.backend ===
-        backend,
+        document.querySelector(".backend-switcher > button > .backend-badge")
+          ?.dataset.backend === backend,
       backend,
     );
     await page.getByRole("button", { name: "插件与连接", exact: true }).click();
@@ -77,7 +80,9 @@ export async function testDualPresentation({
         await page.evaluate((scale) => {
           document.documentElement.style.zoom = scale;
         }, scale);
-        const badge = page.locator(".topbar > .backend-badge");
+        const badge = page.locator(
+          ".backend-switcher > button > .backend-badge",
+        );
         assert.equal(await badge.innerText(), "");
         assert.equal(await badge.getAttribute("aria-hidden"), "true");
         assert.equal(await badge.getAttribute("title"), null);
@@ -106,7 +111,9 @@ export async function testDualPresentation({
       await page.evaluate((scale) => {
         document.documentElement.style.zoom = scale;
       }, scale);
-      const box = await page.locator(".topbar > .backend-badge").boundingBox();
+      const box = await page
+        .locator(".backend-switcher > button > .backend-badge")
+        .boundingBox();
       assert.ok(box.width > 10 && box.x >= 0 && box.x + box.width <= 390);
       assert.equal(await input().isVisible(), true);
     }
@@ -133,6 +140,7 @@ export async function testDualPresentation({
   await page
     .getByRole("button", { name: "在当前目录新建对话", exact: true })
     .click();
+  await switchComposerBackend(page, "Codex");
   await page
     .getByLabel("模型", { exact: true })
     .selectOption({ label: "ChatGPT/GPT Test" });
@@ -141,6 +149,7 @@ export async function testDualPresentation({
       document.querySelector('select[aria-label="模型"]')?.selectedOptions[0]
         ?.textContent === "ChatGPT/GPT Test",
   );
+  await switchComposerBackend(page, "Claude Code");
   await input().fill("CtrlEnter立即发送");
   await page
     .getByLabel("模型", { exact: true })
