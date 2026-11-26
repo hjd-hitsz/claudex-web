@@ -1,11 +1,8 @@
+import { defaultSecretaryRole as defaultContent } from "./secretary-prompts.mjs";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { writePrivateFile } from "../../private-file.mjs";
 
-const defaultContent = await readFile(
-  new URL("./secretary.md", import.meta.url),
-  "utf8",
-);
 const roleFile = (stateDir) => join(stateDir, "secretary.md");
 
 export async function readAgyRole(stateDir) {

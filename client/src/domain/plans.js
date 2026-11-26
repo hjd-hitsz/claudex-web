@@ -1,3 +1,4 @@
+import { composerPrompt } from "./prompt-text.js";
 // 计划正文来自后端消息；步骤进度 turn/plan/updated 独立于待批准的方案。
 export function pendingPlan(items, turns = [], activeTurnId) {
   const lastUser = items.findLast((item) => item.type === "userMessage");
@@ -11,11 +12,14 @@ export function pendingPlan(items, turns = [], activeTurnId) {
 }
 
 export function planImplementationText(plan) {
-  return `Implement the following plan:\n\n${plan.text}`;
+  return `${composerPrompt("approvePlan")}\n\n${plan.text}`;
 }
 
 export function planApprovalLabel(text) {
-  return text.startsWith("Implement the following plan:\n\n")
+  return [
+    composerPrompt("approvePlan"),
+    composerPrompt("legacyApprovePlan"),
+  ].some((prefix) => text.startsWith(prefix + "\n\n"))
     ? "批准并执行计划"
     : text;
 }

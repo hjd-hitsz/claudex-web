@@ -105,7 +105,11 @@ function boundaryError(from, to) {
   const serverEntry = /^server\/src\/(?:application|server)\.m[jt]s$/.test(to);
   if (
     from.startsWith("packages/background-terminal/") &&
-    !to.startsWith("packages/background-terminal/")
+    !to.startsWith("packages/background-terminal/") &&
+    !(
+      from === "packages/background-terminal/prompts.mjs" &&
+      to === "shared/prompt-sections.mjs"
+    )
   )
     return "后台终端扩展只能依赖自己的子项目与外部包";
   if (
@@ -114,6 +118,8 @@ function boundaryError(from, to) {
   )
     return "翻译引擎只能依赖自己的子项目与外部包";
   const inClient = from.startsWith("client/src/");
+  if (inClient && /^prompt\/(?:composer|references)\/.+\.md$/.test(to))
+    return null;
   if (inClient && to.startsWith("server/"))
     return "浏览器代码只能通过 shared/ 复用跨端逻辑";
   if (from.startsWith("server/src/") && to.startsWith("client/src/"))

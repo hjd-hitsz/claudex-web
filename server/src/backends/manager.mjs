@@ -1,3 +1,6 @@
+import { createBackendRequests } from "./manager-requests.mjs";
+import { createNativeDelegation } from "./delegation/native.mjs";
+import { delegationRequest } from "./delegation/routing.mjs";
 import { listBackendThreads } from "./thread-pages.mjs";
 import { createBackgroundService } from "./codex/background-service.mjs";
 import { bindConversationTools } from "../conversation-manager/backend-binding.mjs";
@@ -32,7 +35,7 @@ import {
 import { createAgyWorkerAdapter } from "./agy/worker-client.mjs";
 import { agyStateDirectory, isAgyPreference } from "./agy/configuration.mjs";
 import { readAgyRole, saveAgyRole } from "./agy/role-settings.mjs";
-import { createDelegatedThreadIndex } from "./agy/delegated-threads.mjs";
+import { createDelegatedThreadIndex } from "./delegation/delegated-threads.mjs";
 const adapterFactories = {
   agy: createAgyWorkerAdapter,
   codex: createCodexAdapter,
@@ -64,9 +67,21 @@ export function createBackendManager({
       },
     });
   let initialized = false,
-    closed = false,
-    sequence = 0;
+    closed = false;
   let changing = Promise.resolve();
+  const delegation = createNativeDelegation({
+    config,
+    version,
+    emit: broadcast,
+    changed: emitState,
+    backendEntry: (id) => instances.get(id),
+  });
+  const { proxy, call } = createBackendRequests({
+    send,
+    tokenUsage,
+    projectResult,
+    settle: delegation.settle,
+  });
   const usageReconciliation = createTokenUsageReconciliation({
     store: tokenUsage,
     call,
@@ -119,9 +134,15 @@ export function createBackendManager({
           ),
         ],
         projectModels: true,
-        questions: states.flatMap((s) => s.questions),
-        delegationTasks:
-          instances.get("agy")?.adapter?.state().params.delegationTasks || {},
+        nativeDelegation: Boolean(conversations),
+        questions: [
+          ...states.flatMap((s) => s.questions),
+          ...delegation.snapshot().questions,
+        ],
+        delegationTasks: {
+          ...instances.get("agy")?.adapter?.state().params.delegationTasks,
+          ...delegation.snapshot().pending,
+        },
         activeTurns: merge("activeTurns"),
         executionStatuses: merge("executionStatuses"),
         compactions: merge("compactions"),
@@ -139,7 +160,14 @@ export function createBackendManager({
     const deps =
       backend.id === "agy"
         ? {}
-        : bindConversationTools(conversations, entry, folders, () => !closed);
+        : bindConversationTools(
+            conversations,
+            entry,
+            folders,
+            () => !closed,
+            (name, actor, args) =>
+              delegation.invoke(backend, name, actor, args),
+          );
     if (!backend.enabled) return;
     try {
       const factory = factories[backend.type] || adapterFactories[backend.type];
@@ -162,6 +190,7 @@ export function createBackendManager({
             usageReconciliation.start(entry);
             return emitState();
           }
+          delegation.observe(entry, message);
           const notification = mapNotification(message, backend.id);
           tokenUsage.observe(notification);
           broadcast(notification);
@@ -177,6 +206,7 @@ export function createBackendManager({
     await folders.read();
     const data = await configuration.read();
     await Promise.all(data.backends.map(install));
+    await delegation.start();
     initialized = true;
     cli.start?.();
     emitState();
@@ -205,86 +235,6 @@ export function createBackendManager({
     return method === "thread/list" && entry.backend.id !== "agy"
       ? hideDelegatedThreads(projected)
       : projected;
-  }
-  function proxy(entry, client) {
-    if (!entry.proxies.has(client)) {
-      const methods = new Map();
-      entry.proxies.set(client, {
-        get readyState() {
-          return client.readyState;
-        },
-        methods,
-        async deliver(message) {
-          const { method, threadId, usageRevision, forkUsage } =
-            methods.get(message.id) || {};
-          methods.delete(message.id);
-          if (!message.error && method === "thread/delete")
-            tokenUsage.remove(threadId);
-          if (!message.error && method === "thread/archive")
-            tokenUsage.archive(threadId);
-          if (!message.error && method === "thread/unarchive")
-            tokenUsage.archive(threadId, false);
-          send(client, {
-            ...message,
-            ...(message.result && {
-              result: await projectResult(
-                entry,
-                message.result,
-                method,
-                usageRevision,
-                forkUsage,
-              ),
-            }),
-          });
-        },
-      });
-    }
-    return entry.proxies.get(client);
-  }
-  function call(entry, method, params, { signal } = {}) {
-    if (signal?.aborted) return Promise.reject(signal.reason);
-    const usageRevision = tokenUsage.revision(
-      params.threadId && resourceId(entry.backend.id, params.threadId),
-    );
-    return new Promise((resolve, reject) => {
-      const id = `manager-${++sequence}`;
-      const fail = (error) => {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", abort);
-        reject(error);
-      };
-      const abort = () => fail(signal.reason);
-      const timer = setTimeout(() => fail(new Error("后端读取超时")), 120000);
-      signal?.addEventListener("abort", abort, { once: true });
-      const client = {
-        readyState: 3,
-        readOnly: Boolean(signal),
-        async deliver(message) {
-          clearTimeout(timer);
-          signal?.removeEventListener("abort", abort);
-          if (signal?.aborted) return;
-          try {
-            if (message.error) reject(new Error(message.error.message));
-            else
-              resolve(
-                await projectResult(
-                  entry,
-                  message.result,
-                  method,
-                  usageRevision,
-                ),
-              );
-          } catch (error) {
-            reject(error);
-          }
-        },
-      };
-      Promise.resolve(
-        entry.adapter.receive(client, { id, method, params }),
-      ).catch((error) => {
-        fail(error);
-      });
-    });
   }
   const listThreads = (params) =>
     listBackendThreads(params, { instances, instance, call });
@@ -429,6 +379,8 @@ export function createBackendManager({
       return reply({ providers: await providers.remove(params) });
     if (method === "thread/list" && !params.backendId)
       return reply(await listThreads(params));
+    const operation = delegationRequest(delegation, method, params, target);
+    if (operation) return reply(await operation);
     const entry = instance(target.backendId);
     if (workspace.handles(method, entry.backend, entry.adapter.workspaceOwner))
       return reply(await workspace.request(method, params, entry.backend));
@@ -438,7 +390,20 @@ export function createBackendManager({
         threadId: target.nativeId,
         includeTurns: false,
       });
+    const native =
+      method && nativeParams(folders.params(method, params), entry.backend.id);
+    const { delegationMode, ...forwarded } = native || {};
+    if (
+      delegationMode === true &&
+      (method !== "turn/start" || !conversations || target.backendId === "agy")
+    )
+      throw new Error("当前请求无法开启委派模式。");
+    const prepared =
+      delegationMode === true
+        ? await delegation.prepare(entry, forwarded)
+        : null;
     recipient.methods.set(message.id, {
+      grant: prepared?.grant,
       method,
       threadId: params.threadId,
       usageRevision: tokenUsage.revision(params.threadId),
@@ -446,13 +411,17 @@ export function createBackendManager({
         forkUsage: await tokenUsage.forkSource(params),
       }),
     });
-    await entry.adapter.receive(recipient, {
-      ...message,
-      ...(!method && { id: target.nativeId }),
-      ...(method && {
-        params: nativeParams(folders.params(method, params), entry.backend.id),
-      }),
-    });
+    try {
+      await entry.adapter.receive(recipient, {
+        ...message,
+        ...(!method && { id: target.nativeId }),
+        ...(method && { params: prepared?.params || forwarded }),
+      });
+    } catch (error) {
+      recipient.methods.delete(message.id);
+      delegation.settle(prepared?.grant, { error });
+      throw error;
+    }
   }
   function releaseClient(client) {
     for (const entry of instances.values()) {
@@ -485,6 +454,7 @@ export function createBackendManager({
     },
     close() {
       closed = true;
+      delegation.close();
       usageReconciliation.stop();
       cli.close?.();
       workspace.close();

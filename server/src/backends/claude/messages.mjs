@@ -79,6 +79,7 @@ export function convertMessage(
             : JSON.stringify(block.content || []);
         const item = {
           ...prior,
+          nativeOutputId: message.uuid,
           status: block.is_error ? "failed" : "completed",
           ...(prior.type === "commandExecution"
             ? { aggregatedOutput: text, exitCode: block.is_error ? 1 : 0 }
@@ -162,6 +163,7 @@ export function convertMessage(
               status: "inProgress",
               contentItems: [],
             };
+      item.nativeInputId = message.uuid;
       tools.set(block.id, item);
       items.push(item);
     }

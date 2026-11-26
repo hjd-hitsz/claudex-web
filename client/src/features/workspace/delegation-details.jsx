@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { resourceTarget } from "../../../../shared/backend-identity.mjs";
 import { Square } from "lucide-react";
 import { rpc, useStoreSelector } from "../../store.js";
 import { isActiveSubAgent } from "../../domain/sub-agents.js";
@@ -13,7 +14,8 @@ export function DelegationDetails({ agent, parentId }) {
     setStopping(true);
     setError("");
     try {
-      await rpc("lan/agy/delegation/cancel", {
+      const agy = resourceTarget(parentId).backendId === "agy";
+      await rpc(agy ? "lan/agy/delegation/cancel" : "lan/delegation/cancel", {
         threadId: parentId,
         taskId: agent.delegation.taskId,
       });

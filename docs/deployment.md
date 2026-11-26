@@ -164,11 +164,11 @@ Claude Code 的对话、配置和原生账户状态继续保存在本机 CLI 原
 
 ## Antigravity 与委派
 
-安装官方 Antigravity CLI，使桥接服务可从运行环境发现 `agy`。在「设置 → 后端」启用 Antigravity，并按需保存它的网络代理和委派模型。网页直接连接本机 `agy acp`，CLI 使用自己的认证。代理只作用于 Antigravity 进程，Codex 和 Claude Code 继续使用各自的网络配置。
+安装官方 Antigravity CLI，使桥接服务可从运行环境发现 `agy`。在「设置 → 后端 → Antigravity」启用后端、选择显示的原生模型并按需设置代理。执行服务连接本机 `agy acp`，CLI 使用自己的认证。代理只作用于 Antigravity 进程，Codex 和 Claude Code 继续使用各自的网络配置。
 
-在「设置 → 后端 → Antigravity」勾选要显示的原生可用模型，再分别配置两个委派执行端的开关、模型与思考强度。点击顶部文件夹左侧的后端图标即可切换到 Antigravity 并在当前项目开启新对话。两路都启用时，输入区默认显示 Codex，点击该图标切换到 Claude Code，再点击切回。委派、恢复和回执由独立 agy 服务维护，在配置目录的 `backends/agy` 保存会话映射和任务记录。systemd 部署使用独立用户单元，普通进程部署使用独立后台进程。账户额度通过 CLI 官方状态栏契约读取，并在侧栏账户组件展示。
+在「设置 → 委派」配置 Codex 和 Claude Code 的接收开关、模型与思考强度，再为各发起端选择提示词。Codex 和 Claude Code 双向委派共用本机工作区，各自在输入区开启「委派模式」后向另一端派单。Antigravity 在输入区选择接收端，两路都启用时默认显示 Codex，点击图标在两端切换。独立 agy 服务在 `backends/agy` 保存会话映射、委派任务和回执，Codex 与 Claude Code 发起的任务保存在配置目录的 `delegation`。systemd 部署为 agy 使用独立用户单元，普通进程部署使用独立后台进程。侧栏账户组件显示 Antigravity CLI 提供的额度。
 
-在「设置 → 后端 → Antigravity → 角色设定」可直接查看、编辑和保存秘书角色正文（Antigravity 停用时也可编辑）。自定义正文以 `0600` 权限保存在配置目录的 `backends/agy/secretary.md`，不随软件分发覆盖；先点「载入默认模板」再点「保存角色设定」可移除自定义文件并恢复内置模板。保存后新对话和已有对话均从下一轮采用新设定，正在执行的轮次继续使用启动时的设定；原生工具白名单仍由随版本提供的 `secretary-agent.md` 管理。
+在「设置 → 委派 → 提示词预设」编辑默认提示词或添加具名预设。默认提示词适用于未选择具名预设的发起端，也可在 Antigravity 停用时编辑。自定义默认正文以 `0600` 权限保存在配置目录的 `backends/agy/secretary.md`。载入内置模板并保存后清除该覆盖文件。新设定从下一轮生效。Antigravity 的工具白名单由随版本提供的 `secretary-agent.md` 管理。
 
 ## 配置
 

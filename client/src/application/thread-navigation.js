@@ -10,8 +10,10 @@ import {
   threadGroupPath,
   PROJECTLESS_SOURCE,
 } from "../domain/thread-order.js";
-import { readThreadHistory } from "../domain/thread-history.js";
-import { historyPageReader, prefetchThreadItems } from "./history-page.js";
+import {
+  createThreadHistoryLoader,
+  prefetchThreadItems,
+} from "./history-page.js";
 import { createThreadAttachmentDrafts } from "./thread-attachment-drafts.js";
 export function createThreadNavigation({
   get,
@@ -66,6 +68,7 @@ export function createThreadNavigation({
     set({
       current: null,
       agyDelegateTo: undefined,
+      delegationMode: false,
       mode: "default",
       items: [],
       cwd: cwd || projectlessCwd || get().defaultCwd,
@@ -353,45 +356,15 @@ export function createThreadNavigation({
       .catch(() => {});
     return access.status === "ready";
   }
-  async function loadHistory(epoch = opening, { onFirstPage, firstPage } = {}) {
-    if (!get().current) return;
-    const id = get().current.id;
-    const connection = transport.connection;
-    const revision = getConnectionRevision();
-    const history = historyRevision;
-    const previous = new Map(get().items.map((item) => [item.id, item]));
-    const current = () =>
-      history === historyRevision &&
-      epoch === opening &&
-      get().current?.id === id &&
-      connection === transport.connection &&
-      revision === getConnectionRevision() &&
-      get().connected;
-    function apply(history) {
-      if (!current()) return;
-      const map = new Map(history.map((item) => [item.id, item]));
-      // 只让读取期间真正更新的记录覆盖历史；首屏快照仍属于本次读取。
-      for (const item of get().items)
-        if (!map.has(item.id) || previous.get(item.id) !== item)
-          map.set(item.id, item);
-      const items = [...map.values()];
-      set({ items });
-      for (const item of history)
-        if (map.get(item.id) === item) previous.set(item.id, item);
-    }
-    const readPage = historyPageReader({ rpc, get, set, current, firstPage });
-    const loaded = await readThreadHistory(readPage, id, {
-      current,
-      ...(onFirstPage && {
-        onFirstPage: (items) => {
-          if (!current()) return;
-          apply(items);
-          onFirstPage();
-        },
-      }),
-    });
-    apply(loaded);
-  }
+  const loadHistory = createThreadHistoryLoader({
+    rpc,
+    get,
+    set,
+    transport,
+    getConnectionRevision,
+    historyRevision: () => historyRevision,
+    opening: () => opening,
+  });
   async function refreshBackgroundResults(threadId, noticeKeys) {
     if (get().current?.id !== threadId) return [];
     const epoch = opening;
@@ -475,7 +448,11 @@ export function createThreadNavigation({
     localStorage.setItem("cx-draft-" + r.thread.id, get().draft);
     localStorage.removeItem(newDraftKey(get().backendId));
     assignNewThread(r.thread.id);
-    set({ current: r.thread, mode: get().mode });
+    set({
+      current: r.thread,
+      mode: get().mode,
+      delegationMode: get().delegationMode,
+    });
     localStorage.setItem("cx-current", r.thread.id);
     return r.thread;
   }

@@ -2,7 +2,11 @@ import { runtimeIdentity } from "./address.mjs";
 import { join, normalize } from "node:path";
 import { createConversationGateway } from "./gateway.mjs";
 import { openConversationStore } from "./store.mjs";
-import { conversationArguments } from "./tools.mjs";
+import {
+  conversationArguments,
+  delegationStepToolName,
+  delegationToolName,
+} from "./tools.mjs";
 
 const receiptStates = new Set([
   "deferred",
@@ -115,11 +119,17 @@ export function createConversationManager({
     backend,
     getAdapter,
     projectThread = (thread) => thread,
+    delegation,
   ) {
     const runtimeId = runtimeIdentity(backend);
     for (const [id, entry] of backends)
       if (entry.backendId === backend.id) backends.delete(id);
-    const entry = { backendId: backend.id, getAdapter, projectThread };
+    const entry = {
+      backendId: backend.id,
+      getAdapter,
+      projectThread,
+      delegation,
+    };
     backends.set(runtimeId, entry);
     wake();
     return {
@@ -266,6 +276,10 @@ export function createConversationManager({
       throw new Error("会话工具需要已就绪的原生会话");
     const args = conversationArguments(name, input);
     const actor = { runtimeId, threadId: context.threadId };
+    if (name === delegationToolName || name === delegationStepToolName) {
+      if (!entry.delegation) throw new Error("当前后端未接入委派模式");
+      return entry.delegation(name, actor, args);
+    }
     if (name === "list_active_threads") {
       const caller = await adapter.readThread(actor.threadId);
       if (!caller) throw new Error("找不到发起工具调用的会话");

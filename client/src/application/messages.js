@@ -68,8 +68,9 @@ export function createMessages({
         throw new Error("回答提交时连接尚未就绪，请重试。");
       if (!get().questions.some((q) => String(q.id) === String(request.id)))
         throw new Error("此请求已结束，请查看最新消息。");
-      if (resourceTarget(request.params.threadId).backendId === "agy")
-        return rpc("lan/agy/respond", {
+      const agy = resourceTarget(request.params.threadId).backendId === "agy";
+      if (agy || request.params.delegationTaskId)
+        return rpc(agy ? "lan/agy/respond" : "lan/delegation/respond", {
           threadId: request.params.threadId,
           requestId: request.id,
           result,
@@ -168,6 +169,7 @@ export function createMessages({
         ...references.inputs,
       ];
       const running = get().active[thread.id];
+      const delegationMode = submission.delegationMode && !implementation;
       if (get().current?.id === thread.id)
         put({
           id: "optimistic-" + uid(),
@@ -182,6 +184,7 @@ export function createMessages({
         ...(submission.backendId === "agy" && {
           delegateTo: selectedDelegate(submission),
         }),
+        ...(delegationMode && { delegationMode: true }),
         input,
         model: submission.model || undefined,
         providerId: submission.providerId,

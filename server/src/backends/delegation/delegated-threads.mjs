@@ -3,15 +3,28 @@ import { join } from "node:path";
 import { resourceId } from "../../../../shared/backend-identity.mjs";
 
 export function createDelegatedThreadIndex(configDirectory) {
-  const path = join(configDirectory, "backends", "agy", "state.json");
+  const readers = [
+    join(configDirectory, "backends", "agy", "state.json"),
+    join(configDirectory, "delegation", "state.json"),
+  ].map(delegatedThreadIds);
+  return async (page) => {
+    const ids = await Promise.all(readers.map((read) => read()));
+    return {
+      ...page,
+      data: page.data.filter(({ id }) => !ids.some((set) => set.has(id))),
+    };
+  };
+}
+
+function delegatedThreadIds(path) {
   let revision;
   let ids = new Set();
-  return async function hideDelegatedThreads(page) {
+  return async function readIds() {
     let file;
     try {
       file = await stat(path, { bigint: true });
     } catch (error) {
-      if (error.code === "ENOENT") return page;
+      if (error.code === "ENOENT") return new Set();
       throw error;
     }
     const next = `${file.ino}:${file.mtimeNs}`;
@@ -24,6 +37,6 @@ export function createDelegatedThreadIndex(configDirectory) {
       );
       revision = next;
     }
-    return { ...page, data: page.data.filter(({ id }) => !ids.has(id)) };
+    return ids;
   };
 }

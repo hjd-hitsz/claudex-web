@@ -98,7 +98,7 @@ DeepSeek 等预置供应商直接填写 API Key。
 
 ## 配置 Antigravity
 
-安装官方 Antigravity CLI 后，在「设置 → 后端 → Antigravity」启用。这里可以勾选显示的原生模型，并配置 Codex 和 Claude Code 委派。顶部文件夹左侧的后端图标用于切换到 Antigravity。[配置说明](docs/deployment.md#antigravity-与委派)
+安装官方 Antigravity CLI 后，在「设置 → 后端 → Antigravity」启用并选择显示的原生模型。顶部文件夹左侧的后端图标用于切换到 Antigravity。在「设置 → 委派」可以配置 Codex 和 Claude Code 接收委派，并为各发起端选择提示词。[配置说明](docs/deployment.md#antigravity-与委派)
 
 ## 命令行用法
 

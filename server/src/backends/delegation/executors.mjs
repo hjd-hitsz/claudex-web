@@ -1,3 +1,4 @@
+import { renderPrompt, readPromptSections } from "../../prompts.mjs";
 import { randomUUID } from "node:crypto";
 import { EventEmitter, once } from "node:events";
 import { createCodexAdapter } from "../codex/adapter.mjs";
@@ -8,6 +9,8 @@ import { createBackgroundService } from "../codex/background-service.mjs";
 import { codexFullAccess } from "../codex/subscriptions.mjs";
 import { taskRequest } from "../../../../packages/background-terminal/client.mjs";
 
+const executorPrompt = readPromptSections("delegation/workflow.md");
+
 const constructors = {
   codex: createCodexAdapter,
   claude: createClaudeWorkerAdapter,
@@ -15,6 +18,51 @@ const constructors = {
 export const delegationMarker = (id) => `[Claudex delegation step: ${id}]`;
 export const executorLabel = (target) =>
   target === "codex" ? "Codex" : "Claude Code";
+
+export function delegationTurnParams(task) {
+  const step = task.steps.at(-1);
+  const original = task.sourceName
+    ? (step.original ??
+      (task.steps.length === 1 ? task.original : undefined) ??
+      [])
+    : [];
+  const lead = [
+    delegationMarker(step.id),
+    task.sourceName
+      ? renderPrompt(executorPrompt("nativeExecutor"), {
+          sourceName: task.sourceName,
+        })
+      : executorPrompt("secretaryExecutor"),
+    task.scope === "research"
+      ? executorPrompt("research")
+      : task.sourceName
+        ? executorPrompt("nativeImplementation")
+        : executorPrompt("secretaryImplementation"),
+    task.selection.prompt,
+    executorPrompt("resultSummary"),
+    original.length > 0 && executorPrompt("nativeOriginal"),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const { model, effort, providerId } = task.selection;
+  return {
+    threadId: task.executor.threadId,
+    input: [
+      { type: "text", text: lead },
+      ...original,
+      { type: "text", text: executorPrompt("task") + "\n" + step.request },
+    ],
+    ...(model && { model }),
+    ...(effort && { effort }),
+    ...(providerId && { providerId }),
+    ...(task.target === "claude" && {
+      delegation: task.scope,
+      collaborationMode: {
+        mode: task.scope === "research" ? "plan" : "default",
+      },
+    }),
+  };
+}
 
 export function createExecutors({ config, version, onEvent }) {
   const configuration = createBackendConfiguration(config);
@@ -76,7 +124,7 @@ export function createExecutors({ config, version, onEvent }) {
         new URL(backend.url).hostname,
       )
     )
-      throw new Error("agy 委派使用共享本机工作区，需要本机 Codex app-server");
+      throw new Error("委派使用共享本机工作区，需要本机 Codex app-server");
     const id = runtimeIdentity(backend);
     if (task.executor && task.executor.runtimeId !== id)
       throw new Error("原委派执行实例已变更，等待核对");
@@ -139,41 +187,6 @@ export function createExecutors({ config, version, onEvent }) {
       ...(model && { model }),
       ...(providerId && { providerId }),
       ...(task.target === "codex" && codexFullAccess),
-    };
-  }
-
-  function turnParams(task) {
-    const step = task.steps.at(-1);
-    const original =
-      step.original ?? (task.steps.length === 1 ? task.original : []);
-    const lead = [
-      delegationMarker(step.id),
-      "你是已受理此任务的技术执行端。直接执行下方具体任务，将结果交回 Antigravity 秘书。",
-      task.scope === "research"
-        ? "执行只读调查。在答复中给出技术结论、具体文件位置、理由、证据和待确认事项。"
-        : "负责技术执行、实现和验证。文档写作由 agy 完成，请在答复给出写作材料。",
-      original.length > 0 &&
-        "以下用户原话用于核对授权范围和验收要求。用户交给秘书的委派流程和文档写作由秘书负责。",
-    ]
-      .filter(Boolean)
-      .join("\n");
-    const { model, effort, providerId } = task.selection;
-    return {
-      threadId: task.executor.threadId,
-      input: [
-        { type: "text", text: lead },
-        ...original,
-        { type: "text", text: "本轮具体任务：\n" + step.request },
-      ],
-      ...(model && { model }),
-      ...(effort && { effort }),
-      ...(providerId && { providerId }),
-      ...(task.target === "claude" && {
-        delegation: task.scope,
-        collaborationMode: {
-          mode: task.scope === "research" ? "plan" : "default",
-        },
-      }),
     };
   }
 
@@ -285,7 +298,7 @@ export function createExecutors({ config, version, onEvent }) {
     call,
     readHistory,
     startParams,
-    turnParams,
+    turnParams: delegationTurnParams,
     takeover,
     async stop(entry, task) {
       const { threadId } = task.executor;

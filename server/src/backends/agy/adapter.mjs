@@ -1,3 +1,4 @@
+import { readPromptSections, renderPrompt } from "../../prompts.mjs";
 import { resourceTarget } from "../../../../shared/backend-identity.mjs";
 import { createAgyQuota } from "./quota.mjs";
 import { randomUUID } from "node:crypto";
@@ -6,11 +7,11 @@ import { join } from "node:path";
 import { acpContent } from "./acp-events.mjs";
 import { createAcpSessions } from "./acp-session.mjs";
 import { createDelegations } from "./delegations.mjs";
-import { executing } from "./delegation-store.mjs";
+import { executing } from "../delegation/delegation-store.mjs";
 import {
   agyHistoryMethods,
   isDelegationThread,
-} from "./delegation-history.mjs";
+} from "../delegation/delegation-history.mjs";
 import {
   createAgyStore,
   agyPage,
@@ -20,6 +21,8 @@ import {
 import { createHistoryPages } from "../history-pages.mjs";
 import { createProductMethods } from "../../bridge/product-methods.mjs";
 import { assertConversationOperation } from "../../bridge/conversation-policy.mjs";
+
+const workflow = readPromptSections("delegation/workflow.md");
 
 export function createAgyAdapter({
   backend: initialBackend,
@@ -147,7 +150,7 @@ export function createAgyAdapter({
       model: p.model,
       effort: p.effort,
       delegateTo: p.delegateTo,
-      original: input,
+      userInput: !compact,
     };
     const items = compact
       ? []
@@ -159,16 +162,16 @@ export function createAgyAdapter({
     if (!compact && p.delegateTo)
       inputs.push({
         type: "text",
-        text:
-          "本轮用户选择的新委派执行端：" +
-          p.delegateTo +
-          "。保留前面的用户原话和授权范围。",
+        text: renderPrompt(workflow("secretarySelection"), {
+          target: p.delegateTo,
+        }),
       });
     if (!compact && s.source?.context && !s.turns.length)
       inputs.unshift({
         type: "text",
-        text:
-          "以下是用户选择继续的原会话历史，作为背景使用。\n" + s.source.context,
+        text: renderPrompt(workflow("secretaryContinuation"), {
+          history: s.source.context,
+        }),
       });
     if (compact) {
       compactions.set(s.id, {

@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
+import { resultNoticePayload } from "./call-chain.mjs";
 
 export const executing = new Set([
   "accepted",
@@ -63,6 +64,10 @@ export function acceptDelegation(
       parentTurnId: turn.id,
       target,
       cwd: parent.cwd,
+      ...(parent.sourceName && {
+        sourceName: parent.sourceName,
+        sourceRuntime: parent.sourceRuntime,
+      }),
       selection: snapshot,
       scope: input.scope || "research",
       original: turn.original || [],
@@ -108,12 +113,17 @@ export function currentResultNotice(data, notice) {
   );
 }
 
-export function finishDelegation(data, task, status, payload) {
+export function finishDelegation(data, task, status, result) {
   task.status = status;
   task.request = null;
   Object.assign(task.steps.at(-1), {
-    result: payload,
+    result,
     completedAt: Date.now(),
   });
-  queueNotice(data, task, "result", { status, ...payload });
+  queueNotice(
+    data,
+    task,
+    "result",
+    resultNoticePayload({ ...result, status, stepId: task.steps.at(-1).id }),
+  );
 }

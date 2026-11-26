@@ -69,6 +69,7 @@ const backend = await configStore.save({
 });
 let codexCalls = 0;
 let modelRequests = 0;
+const executorPrompts = { codex: [], claude: [] };
 let nativeErrors = "";
 const backgroundCommand = (backend, number) =>
   `while [ ! -e ${backend}-release-${number} ]; do sleep .1; done; printf ${backend}-done-${number}`;
@@ -97,6 +98,7 @@ const codex = createServer(async (request, response) => {
     return response.writeHead(500).end();
   const title = body.text?.format?.type === "json_schema";
   const prompt = JSON.stringify(body.input);
+  if (!title) executorPrompts.codex.push(prompt);
   const replaced = !title && prompt.includes("AGY_REPLACE");
   const takeover = !title && prompt.includes("AGY_TAKEOVER_RUNNING");
   const background =
@@ -185,6 +187,7 @@ await once(codex, "listening");
 let asked = false;
 const provider = await messagesServer(async (body) => {
   const prompt = JSON.stringify(body.messages);
+  executorPrompts.claude.push(prompt);
   const asks = body.tools?.some(({ name }) => name === "AskUserQuestion");
   if (asks && prompt.includes("AGY_REPLACE"))
     return [{ type: "text", text: "CLAUDE_REPLACEMENT_RESULT" }];
@@ -329,9 +332,26 @@ try {
     }),
     /秘书模式/,
   );
-  await rpc("turn/start", {
+  const direct = await rpc("turn/start", {
     threadId: thread.id,
-    input: [{ type: "text", text: "请核对并写文档" }],
+    input: [{ type: "text", text: "AGY_SECRETARY_ONLY 你直接总结已有结论。" }],
+    delegateTo: "codex",
+  });
+  await until(
+    () =>
+      events.some(
+        ({ method, params }) =>
+          method === "turn/completed" && params.turn.id === direct.turn.id,
+      ),
+    "已有结论由秘书直接答复",
+  );
+  assert.deepEqual(Object.keys((await saved()).tasks), []);
+  assert.equal(codexCalls, 0);
+  const secretaryMessage =
+    "核对代码里的行为。你负责写文档，SECRETARY_WRITING_ONLY。";
+  const first = await rpc("turn/start", {
+    threadId: thread.id,
+    input: [{ type: "text", text: secretaryMessage }],
     delegateTo: "codex",
   });
   const task = await until(
@@ -339,11 +359,19 @@ try {
     "Codex 持久受理",
   );
   await until(() => codexCalls === 1, "Codex 原生模型请求");
+  assert.match(executorPrompts.codex[0], /检查并报告具体证据/);
+  assert.doesNotMatch(executorPrompts.codex[0], /SECRETARY_WRITING_ONLY/);
+  assert.deepEqual(task.original, []);
+  assert.deepEqual(task.steps[0].original, []);
+  const secretaryTurn = (await saved()).sessions[thread.id].turns.find(
+    ({ id }) => id === first.turn.id,
+  );
+  assert.equal(secretaryTurn.items[0].content[0].text, secretaryMessage);
   await until(
     () =>
       events.some(
         ({ method, params }) =>
-          method === "turn/completed" && params.threadId === thread.id,
+          method === "turn/completed" && params.turn.id === first.turn.id,
       ),
     "原 agy 结束轮次",
   );
@@ -425,7 +453,12 @@ try {
 
   await rpc("turn/start", {
     threadId: thread.id,
-    input: [{ type: "text", text: "Claude 调查" }],
+    input: [
+      {
+        type: "text",
+        text: "Claude 调查。你负责说明，SECRETARY_EXPLANATION_ONLY。",
+      },
+    ],
     delegateTo: "claude",
   });
   const question = await until(
@@ -438,6 +471,16 @@ try {
     "Claude 原生问题回到 agy",
   );
   assert.equal(question.params.executorName, "Claude Code");
+  assert.ok(
+    executorPrompts.claude.some((prompt) =>
+      prompt.includes("检查并报告具体证据"),
+    ),
+  );
+  assert.ok(
+    executorPrompts.claude.every(
+      (prompt) => !prompt.includes("SECRETARY_EXPLANATION_ONLY"),
+    ),
+  );
   const previousPid = worker.state().params.pid;
   process.kill(previousPid, "SIGKILL");
   await until(() => !worker.ready, "原委派服务 IPC 已断开");
@@ -566,8 +609,37 @@ try {
       return notice?.status === "delivered" && notice.payload;
     }, target + " 所有终端结束后的最终回投");
     assert.equal(final.status, "completed");
+    const prefix =
+      target === "codex" ? "agy-background-" : "toolu_agy_background_";
+    assert.deepEqual(
+      final.callChain.map(({ callId }) => callId),
+      [prefix + "1", prefix + "2"],
+    );
+    const session = (await saved()).sessions[parent.id];
+    const transcript = JSON.parse(
+      await readFile(join(cwd, session.nativeId + ".json"), "utf8"),
+    );
+    const detail = transcript.find(({ evidence }) => evidence)?.evidence;
+    assert.equal(detail.stepId, final.stepId);
+    assert.equal(detail.call.callId, prefix + "1");
+    if (target === "codex") {
+      assert.match(detail.raw.input.payload.arguments, /codex-release-1/);
+      const output = detail.raw.outputs[0].payload.output;
+      const job = JSON.parse(
+        output.find(({ text }) => text.startsWith("{")).text,
+      ).job;
+      assert.equal(job.callId, detail.call.callId);
+      assert.equal(job.title, "Codex terminal 1");
+    } else {
+      assert.match(detail.raw[0].block.input.command, /claude-release-1/);
+      assert.match(JSON.stringify(detail.raw[1].block.content), /background/i);
+    }
+    console.log(
+      target + " 结果带双调用 ID，秘书 MCP 逐项读取原生工具输入和输出。",
+    );
+    const historyResult = (await backgroundTask()).steps[0].result;
     assert.equal(
-      final.turns.length,
+      historyResult.turns.length,
       3,
       JSON.stringify({
         final,
@@ -591,10 +663,10 @@ try {
       final.answer,
       /STAGE_3[\s\S]*terminal 1[\s\S]*STAGE_4[\s\S]*terminal 2[\s\S]*STAGE_5/,
     );
-    assert.equal(final.turns[0].triggers.length, 0);
+    assert.equal(historyResult.turns[0].triggers.length, 0);
     assert.notEqual(
-      final.turns[1].triggers[0].id,
-      final.turns[2].triggers[0].id,
+      historyResult.turns[1].triggers[0].id,
+      historyResult.turns[2].triggers[0].id,
     );
     assert.equal((await backgroundTask()).status, "completed");
     assert.equal((await notices()).length, 1);
@@ -635,7 +707,7 @@ try {
     const approval = previous.request?.localId;
     await send(
       target === "codex" ? "turn/steer" : "turn/start",
-      "AGY_REPLACE",
+      "AGY_REPLACE。你负责后续汇报，SECRETARY_FOLLOWUP_ONLY。",
       secretary.id,
     );
     const delivered = await until(async () => {
@@ -702,6 +774,13 @@ try {
       target + " " + mode + "：旧轮次已打断，同一原生会话仅返回新步骤的结果。",
     );
   }
+  for (const prompts of Object.values(executorPrompts))
+    assert.ok(
+      prompts.every((prompt) => !prompt.includes("SECRETARY_FOLLOWUP_ONLY")),
+    );
+  console.log(
+    "秘书直接答复时无委派，Codex 与 Claude Code 的首次派单和续问均只收到技术任务。",
+  );
   await worker.shutdown();
   console.log(
     "agy 工作进程、两路原生执行、去重、同会话补问、桥接重连、任务服务重启、审批、落盘、撤销和历史通过。",

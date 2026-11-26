@@ -44,8 +44,8 @@ export function createEvents({
   }
   function handle({ method, params: p = {} }) {
     if (p.threadId) {
-      const { backendId, nativeId } = resourceTarget(p.threadId);
-      if (backendId === "agy" && nativeId.startsWith("delegation/")) return;
+      const { nativeId } = resourceTarget(p.threadId);
+      if (nativeId.startsWith("delegation/")) return;
     }
     if (method === "lan/executionStatus") {
       if (get().active[p.threadId] === p.turnId)

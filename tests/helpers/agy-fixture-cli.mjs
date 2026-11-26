@@ -149,15 +149,20 @@ async function handle({ method, params: p }) {
     if (receipt?.structuredContent?.task_id !== prior.id)
       throw new Error("续问未受理：" + JSON.stringify(receipt));
     reply = "已转交新需求";
-  } else if (route) {
+  } else if (route && !content.includes("AGY_SECRETARY_ONLY")) {
     const ready = await session.mcp.ready;
     const name = "ask_" + route;
     if (!ready.tools.some((tool) => tool.name === name))
       throw new Error("委派工具缺失");
+    const scenario = [
+      "AGY_BACKGROUND_TEST",
+      "AGY_TAKEOVER_RUNNING",
+      "AGY_TAKEOVER_APPROVAL",
+    ].find((name) => content.includes(name));
     const args = {
       name,
       arguments: {
-        request: "检查并报告具体证据",
+        request: ["检查并报告具体证据", scenario].filter(Boolean).join(" "),
         request_id:
           "start-" +
           route +
@@ -190,6 +195,26 @@ async function handle({ method, params: p }) {
   }
   if (content.includes("[Claudex delegation notice:")) {
     const id = /任务 ID：([\w-]+)/.exec(content)?.[1];
+    const payload = JSON.parse(content.split("\n").at(-1));
+    const call = payload.callChain?.find(({ callId }) =>
+      ["agy-background-1", "toolu_agy_background_1"].includes(callId),
+    );
+    if (call) {
+      const { tools } = await session.mcp.ready;
+      const name = "read_delegation_step";
+      if (!tools.some((tool) => tool.name === name))
+        throw new Error("详情工具缺失");
+      const result = await session.mcp.call("tools/call", {
+        name,
+        arguments: {
+          taskId: payload.taskId,
+          stepId: payload.stepId,
+          callId: call.callId,
+        },
+      });
+      if (result.isError) throw new Error(result.content[0].text);
+      record.evidence = result.structuredContent;
+    }
     if (content.includes("FIXTURE_FOLLOWUP")) {
       await session.mcp.ready;
       await session.mcp.call("tools/call", {

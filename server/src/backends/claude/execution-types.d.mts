@@ -135,6 +135,7 @@ export type QueuedExecution = {
   review?: boolean;
   compact?: boolean;
   delegation?: "research" | "implementation";
+  delegationContext?: string;
 };
 
 export type InputPart = { type: string; text?: string; url?: string };
@@ -149,7 +150,10 @@ export type QueuedInput = QueuedExecution & {
 
 export type ActiveExecution = {
   turn: ExecutionTurn;
-  queued: Pick<QueuedInput, "review" | "compact" | "peer" | "delegation">;
+  queued: Pick<
+    QueuedInput,
+    "review" | "compact" | "peer" | "delegation" | "delegationContext"
+  >;
   query?: Query | null;
   interrupted?: boolean;
   goalId?: string;
@@ -306,6 +310,7 @@ export type TurnRequest = Partial<
     | "review"
     | "goalId"
     | "delegation"
+    | "delegationContext"
   >
 > & {
   input: readonly InputPart[];

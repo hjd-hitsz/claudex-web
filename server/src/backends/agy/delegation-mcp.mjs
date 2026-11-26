@@ -1,14 +1,15 @@
+import { readPromptSections } from "../../prompts.mjs";
 import { createInterface } from "node:readline";
+import {
+  delegationStepTool,
+  delegationStepToolName,
+} from "../../conversation-manager/tools.mjs";
 import { connectIpc } from "./worker-ipc.mjs";
+
+const descriptions = readPromptSections("delegation/workflow.md");
 
 const [socket, token] = process.argv.slice(2);
 const connection = await connectIpc(socket);
-const descriptions = {
-  codex:
-    "Delegate engineering work to Codex. Send new requirements immediately with the original task_id, including while it is running. End the current turn after acceptance.",
-  claude:
-    "Delegate engineering work to Claude Code. Send new requirements immediately with the original task_id, including while it is running. End the current turn after acceptance.",
-};
 function reply(packet, written) {
   process.stdout.write(
     JSON.stringify({ jsonrpc: "2.0", ...packet }) + "\n",
@@ -16,9 +17,11 @@ function reply(packet, written) {
   );
 }
 function tool(backend) {
+  if (backend === delegationStepToolName)
+    return { ...delegationStepTool, _meta: { "antigravity/alwaysLoad": true } };
   return {
     name: "ask_" + backend,
-    description: descriptions[backend],
+    description: descriptions(backend),
     inputSchema: {
       type: "object",
       required: ["request", "request_id"],
@@ -26,22 +29,20 @@ function tool(backend) {
       properties: {
         request: {
           type: "string",
-          description: "Task or specific follow-up with acceptance criteria",
+          description: descriptions("request"),
         },
         request_id: {
           type: "string",
-          description: "Unique identifier. Reuse it if retrying this request.",
+          description: descriptions("requestId"),
         },
         task_id: {
           type: "string",
-          description:
-            "Original task ID to continue in the same executor conversation. A running step is interrupted.",
+          description: descriptions("taskId"),
         },
         scope: {
           type: "string",
           enum: ["research", "implementation"],
-          description:
-            "Use research for read-only work, including document preparation.",
+          description: descriptions("scope"),
         },
       },
     },

@@ -8,11 +8,12 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   writeFile,
   rm,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import WebSocket, { WebSocketServer } from "ws";
@@ -154,6 +155,19 @@ test(
       ),
     );
     const paths = pack.files.map((file) => file.path);
+    const promptAssets = await readdir(join(root, "prompt"), {
+      recursive: true,
+      withFileTypes: true,
+    });
+    const promptPaths = promptAssets
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(root, join(entry.parentPath, entry.name)));
+    assert.ok(promptPaths.length > 0);
+    assert.ok(promptPaths.every((path) => path.endsWith(".md")));
+    assert.deepEqual(
+      paths.filter((path) => path.startsWith("prompt/")).sort(),
+      promptPaths.sort(),
+    );
     for (const path of [
       "packages/translation-engine/src/index.mjs",
       "packages/translation-engine/bin/tokenizer-linux-x64",
@@ -184,8 +198,12 @@ test(
       "server/src/auth-login.mjs",
       "server/src/auth-totp.mjs",
       "server/src/backends/agy/role-settings.mjs",
-      "server/src/backends/agy/secretary.md",
-      "server/src/backends/agy/secretary-agent.md",
+      "server/src/prompts.mjs",
+      "prompt/secretary/secretary.md",
+      "prompt/delegation/workflow.md",
+      "prompt/backends/claude/execution.md",
+      "prompt/background-terminal/tasks.md",
+      "prompt/composer/messages.md",
       "server/src/backends/codex/adapter.mjs",
       "server/src/backends/codex/upstream.mjs",
       "server/src/backends/codex/resume-lifecycle.mjs",

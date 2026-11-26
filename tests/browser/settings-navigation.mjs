@@ -22,7 +22,14 @@ await cp(process.env.UI_BUILD_DIR || join(root, "client/dist"), build, {
   recursive: true,
 });
 const staticHandler = createStaticHandler(build);
-const titles = ["通用", "后端", "模型服务商", "连接与登录", "更新与重启"];
+const titles = [
+  "通用",
+  "后端",
+  "模型服务商",
+  "委派模式",
+  "连接与登录",
+  "更新与重启",
+];
 const viewport = { width: 1440, height: 960 };
 const latest = "4.2.1";
 let p2pReads = 0;
@@ -345,7 +352,7 @@ try {
               diagnostic,
             );
           if (dimensions.width === 390 && scale === 1) {
-            assert.deepEqual(metrics.navigationRowSizes, [2, 2, 1], diagnostic);
+            assert.deepEqual(metrics.navigationRowSizes, [2, 2, 2], diagnostic);
             await page.setViewportSize({ ...dimensions, height: 560 });
             await pick("模型服务商").click();
             await row

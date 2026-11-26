@@ -19,7 +19,7 @@ const historyEvents = new Set([
   "item/commandExecution/outputDelta",
 ]);
 
-function visibleItem(item) {
+function visibleItem(item, authorLabel) {
   if (
     item.type !== "userMessage" ||
     !item.content?.[0]?.text?.startsWith("[Claudex delegation step:")
@@ -30,7 +30,7 @@ function visibleItem(item) {
   if (!assignment?.startsWith(prefix)) return item;
   return {
     ...item,
-    authorLabel: "Antigravity",
+    authorLabel,
     content: [
       { type: "text", text: assignment.slice(prefix.length) },
       ...item.content.filter(({ type }) => type !== "text"),
@@ -38,30 +38,49 @@ function visibleItem(item) {
   };
 }
 
-function visibleTurn(turn) {
-  return turn.items ? { ...turn, items: turn.items.map(visibleItem) } : turn;
+function visibleTurn(turn, authorLabel) {
+  return turn.items
+    ? {
+        ...turn,
+        items: turn.items.map((item) => visibleItem(item, authorLabel)),
+      }
+    : turn;
+}
+
+export function isDelegationHistoryEvent({ id, method }) {
+  return id === undefined && historyEvents.has(method);
 }
 
 export function delegationHistoryEvent(task, message) {
-  if (message.id !== undefined || !historyEvents.has(message.method)) return;
   const { item, turn } = message.params;
   return {
     method: message.method,
     params: {
       ...message.params,
       threadId: delegationThreadId(task.id),
-      ...(item && { item: visibleItem(item) }),
-      ...(turn && { turn: visibleTurn(turn) }),
+      ...(item && {
+        item: visibleItem(item, task.sourceName ?? "Antigravity"),
+      }),
+      ...(turn && {
+        turn: visibleTurn(turn, task.sourceName ?? "Antigravity"),
+      }),
     },
   };
 }
 
-export async function readDelegationHistory(store, executor, method, params) {
+export async function readDelegationHistory(
+  store,
+  executor,
+  method,
+  params,
+  validateParent,
+) {
   const agentId = params.threadId;
   const state = await store.read();
   const task = state.tasks[agentId.slice(delegationPrefix.length)];
   if (!task) throw new Error("找不到委派任务");
-  store.session(state, task.parentId);
+  validateParent?.(state, task.parentId);
+  const author = task.sourceName ?? "Antigravity";
   if (method === "lan/agents/messages") return { messages: [] };
   if (!task.executor) {
     if (method === "thread/read")
@@ -84,7 +103,7 @@ export async function readDelegationHistory(store, executor, method, params) {
         ...result.thread,
         id: agentId,
         ...(result.thread.turns && {
-          turns: result.thread.turns.map(visibleTurn),
+          turns: result.thread.turns.map((turn) => visibleTurn(turn, author)),
         }),
       },
     };
@@ -94,8 +113,8 @@ export async function readDelegationHistory(store, executor, method, params) {
       method === "thread/items/list"
         ? result.data.map((entry) => ({
             ...entry,
-            item: visibleItem(entry.item),
+            item: visibleItem(entry.item, author),
           }))
-        : result.data.map(visibleTurn),
+        : result.data.map((turn) => visibleTurn(turn, author)),
   };
 }

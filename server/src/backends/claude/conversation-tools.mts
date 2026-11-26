@@ -1,11 +1,16 @@
+import { readPromptSections } from "../../prompts.mjs";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { conversationCollaborationInstructions } from "../../conversation-manager/instructions.mjs";
-import { conversationTools } from "../../conversation-manager/tools.mjs";
+import {
+  claudeConversationServerName,
+  conversationTools,
+  delegationToolName,
+  delegationStepToolName,
+} from "../../conversation-manager/tools.mjs";
 import type { ConversationTool } from "./conversation-protocol.d.mts";
 
-export const claudeConversationServerName = "claudex_conversation";
 const schemas = conversationTools.map((definition) => ({
   ...definition,
   schema: (
@@ -42,6 +47,11 @@ export function claudeConversationTools(
           };
         }
       },
+      {
+        alwaysLoad: [delegationToolName, delegationStepToolName].includes(
+          definition.name,
+        ),
+      },
     ),
   );
   return {
@@ -57,7 +67,7 @@ export function claudeConversationTools(
 
 export function conversationToolGuard(): HookCallbackMatcher {
   return {
-    matcher: `^mcp__${claudeConversationServerName}__(list_active_threads|thread_chat)$`,
+    matcher: `^mcp__${claudeConversationServerName}__(list_active_threads|thread_chat|${delegationToolName}|${delegationStepToolName})$`,
     onFailure: "block",
     hooks: [
       async (input) => {
@@ -67,8 +77,9 @@ export function conversationToolGuard(): HookCallbackMatcher {
           hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "deny",
-            permissionDecisionReason:
-              "会话工具使用主会话身份，请由主会话调用。",
+            permissionDecisionReason: readPromptSections(
+              "conversation/collaboration.md",
+            )("subagentToolGuard"),
           },
         };
       },

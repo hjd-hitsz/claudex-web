@@ -1,5 +1,13 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
-import { Database, Layers, Link, RefreshCw, Settings, X } from "lucide-react";
+import {
+  Database,
+  Forward,
+  Layers,
+  Link,
+  RefreshCw,
+  Settings,
+  X,
+} from "lucide-react";
 import productIcon from "../../assets/claudex-web.svg";
 import { useStoreSelector } from "../../store.js";
 import { IconButton } from "../../ui/primitives.jsx";
@@ -11,10 +19,13 @@ import { TranslationSettings } from "./translation-settings.jsx";
 import { NotificationSettings } from "./notification-settings.jsx";
 import { P2pSettings } from "./p2p-settings.jsx";
 
+import { DelegationSettings } from "./delegation-settings.jsx";
+
 const pages = [
   { id: "general", title: "通用", Icon: Settings },
   { id: "backends", title: "后端", Icon: Layers },
   { id: "providers", title: "模型服务商", Icon: Database },
+  { id: "delegation", title: "委派模式", Icon: Forward },
   { id: "connection", title: "连接与登录", Icon: Link },
   { id: "maintenance", title: "更新与重启", Icon: RefreshCw },
 ];
@@ -101,12 +112,17 @@ export function SettingsDialog({
           )}
           {visited.has("backends") && (
             <div hidden={active !== "backends"}>
-              <BackendSettings visible={active === "backends"} />
+              <BackendSettings />
             </div>
           )}
           {visited.has("providers") && (
             <div hidden={active !== "providers"}>
               <ProviderSettings actionTarget={providerActions} />
+            </div>
+          )}
+          {visited.has("delegation") && (
+            <div hidden={active !== "delegation"}>
+              <DelegationSettings active={active === "delegation"} />
             </div>
           )}
           {visited.has("connection") && (

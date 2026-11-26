@@ -447,9 +447,12 @@ async function openBackendSettings(name) {
 }
 const agy = page.locator('.backend-card[data-backend="agy"]');
 const modelSelect = page.getByRole("combobox", { name: "模型", exact: true });
-const roleSection = agy.getByRole("region", { name: "角色设定", exact: true });
-const roleEditor = roleSection.getByRole("textbox", { name: "角色设定正文" });
-const saveRole = roleSection.getByRole("button", { name: "保存角色设定" });
+const roleSection = page.getByRole("region", {
+  name: "默认提示词",
+  exact: true,
+});
+const roleEditor = roleSection.getByRole("textbox", { name: "默认提示词正文" });
+const saveRole = roleSection.getByRole("button", { name: "保存默认提示词" });
 try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${listener.address().port}`);
@@ -524,6 +527,15 @@ try {
     )),
   );
   await page.screenshot({ path: new URL("delegation.png", output).pathname });
+  const process = execution.getByText("工作过程", { exact: true });
+  await process.click();
+  await execution.getByTitle("nl -ba report.md").click();
+  await execution.getByText("1 核对清单", { exact: true }).waitFor();
+  await execution.getByText(/退出码 0/).waitFor();
+  await page.screenshot({
+    path: new URL("delegation-evidence.png", output).pathname,
+  });
+  await process.click();
   await page.evaluate(() => window.showFixturePermission());
   const allow = page.getByRole("button", { name: "允许一次", exact: true });
   await allow.waitFor();
@@ -535,55 +547,54 @@ try {
   await allow.waitFor({ state: "hidden" });
   await openBackendSettings("Antigravity");
   await agy.waitFor();
-  await roleSection
-    .getByRole("heading", { name: "角色设定", level: 3 })
-    .waitFor();
-  assert.equal(await roleSection.locator("summary").count(), 0);
-  await roleSection.getByRole("alert").getByText("角色设定读取失败").waitFor();
-  await roleSection.getByRole("button", { name: "重新加载" }).click();
-  await roleEditor.waitFor();
+  assert.equal(
+    await agy.getByRole("textbox", { name: "默认提示词正文" }).count(),
+    0,
+  );
   assert.equal(
     await agy.getByRole("button", { name: /一键安装|更新至|无需更新/ }).count(),
     0,
   );
-  await agy.getByRole("combobox", { name: "Claude Code 委派模型" }).waitFor();
   const hyd = agy.getByRole("checkbox", {
     name: "Gemini 4 Hydrogen",
     exact: true,
   });
   await hyd.uncheck();
   await hyd.waitFor();
-  const route = agy.getByRole("checkbox", { name: "允许委派给 Claude Code" });
+  await openSettingsPage(page, "委派模式");
+  await roleSection.getByRole("alert").getByText("角色设定读取失败").waitFor();
+  await roleSection.getByRole("button", { name: "重新加载" }).click();
+  await roleEditor.waitFor();
+  const delegation = page.getByRole("form", { name: "委派模式" });
+  const route = delegation.getByRole("checkbox", {
+    name: "Claude Code 接收委派",
+  });
   await route.uncheck();
-  assert.equal(
-    await agy.getByRole("combobox", { name: "Claude Code 委派模型" }).count(),
-    0,
-  );
+  assert.equal(await route.isChecked(), false);
   await route.check();
-  await agy
-    .getByLabel("Codex 委派模型")
+  await delegation
+    .getByLabel("Codex 执行模型")
     .selectOption(JSON.stringify(["", "gpt-second"]));
-  await settingsBackend(page, "Codex").click();
-  assert.equal(await agy.isVisible(), false);
-  await settingsBackend(page, "Antigravity").click();
+  await openSettingsPage(page, "后端");
+  assert.equal(await delegation.isVisible(), false);
+  await openSettingsPage(page, "委派模式");
   assert.equal(
-    await agy.getByLabel("Codex 委派模型").inputValue(),
+    await delegation.getByLabel("Codex 执行模型").inputValue(),
     JSON.stringify(["", "gpt-second"]),
   );
-  await agy.getByRole("button", { name: "保存委派设置" }).click();
-  await agy.getByText("委派设置已保存").waitFor();
+  await delegation.getByRole("button", { name: "保存委派设置" }).click();
+  await delegation.getByText("委派设置已保存").waitFor();
   await page.screenshot({ path: new URL("settings.png", output).pathname });
   const defaultRole = await roleEditor.inputValue();
   assert.match(defaultRole, /用户的秘书/);
   const customRole =
     "你是项目秘书。\n\n- 先确认交付范围。\n- 完成后汇报验证结果。\n";
   await roleEditor.fill(customRole);
-  await settingsBackend(page, "Codex").click();
+  await openSettingsPage(page, "后端");
   assert.equal(await roleEditor.isVisible(), false);
-  await settingsBackend(page, "Antigravity").click();
   await openSettingsPage(page, "通用");
   assert.equal(await roleEditor.isVisible(), false);
-  await openSettingsPage(page, "后端");
+  await openSettingsPage(page, "委派模式");
   assert.equal(await roleEditor.inputValue(), customRole);
   assert.equal(
     await page.evaluate(
@@ -595,20 +606,24 @@ try {
     2,
   );
   await saveRole.click();
-  await agy.getByRole("alert").getByText("角色设定保存失败，请重试").waitFor();
+  await roleSection
+    .getByRole("alert")
+    .getByText("角色设定保存失败，请重试")
+    .waitFor();
   assert.equal(await roleEditor.inputValue(), customRole);
   await saveRole.click();
-  await agy.getByText("角色设定已保存").waitFor();
+  await roleSection.getByText("默认提示词已保存").waitFor();
   await page.screenshot({ path: new URL("role-saved.png", output).pathname });
   await page.reload();
   await openBackendSettings("Antigravity");
+  await openSettingsPage(page, "委派模式");
   await roleEditor.waitFor();
   assert.equal(await roleEditor.inputValue(), customRole);
-  await agy.getByRole("button", { name: "载入默认模板" }).click();
+  await roleSection.getByRole("button", { name: "载入内置模板" }).click();
   assert.equal(await roleEditor.inputValue(), defaultRole);
   assert.equal(await page.evaluate(() => sessionStorage.agyRole), customRole);
   await saveRole.click();
-  await agy.getByText("已恢复默认角色设定").waitFor();
+  await roleSection.getByText("已恢复内置提示词").waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.agyRole), undefined);
   await page.screenshot({ path: new URL("role-reset.png", output).pathname });
   await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
@@ -829,7 +844,6 @@ try {
           );
         }
         await openBackendSettings("Antigravity");
-        await roleEditor.waitFor();
         await agy
           .getByRole("checkbox", { name: "Gemini 3.8 Flash", exact: true })
           .waitFor();
@@ -851,39 +865,13 @@ try {
                   rect.x >= bounds.left - 1 && rect.right <= bounds.right + 1
                 );
               }),
-            routeFields: [...body.querySelectorAll(".agy-route-fields")].every(
-              (row) => {
-                const rects = [...row.querySelectorAll("select")].map((el) =>
-                  el.getBoundingClientRect(),
-                );
-                return rects.every(
-                  (rect) => Math.abs(rect.top - rects[0].top) < 1,
-                );
-              },
-            ),
           }));
         assert.ok(
           settingMetrics.scroll <= settingMetrics.width + 1 &&
-            settingMetrics.controls &&
-            settingMetrics.routeFields,
+            settingMetrics.controls,
           JSON.stringify({ width, height, theme, scale, settingMetrics }),
         );
-        await agy.getByLabel("Claude Code 委派模型").focus();
-        assert.equal(
-          await agy
-            .getByLabel("Claude Code 委派模型")
-            .evaluate((el) => el === document.activeElement),
-          true,
-        );
         if ([1366, 768, 420, 320].includes(width) && [1, 2].includes(scale)) {
-          if (width === 320 && scale === 2) {
-            await page.screenshot({
-              path: new URL(
-                `settings-${width}-${theme}-${scale}-delegation.png`,
-                output,
-              ).pathname,
-            });
-          }
           await page
             .locator(".settings-body")
             .evaluate((body) => (body.scrollTop = 0));
@@ -892,6 +880,7 @@ try {
               .pathname,
           });
         }
+        await openSettingsPage(page, "委派模式");
         const roleLayout = await roleEditor.evaluate((editor) => {
           editor.focus();
           const body = editor.closest(".settings-body");
@@ -912,6 +901,22 @@ try {
           await page.screenshot({
             path: new URL(`role-${width}-${theme}-${scale}.png`, output)
               .pathname,
+          });
+        }
+        if (width === 320 && scale === 2) {
+          await openSettingsPage(page, "委派模式");
+          const model = delegation.getByLabel("Claude Code 执行模型");
+          await model.focus();
+          assert(
+            await model.evaluate(
+              (element) => element === document.activeElement,
+            ),
+          );
+          await page.screenshot({
+            path: new URL(
+              `settings-${width}-${theme}-${scale}-delegation.png`,
+              output,
+            ).pathname,
           });
         }
         await page

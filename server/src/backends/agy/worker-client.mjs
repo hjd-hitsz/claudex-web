@@ -24,6 +24,14 @@ export function createAgyWorkerAdapter({
     state = snapshot;
     broadcast(state);
   }
+  function scheduleReconnect() {
+    if (closed || stopping || reconnect) return;
+    reconnect = setTimeout(() => {
+      reconnect = undefined;
+      connect().catch(() => {});
+    }, 1200);
+    reconnect.unref();
+  }
   let stateRequest;
   let stateDirty = false;
   function updateState() {
@@ -92,10 +100,7 @@ export function createAgyWorkerAdapter({
           error: "正在连接 agy 执行服务",
         },
       });
-      if (!closed && !stopping) {
-        reconnect = setTimeout(() => connect().catch(() => {}), 1200);
-        reconnect.unref();
-      }
+      scheduleReconnect();
     });
     try {
       const snapshot = await peer.call("state");
@@ -106,10 +111,16 @@ export function createAgyWorkerAdapter({
     }
   }
   function connect() {
+    if (closed) return Promise.resolve();
     if (connecting) return connecting;
-    connecting = open().finally(() => {
-      connecting = undefined;
-    });
+    connecting = open()
+      .catch((error) => {
+        scheduleReconnect();
+        throw error;
+      })
+      .finally(() => {
+        connecting = undefined;
+      });
     return connecting;
   }
   return {
@@ -124,6 +135,8 @@ export function createAgyWorkerAdapter({
       backend = {
         ...backend,
         delegates: next.delegates,
+        delegationPrompts: next.delegationPrompts,
+        delegationSourcePrompts: next.delegationSourcePrompts,
         hiddenModels: next.hiddenModels,
       };
       if (connection) {

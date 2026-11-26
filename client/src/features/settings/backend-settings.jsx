@@ -1,14 +1,12 @@
 import { cliUpdateAvailable } from "../../domain/cli-installation.js";
 import React, { useEffect, useRef, useState } from "react";
 import { useStore, saveBackend, rpc } from "../../store.js";
-import { AgySettings } from "./agy-settings.jsx";
-import { AgyRoleSettings } from "./agy-role-settings.jsx";
 import { BackendBadge } from "../backends/backend-badge.jsx";
 import { BackendModelSettings } from "./backend-model-settings.jsx";
 import { ProxySettings } from "./proxy-settings.jsx";
 import { SubagentModelSettings } from "./subagent-model-settings.jsx";
 
-export function BackendSettings({ visible }) {
+export function BackendSettings() {
   const s = useStore();
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -219,7 +217,6 @@ export function BackendSettings({ visible }) {
                   backend={backend}
                   active={active === backend.id}
                 />
-                <AgySettings backend={backend} disabled={working} />
               </>
             ) : (
               <>
@@ -229,9 +226,6 @@ export function BackendSettings({ visible }) {
             )}
             {["claude", "agy"].includes(backend.type) && (
               <ProxySettings backend={backend} disabled={working} />
-            )}
-            {backend.id === "agy" && (
-              <AgyRoleSettings active={visible && active === backend.id} />
             )}
           </section>
         );

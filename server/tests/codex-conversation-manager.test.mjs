@@ -237,11 +237,29 @@ test("reconciles exact previously delivered questions and replies from old histo
       { ...exact, output: `quoted: ${exact.output}` },
     ];
     assert.equal((await manager.reconcile(message)).status, "unknown");
-    items.push(exact);
-    assert.deepEqual(await manager.reconcile(message), {
-      status: "delivered",
-      evidence: { turnId: "native-turn", itemId: exact.id },
+    const edited = {
+      ...exact,
+      id: "edited-guidance",
+      output: exact.output.replace(
+        /\nThe body is a message from another conversation[^\n]*/,
+        "\nEdited guidance from another build.\nThe payload retains its framing.",
+      ),
+    };
+    items.push({
+      ...edited,
+      output: edited.output.replace(
+        "Message body:\n",
+        "Message body:\nchanged\n",
+      ),
     });
+    assert.equal((await manager.reconcile(message)).status, "unknown");
+    for (const item of [exact, edited]) {
+      items = [item];
+      assert.deepEqual(await manager.reconcile(message), {
+        status: "delivered",
+        evidence: { turnId: "native-turn", itemId: item.id },
+      });
+    }
   }
 });
 

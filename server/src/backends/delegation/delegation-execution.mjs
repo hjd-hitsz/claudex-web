@@ -1,3 +1,4 @@
+import { readRolloutTools } from "../codex/rollout-tools.mjs";
 import { executing, finishDelegation } from "./delegation-store.mjs";
 import {
   delegationResults,
@@ -109,6 +110,7 @@ export function createDelegationExecution({
       return;
     }
     const entry = await executor.resolve(task);
+    if (!entry.adapter.ready) return;
     await executor.attach(entry, task);
     const { threadId } = task.executor;
     const { thread } = await executor.call(entry, "thread/read", {
@@ -149,13 +151,16 @@ export function createDelegationExecution({
     }
 
     const active = ["inProgress", "queued"].includes(turn.status);
-    const result = active
+    const background = active
+      ? null
+      : await executor.backgrounds(entry, threadId);
+    let result = active
       ? null
       : delegationResults(
           thread,
           turn,
           step,
-          await executor.backgrounds(entry, threadId),
+          background,
           occupied(),
           task.target,
         );
@@ -170,6 +175,25 @@ export function createDelegationExecution({
             });
       if (current) await syncRequests(entry, current);
       return;
+    }
+
+    if (task.target === "codex" && thread.path) {
+      const rollout = await readRolloutTools(
+        thread,
+        new Set(result.turnIds),
+      ).catch((error) => {
+        console.error("读取委派工具 Rollout 失败", error);
+        return new Map();
+      });
+      result = delegationResults(
+        thread,
+        turn,
+        step,
+        background,
+        false,
+        task.target,
+        rollout,
+      );
     }
 
     let request;

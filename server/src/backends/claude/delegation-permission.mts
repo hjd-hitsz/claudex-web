@@ -1,3 +1,4 @@
+import { readPromptSections } from "../../prompts.mjs";
 import { randomUUID } from "node:crypto";
 import type {
   CanUseTool,
@@ -98,7 +99,9 @@ export function createPermissionCheck({
     if (active?.turn.mode === "plan" || active?.queued.review)
       return {
         behavior: "deny",
-        message: "当前任务处于只读模式，请使用读取和调查工具。",
+        message: readPromptSections("backends/claude/execution.md")(
+          "readOnlyTool",
+        ),
       };
     return { behavior: "allow", updatedInput: input };
   };

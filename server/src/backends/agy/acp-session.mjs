@@ -1,5 +1,6 @@
+import { secretaryAgent } from "./secretary-prompts.mjs";
 import { randomUUID } from "node:crypto";
-import { readFile, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writePrivateFile } from "../../private-file.mjs";
@@ -7,11 +8,10 @@ import { createAcpClient } from "./acp-client.mjs";
 import { applyAcpUpdate } from "./acp-events.mjs";
 import { acpConfiguration } from "./acp-models.mjs";
 import { createAgyModelCatalogue } from "./model-catalogue.mjs";
-import { readAgyRole } from "./role-settings.mjs";
+import { resolveSourcePrompt } from "../delegation/settings.mjs";
 import { nowSeconds } from "./session-store.mjs";
-import { currentResultNotice } from "./delegation-store.mjs";
+import { currentResultNotice } from "../delegation/delegation-store.mjs";
 
-const agent = await readFile(new URL("./secretary-agent.md", import.meta.url));
 const mcp = fileURLToPath(new URL("./delegation-mcp.mjs", import.meta.url));
 const capable = (response, key) =>
   response.agentCapabilities?.sessionCapabilities?.[key];
@@ -37,7 +37,7 @@ export function createAcpSessions({
   let startup;
   let connectionError = "";
   const launchDir = () => join(getBackend().stateDir, "launch");
-  const readRole = () => readAgyRole(getBackend().stateDir);
+  const readRole = () => resolveSourcePrompt(getBackend(), "agy");
 
   function spawn(onUpdate, onRequest, onExit) {
     const { proxy } = getBackend();
@@ -81,7 +81,7 @@ export function createAcpSessions({
       "agent.md",
     );
     await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-    await writePrivateFile(destination, agent);
+    await writePrivateFile(destination, secretaryAgent);
     const client = spawn();
     try {
       startup = await initialize(client);
@@ -109,7 +109,7 @@ export function createAcpSessions({
     catalogueClient = client;
     try {
       await initialize(client);
-      const { content: role } = await readRole();
+      const role = await readRole();
       const session = await client.call("session/new", {
         cwd: launchDir(),
         mcpServers: [],
@@ -180,7 +180,7 @@ export function createAcpSessions({
     );
     entry.open = (async () => {
       await initialize(entry.client);
-      entry.role = role ?? (await readRole()).content;
+      entry.role = role ?? (await readRole());
       const options = {
         cwd: session.cwd,
         mcpServers: [
@@ -289,7 +289,7 @@ export function createAcpSessions({
     const notify = (method, params) =>
       emit({ method, params: { threadId: session.id, ...params } });
     try {
-      const { content: role } = await readRole();
+      const role = await readRole();
       let entry = await open(session, role);
       clearTimeout(entry.idle);
       await execution.prepareMcp(entry, activity);
@@ -303,7 +303,7 @@ export function createAcpSessions({
         await execution.prepareMcp(entry, activity);
       }
       await applySelection(entry, input, session);
-      const promptBlocks = input.original?.length
+      const promptBlocks = input.userInput
         ? await execution.forwardingContext(session.id, blocks)
         : blocks;
       const submitted = await store.change((data) => {
@@ -445,7 +445,7 @@ export function createAcpSessions({
     });
     try {
       await initialize(client);
-      const { content: role } = await readRole();
+      const role = await readRole();
       await client.call("session/load", {
         sessionId: session.nativeId,
         cwd: session.cwd,

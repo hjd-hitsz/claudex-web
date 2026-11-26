@@ -1,6 +1,12 @@
 import { resourceId } from "../../../shared/backend-identity.mjs";
 
-export function bindConversationTools(manager, entry, folders, isOpen) {
+export function bindConversationTools(
+  manager,
+  entry,
+  folders,
+  isOpen,
+  delegation,
+) {
   const { backend } = entry;
   return manager?.bindBackend(
     backend,
@@ -14,5 +20,6 @@ export function bindConversationTools(manager, entry, folders, isOpen) {
         ...thread,
         id: resourceId(backend.id, thread.threadId),
       }),
+    delegation,
   );
 }

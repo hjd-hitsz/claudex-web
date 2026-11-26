@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "test": "node --test tests/*.test.js"
+    "test": "cd .. && node --import ./tests/helpers/test-console.mjs --test client/tests/*.test.js"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

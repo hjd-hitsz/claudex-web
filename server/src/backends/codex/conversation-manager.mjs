@@ -1,6 +1,6 @@
 import {
   formatConversationMessage,
-  formatLegacyConversationMessage,
+  matchesConversationMessage,
 } from "../../conversation-manager/message.mjs";
 import { codexConversationMcpName } from "./conversation-tools.mjs";
 import { CodexRpcError } from "./upstream.mjs";
@@ -26,12 +26,12 @@ function activity(status) {
   return "running";
 }
 
-function isDelivery(item, texts) {
+function isDelivery(item, envelope) {
   return (
     item.type === "functionCallOutput" &&
     item.name === notificationName &&
     item.namespace === codexConversationMcpName &&
-    texts.includes(item.output)
+    matchesConversationMessage(item.output, envelope)
   );
 }
 
@@ -193,10 +193,6 @@ export function createCodexConversationManager({
     const evidence = receipt?.evidence;
     if (!transport.ready)
       return { status: evidence ? "queued" : "unknown", evidence };
-    const texts = [
-      formatConversationMessage(envelope, codexConversationMcpName),
-      formatLegacyConversationMessage(envelope),
-    ];
     const readPage = (cursor) =>
       transport.call(
         "thread/turns/list",
@@ -211,7 +207,7 @@ export function createCodexConversationManager({
       );
     const find = (page) => {
       for (const turn of page.data) {
-        const item = turn.items?.find((item) => isDelivery(item, texts));
+        const item = turn.items?.find((item) => isDelivery(item, envelope));
         if (item)
           return {
             status: "delivered",

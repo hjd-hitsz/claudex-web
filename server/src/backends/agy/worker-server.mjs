@@ -8,7 +8,7 @@ import {
   sendIpc,
 } from "./worker-ipc.mjs";
 import { createAgyAdapter } from "./adapter.mjs";
-import { agyHistoryMethods } from "./delegation-history.mjs";
+import { agyHistoryMethods } from "../delegation/delegation-history.mjs";
 import { hasBackendWork } from "../../../../shared/backend-activity.mjs";
 
 const [path, optionsPath] = process.argv.slice(2);
@@ -48,7 +48,7 @@ async function dispatch(socket, method, params) {
   }
   if (method === "mcp/ready") return service.execution.mcpReady(params);
   if (method === "mcp/list") return service.execution.list(params);
-  if (method === "mcp/call") return service.execution.submit(params);
+  if (method === "mcp/call") return service.execution.invoke(params);
   if (closing) throw new Error("agy 服务正在停止");
   if (method === "configure") {
     service.configure(params.backend);

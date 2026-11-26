@@ -103,6 +103,34 @@ function fixture(data) {
               method: "lan/state",
               params: {
                 ready: true,
+                nativeDelegation: true,
+                defaultBackendId: "codex",
+                backends: [
+                  {
+                    id: "codex",
+                    type: "codex",
+                    name: "Codex",
+                    ready: true,
+                    enabled: true,
+                  },
+                  {
+                    id: "claude",
+                    type: "claude",
+                    name: "Claude Code",
+                    ready: true,
+                    enabled: true,
+                  },
+                  {
+                    id: "agy",
+                    type: "agy",
+                    name: "Antigravity",
+                    enabled: false,
+                    delegates: {
+                      codex: { enabled: true },
+                      claude: { enabled: true },
+                    },
+                  },
+                ],
                 defaultCwd: thread.cwd,
                 activeTurns: {},
                 questions: [],
@@ -116,6 +144,7 @@ function fixture(data) {
       const m = JSON.parse(raw);
       window.demoRequests.push(m);
       let result = {};
+      if (m.method === "lan/delegation/tasks") result = { items: [] };
       if (m.method === "thread/list")
         result = {
           data: m.params.archived

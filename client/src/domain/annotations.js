@@ -1,3 +1,4 @@
+import { composerPrompt } from "./prompt-text.js";
 import { replaceMarkdownMarkers } from "./markdown-markers.js";
 
 export function parseAnnotations(text) {
@@ -35,7 +36,7 @@ export function parseAnnotations(text) {
 
 export function annotationMessage(
   annotations,
-  request = "请根据这些注释继续处理。",
+  request = composerPrompt("annotationRequest"),
 ) {
   const payload = JSON.stringify(
     annotations.map(({ text, annotation, source }) => ({
@@ -46,7 +47,7 @@ export function annotationMessage(
   )
     .replaceAll("<", "\\u003c")
     .replaceAll(">", "\\u003e");
-  return `\n# Response annotations:\n以下各项是用户选自较早回复的原文及批注，按数组顺序编号为 1、2 等。请结合原文处理每条批注，并在回复中对应位置加入行内标记 :codex-annotation{index="N"}，其中 N 为该项从 1 开始的编号。\n<response-annotations>\n${payload}\n</response-annotations>\n\n## My request:\n${request}`;
+  return `\n# Response annotations:\n${composerPrompt("responseAnnotations")}\n<response-annotations>\n${payload}\n</response-annotations>\n\n## My request:\n${request}`;
 }
 
 export function annotationContexts(items) {

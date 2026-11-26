@@ -1,5 +1,6 @@
 import { delegationMarker, executorResult } from "./executors.mjs";
 import { finishDelegation } from "./delegation-store.mjs";
+import { turnCalls } from "./call-chain.mjs";
 import { shellTask } from "../claude/background-tasks.mjs";
 
 const terminal = new Set(["completed", "failed", "interrupted"]);
@@ -75,6 +76,7 @@ export function delegationResults(
   background,
   occupied,
   target,
+  rolloutCalls,
 ) {
   const turns = thread.turns || [];
   const tasks = thread.backgroundTasks || {};
@@ -136,6 +138,7 @@ export function delegationResults(
         status: terminal.has(turn.status) ? turn.status : "unknown",
         triggers,
         ...executorResult(turn),
+        callChain: turnCalls(turn, rolloutCalls?.get(turn.id), target),
       })),
   };
 }
@@ -161,6 +164,7 @@ export function saveDelegationResults(data, task, { pending, stages }) {
   step.turnId = stages[0].turnId;
   finishDelegation(data, task, status, {
     answer,
+    callChain: stages.flatMap(({ callChain }) => callChain ?? []),
     turns: stages.map(({ turnId, status, triggers }) => ({
       turnId,
       status,

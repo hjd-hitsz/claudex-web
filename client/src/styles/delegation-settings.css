@@ -1,0 +1,171 @@
+.modal-settings .delegation-settings {
+  padding: 0;
+}
+
+.delegation-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.delegation-routes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 0.625rem;
+}
+
+.delegation-route {
+  display: grid;
+  align-content: start;
+  gap: 0.625rem;
+  min-inline-size: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+}
+
+.delegation-settings h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1em;
+}
+
+.delegation-settings label {
+  display: grid;
+  gap: 0.25rem;
+  min-inline-size: 0;
+  color: var(--muted);
+}
+
+.delegation-model {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(4.25rem, auto);
+  gap: 0.375rem;
+}
+
+.delegation-settings :is(select, input[type="text"], textarea) {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 2.45rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.4375rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.delegation-settings textarea {
+  padding-block: 0.5rem;
+  resize: vertical;
+}
+
+.delegation-settings :is(select, input, textarea):focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.delegation-prompts,
+.delegation-prompt-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.625rem;
+  min-inline-size: 0;
+}
+
+.delegation-prompt-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+
+.delegation-prompt-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.delegation-prompt-editor button {
+  justify-self: start;
+}
+
+.delegation-save {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-block-start: 1rem;
+}
+
+.delegation-save [role="alert"] {
+  color: var(--red);
+}
+
+.delegation-section {
+  display: grid;
+  gap: 0.625rem;
+  min-inline-size: 0;
+}
+
+.delegation-fields > :is(.delegation-section, .delegation-prompts) + section {
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--border);
+}
+
+.delegation-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.625rem;
+}
+
+.delegation-settings label.delegation-receive {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.delegation-sources label > span,
+.delegation-receive > span {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--fg);
+  font-weight: 550;
+}
+
+.delegation-prompt-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.delegation-prompts [role="alert"] {
+  color: var(--red);
+}
+
+@container settings (width < 260px) {
+  .delegation-model,
+  .delegation-prompt-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .delegation-prompt-actions button {
+    justify-self: end;
+  }
+  .delegation-prompt-buttons button,
+  .delegation-save button {
+    max-inline-size: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

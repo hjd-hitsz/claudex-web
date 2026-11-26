@@ -1,3 +1,4 @@
+import { readPromptSections } from "../../prompts.mjs";
 import {
   createPermissionCheck,
   delegationToolOptions,
@@ -33,6 +34,9 @@ import {
   providerRuntimeEnvironment,
 } from "./provider-transport.mjs";
 
+const executionPrompt = readPromptSections("backends/claude/execution.md");
+const planMode = executionPrompt("planMode");
+const reviewMode = executionPrompt("reviewMode");
 export async function createExecutionSession({
   backend,
   session,
@@ -157,9 +161,7 @@ export async function createExecutionSession({
           : queued.delegation
             ? "default"
             : "bypassPermissions",
-      planModeInstructions: queued.review
-        ? "只读审查当前项目变更，核对相关实现及项目约定，给出问题、位置、触发条件及修复建议。保持只读权限，省略 ExitPlanMode 调用。"
-        : "调查用户需求并制定完整方案。遵守只读计划模式。最终回复直接给出完整 Markdown 方案，等待用户通过网页批准或提出修改意见。保持计划模式，省略 ExitPlanMode 调用。",
+      planModeInstructions: queued.review ? reviewMode : planMode,
       ...delegationToolOptions(queued.delegation),
       ...(queued.review && {
         disallowedTools: ["Write", "Edit", "NotebookEdit"],
@@ -196,6 +198,7 @@ export async function createExecutionSession({
         broadcast,
         questions,
         goalBeforeTool: () => goals.beforeTool(threadId),
+        delegationContext: () => current()?.queued.delegationContext,
         conversationToolGuard: callConversationTool
           ? [conversationToolGuard()]
           : [],

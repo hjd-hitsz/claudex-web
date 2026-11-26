@@ -202,6 +202,8 @@ export async function testCommands(app, requests, setResponse) {
     await act(async () => command("/init"));
     const init = requests.findLast((r) => r.method === "turn/start");
     assert.match(init.params.input[0].text, /已有时保留其全部内容/);
+    assert.ok(init.params.input[0].text.includes("项目根目录 `prompt/`"));
+    assert.match(init.params.input[0].text, /禁止在业务源码中硬编码提示词/);
     assert.equal(init.params.input.length, 1);
     assert.equal(app.get().draft, "");
     assert.deepEqual(app.get().attachments, [attachment]);

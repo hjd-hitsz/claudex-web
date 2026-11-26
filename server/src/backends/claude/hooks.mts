@@ -36,6 +36,7 @@ type HookOptions = {
   broadcast: SessionDependencies["broadcast"];
   questions: Map<string, PendingQuestion>;
   goalBeforeTool: HookCallback;
+  delegationContext: () => string | undefined;
   conversationToolGuard?: NonNullable<Options["hooks"]>["PreToolUse"];
   onPromptFailure: (error: unknown) => void;
 };
@@ -51,6 +52,7 @@ export function createRunHooks({
   broadcast,
   questions,
   goalBeforeTool,
+  delegationContext,
   conversationToolGuard = [],
   onPromptFailure,
 }: HookOptions): NonNullable<Options["hooks"]> {
@@ -227,7 +229,12 @@ export function createRunHooks({
       return {
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
-          additionalContext: await readProjectInstructions(input.cwd),
+          additionalContext: [
+            await readProjectInstructions(input.cwd),
+            delegationContext(),
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
         },
       };
     } catch (error) {

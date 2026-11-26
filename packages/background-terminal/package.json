@@ -9,6 +9,9 @@
   "os": [
     "linux"
   ],
+  "scripts": {
+    "prepack": "node --input-type=module -e \"import { cpSync, rmSync } from 'node:fs'; rmSync('prompt', { recursive: true, force: true }); cpSync('../../prompt/background-terminal', 'prompt', { recursive: true }); cpSync('../../shared/prompt-sections.mjs', 'prompt-sections.generated.mjs');\""
+  },
   "bin": {
     "codex-background-terminal": "cli.mjs"
   }
