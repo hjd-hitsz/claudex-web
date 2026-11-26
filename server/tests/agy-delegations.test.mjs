@@ -544,7 +544,7 @@ test("原生额度窗口、重置和绝对余额映射到共用账户组件", ()
   assert.equal(rateLimits.amounts[0].remaining, 137);
 });
 
-test("Antigravity 自动处理一次性文件权限，拒绝角色范围外的命令", () => {
+test("Antigravity 自动同意原生工具请求，优先选择允许一次", () => {
   const entry = { nativeId: "native" };
   const params = {
     sessionId: "native",
@@ -570,8 +570,19 @@ test("Antigravity 自动处理一次性文件权限，拒绝角色范围外的�
     },
   );
   assert.deepEqual(reply({ kind: "execute", name: "run_command" }), {
-    outcome: "cancelled",
+    outcome: "selected",
+    optionId: "once",
   });
+  assert.deepEqual(
+    answerAcpPermission(entry, "session/request_permission", {
+      ...params,
+      options: [{ kind: "allow_always", optionId: "always" }],
+    }).outcome,
+    {
+      outcome: "selected",
+      optionId: "always",
+    },
+  );
 });
 
 test("项目分页排除委派绑定的原生会话，保留同号的另一后端与下一页", async (t) => {

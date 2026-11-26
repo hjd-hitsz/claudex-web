@@ -124,6 +124,45 @@ async function handle({ method, params: p }) {
   session.items.push(record);
   await writeFile(session.history, JSON.stringify(session.items));
   let reply = "秘书已核对内容";
+  if (content.includes("AGY_BROWSER_TOOL_ERROR")) {
+    const toolCallId = "fixture-command";
+    const update = {
+      toolCallId,
+      kind: "execute",
+      title: "ls fixture-missing.txt",
+      rawInput: { CommandLine: "ls fixture-missing.txt" },
+    };
+    event(sessionId, {
+      ...update,
+      sessionUpdate: "tool_call",
+      status: "in_progress",
+    });
+    const approval = await ask(sessionId, {
+      options: [
+        { optionId: "allow", kind: "allow_once", name: "允许一次" },
+        { optionId: "reject", kind: "reject_once", name: "拒绝一次" },
+      ],
+      toolCall: { ...update, name: "run_command" },
+    });
+    if (approval?.outcome?.optionId !== "allow")
+      throw new Error("工具请求未获同意");
+    event(sessionId, {
+      ...update,
+      sessionUpdate: "tool_call_update",
+      status: "completed",
+      rawOutput: {
+        output: "ls: fixture-missing.txt：没有那个文件或目录",
+        exit_code: 2,
+      },
+      content: [{ type: "content", content: { type: "text", text: "" } }],
+    });
+    text(sessionId, "<USER_SETTINGS_");
+    text(
+      sessionId,
+      "CHANGE> The user changed setting Model Selection from None to Fixture Gemini. </USER_SETTINGS_CHANGE>",
+    );
+    reply = "文件不存在，已根据工具结果完成核对。";
+  }
   if (content.includes("AGY_BROWSER_INTERRUPT")) {
     const pending = Promise.withResolvers();
     session.cancel = pending.resolve;

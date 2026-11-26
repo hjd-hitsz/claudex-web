@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createAcpSessions } from "../../server/src/backends/agy/acp-session.mjs";
+import { createAcpClient } from "../../server/src/backends/agy/acp-client.mjs";
 import { createAgyStore } from "../../server/src/backends/agy/session-store.mjs";
 import {
   delegationNotice,
@@ -16,6 +17,7 @@ import {
   sendIpc,
 } from "../../server/src/backends/agy/worker-ipc.mjs";
 import { answerAcpPermission } from "../../server/src/backends/agy/acp-permissions.mjs";
+import { savedAgyAgent } from "../../server/src/backends/agy/native-agent.mjs";
 import { findCli } from "../../server/src/backends/cli-installation.mjs";
 import {
   readAgyRole,
@@ -105,6 +107,11 @@ const proxy = createServer(async (request, response) => {
     (set) => set.functionDeclarations || [],
   );
   const serialized = JSON.stringify(body.contents || []);
+  const legacy = serialized.includes("LEGACY_CONTEXT_PROOF");
+  const legacyContinuation = legacy && serialized.includes("核对旧会话续接");
+  const commandReturned =
+    serialized.includes("functionResponse") &&
+    serialized.includes("fixture-missing-file");
   if (serialized.includes(noticeMarker("fixture-step:result"))) {
     returnedResult = {
       answer: serialized.includes("FIXTURE_DELEGATION_ANSWER"),
@@ -121,6 +128,8 @@ const proxy = createServer(async (request, response) => {
     customRole: instruction.includes("CLAUDEX_ROLE_OVERRIDE_TEST"),
     presetRole: instruction.includes("CLAUDEX_SECRETARY_PRESET_TEST"),
     image: serialized.includes("inlineData"),
+    legacyContinuation,
+    commandReturned,
   });
   await holdResponse?.();
   const initial = serialized.includes("AGY_NATIVE_FIRST");
@@ -138,31 +147,42 @@ const proxy = createServer(async (request, response) => {
   const resultNotice = serialized.includes(noticeMarker("fixture-step:result"));
   const gotStep = serialized.includes("FIXTURE_NATIVE_STEP_OUTPUT");
   const part =
-    resultNotice && lookup && !gotStep
+    legacy && !legacyContinuation && !commandReturned
       ? {
           functionCall: {
-            name: lookup.name,
+            name: "run_command",
             args: {
-              toolSummary: "核对执行记录",
-              taskId: "fixture-task",
-              stepId: "fixture-step",
-              callId: "fixture-call",
+              CommandLine: "ls fixture-missing-file",
+              WaitMsBeforeAsync: 5000,
+              toolSummary: "核对失败工具回传",
             },
           },
         }
-      : initial && !called && target
+      : resultNotice && lookup && !gotStep
         ? {
             functionCall: {
-              name: target.name,
+              name: lookup.name,
               args: {
-                toolSummary: "交给 Codex 核对证据",
-                request: "核对测试内容",
-                request_id: "native-probe",
-                scope: "research",
+                toolSummary: "核对执行记录",
+                taskId: "fixture-task",
+                stepId: "fixture-step",
+                callId: "fixture-call",
               },
             },
           }
-        : { text: called ? "原生委派已受理" : "原生秘书回复" };
+        : initial && !called && target
+          ? {
+              functionCall: {
+                name: target.name,
+                args: {
+                  toolSummary: "交给 Codex 核对证据",
+                  request: "核对测试内容",
+                  request_id: "native-probe",
+                  scope: "research",
+                },
+              },
+            }
+          : { text: called ? "原生委派已受理" : "原生秘书回复" };
   const answer = {
     responseId: "agy-fixture-" + ++sequence,
     candidates: [
@@ -202,6 +222,7 @@ process.env.GOOGLE_GEMINI_BASE_URL = "http://agy-fixture.invalid";
 const store = createAgyStore(stateDir);
 const execution = {
   acpRequest: answerAcpPermission,
+  forwardingContext: (_id, blocks) => blocks,
   async finishNotice(id, turn) {
     await store.change((data) => {
       data.notices[id].status =
@@ -229,6 +250,7 @@ const sessions = createAcpSessions({
   getBackend: () => backend,
   socket: socketPath,
   execution,
+  readAgent: (id) => savedAgyAgent(id, join(profile, "antigravity-cli")),
   emit: (event) => events.push(event),
 });
 try {
@@ -291,6 +313,19 @@ try {
   ]);
   assert(requests.some(({ role, image }) => role && image));
   assert(
+    requests.some(
+      ({ role, tools }) =>
+        role &&
+        [
+          "read_file",
+          "write_file",
+          "edit_file",
+          "ask_question",
+          "mcp_claudex_delegation_ask_codex",
+        ].every((name) => tools.includes(name)),
+    ),
+  );
+  assert(
     requests.every(
       ({ tools }) =>
         !tools.some((name) =>
@@ -341,9 +376,115 @@ try {
       .every(({ role, customRole }) => !role && customRole),
     "续接提交的原生模型请求须使用自定义角色",
   );
+  const legacyCwd = join(root, "legacy-launch");
+  await mkdir(legacyCwd);
+  const legacyClient = createAcpClient({
+    executable,
+    cwd: legacyCwd,
+    proxy: backend.proxy,
+    onRequest: (method) => assert.fail(`原生全自动同意仍发出请求 ${method}`),
+  });
+  let legacyNativeId;
+  try {
+    await legacyClient.call("initialize", { protocolVersion: 1 });
+    ({ sessionId: legacyNativeId } = await legacyClient.call("session/new", {
+      cwd,
+      mcpServers: [],
+    }));
+    const response = await legacyClient.call("session/prompt", {
+      sessionId: legacyNativeId,
+      prompt: [{ type: "text", text: "LEGACY_CONTEXT_PROOF" }],
+    });
+    assert.equal(response.stopReason, "end_turn");
+    assert(requests.some(({ commandReturned }) => commandReturned));
+    await legacyClient.call("session/close", { sessionId: legacyNativeId });
+  } finally {
+    legacyClient.close();
+  }
+  // Older ACP sessions can already have a default-agent row in the native index.
+  const { DatabaseSync } = await import("node:sqlite");
+  const summary = new DatabaseSync(
+    join(profile, "antigravity-cli", "conversation_summaries.db"),
+  );
+  try {
+    summary
+      .prepare(
+        `INSERT OR IGNORE INTO conversation_summaries
+      (conversation_id, last_modified_time, workspace_uris, last_user_input_time)
+      VALUES (?, datetime('now'), '[]', datetime('now'))`,
+      )
+      .run(legacyNativeId);
+  } finally {
+    summary.close();
+  }
+  await store.change((data) => {
+    data.sessions.legacy = {
+      id: "legacy",
+      cwd,
+      nativeId: legacyNativeId,
+      turns: [
+        {
+          id: "legacy-first",
+          status: "completed",
+          items: [
+            {
+              type: "userMessage",
+              content: [{ type: "text", text: "LEGACY_CONTEXT_PROOF" }],
+            },
+          ],
+        },
+      ],
+    };
+  });
+  const legacyCheckpoint = requests.length;
+  const repaired = await sessions.prompt(
+    store.session(await store.read(), "legacy"),
+    { id: "legacy-repaired", items: [] },
+    { userInput: true },
+    [{ type: "text", text: "核对旧会话续接" }],
+  );
+  assert.equal(repaired.turn.status, "completed", repaired.turn.error?.message);
+  const repairedSession = store.session(await store.read(), "legacy");
+  assert.notEqual(repairedSession.nativeId, legacyNativeId);
+  assert.equal(repairedSession.previousNativeId, legacyNativeId);
+  assert.equal(repairedSession.turns[0].id, "legacy-first");
+  assert(
+    requests
+      .slice(legacyCheckpoint)
+      .some(
+        ({ role, tools, legacyContinuation }) =>
+          legacyContinuation &&
+          role &&
+          tools.includes("read_file") &&
+          !tools.includes("run_command"),
+      ),
+  );
   assert.equal((await store.read()).sessions[id].nativeId, session.nativeId);
   assert(second.turn.items.some(({ type }) => type === "agentMessage"));
   assert(events.some(({ method }) => method === "thread/tokenUsage/updated"));
+  const plainId = "plain";
+  await store.change((data) => {
+    data.sessions[plainId] = { id: plainId, cwd, turns: [] };
+  });
+  const plainCheckpoint = requests.length;
+  const plain = await sessions.prompt(
+    store.session(await store.read(), plainId),
+    { id: "plain-first", items: [] },
+    {},
+    [{ type: "text", text: "普通对话首轮" }],
+  );
+  assert.equal(plain.turn.status, "completed", plain.turn.error?.message);
+  assert(
+    requests
+      .slice(plainCheckpoint)
+      .some(({ tools }) =>
+        [
+          "read_file",
+          "ask_question",
+          "mcp_claudex_delegation_read_delegation_step",
+        ].every((name) => tools.includes(name)),
+      ),
+  );
   const resetCheckpoint = requests.length;
   const third = await sessions.prompt(session, { id: "third", items: [] }, {}, [
     { type: "text", text: "再次回复一行" },

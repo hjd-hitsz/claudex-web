@@ -20,6 +20,7 @@ import { createNativeCommands } from "./native-commands.mjs";
 import {
   claudeConversationTools,
   conversationToolGuard,
+  claudeDispatchGuard,
 } from "./conversation-tools.mjs";
 import { recordPeerAcceptance } from "./conversation-input.mjs";
 import { warmFileSuggestions } from "./native-control.mjs";
@@ -181,7 +182,11 @@ export async function createExecutionSession({
       forwardSubagentText: true,
       persistSession: true,
       ...(callConversationTool && {
-        mcpServers: claudeConversationTools(threadId, callConversationTool),
+        mcpServers: claudeConversationTools(
+          threadId,
+          callConversationTool,
+          current,
+        ),
       }),
       systemPrompt: { type: "preset", preset: "claude_code" },
       settingSources: ["user", "project", "local"],
@@ -200,7 +205,7 @@ export async function createExecutionSession({
         goalBeforeTool: () => goals.beforeTool(threadId),
         delegationContext: () => current()?.queued.delegationContext,
         conversationToolGuard: callConversationTool
-          ? [conversationToolGuard()]
+          ? [conversationToolGuard(), claudeDispatchGuard(current)]
           : [],
         onPromptFailure: (error) => {
           const active = current();

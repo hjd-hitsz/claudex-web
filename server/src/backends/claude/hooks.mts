@@ -230,8 +230,8 @@ export function createRunHooks({
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
           additionalContext: [
-            await readProjectInstructions(input.cwd),
             delegationContext(),
+            await readProjectInstructions(input.cwd),
           ]
             .filter(Boolean)
             .join("\n\n"),

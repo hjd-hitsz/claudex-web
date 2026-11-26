@@ -118,6 +118,7 @@ export function createMessages({
       annotations = [],
       replace,
       implementation,
+      delegationMode = get().delegationMode,
       onFailure,
     } = {},
   ) {
@@ -169,7 +170,6 @@ export function createMessages({
         ...references.inputs,
       ];
       const running = get().active[thread.id];
-      const delegationMode = submission.delegationMode && !implementation;
       if (get().current?.id === thread.id)
         put({
           id: "optimistic-" + uid(),
@@ -184,7 +184,7 @@ export function createMessages({
         ...(submission.backendId === "agy" && {
           delegateTo: selectedDelegate(submission),
         }),
-        ...(delegationMode && { delegationMode: true }),
+        ...(delegationMode && !implementation && { delegationMode: true }),
         input,
         model: submission.model || undefined,
         providerId: submission.providerId,

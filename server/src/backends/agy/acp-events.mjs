@@ -1,4 +1,5 @@
 import { acpFileChanges } from "./acp-files.mjs";
+import { visibleAcpMessage } from "./acp-messages.mjs";
 import { randomUUID } from "node:crypto";
 
 export function acpContent(input) {
@@ -21,6 +22,61 @@ function put(turn, item, emit) {
   else turn.items.push(item);
   emit("item/completed", { turnId: turn.id, item: current || item });
 }
+
+function appendText(activity, field, text, emit) {
+  if (!text) return;
+  const { turn } = activity;
+  const message = field === "message";
+  if (!activity[field]) {
+    const item = {
+      id: randomUUID(),
+      ...(message
+        ? { type: "agentMessage", text: "", phase: "final_answer" }
+        : { type: "reasoning", summary: [""] }),
+    };
+    activity[field] = item;
+    turn.items.push(item);
+    emit("item/started", { turnId: turn.id, item });
+  }
+  const item = activity[field];
+  if (message) item.text += text;
+  else item.summary[0] += text;
+  emit(
+    message ? "item/agentMessage/delta" : "item/reasoning/summaryTextDelta",
+    {
+      itemId: item.id,
+      turnId: turn.id,
+      delta: text,
+      ...(!message && { summaryIndex: 0 }),
+    },
+  );
+}
+
+export function flushAcpMessage(activity, emit) {
+  if (!activity.pendingMessage) return;
+  appendText(
+    activity,
+    "message",
+    visibleAcpMessage(activity.pendingMessage),
+    emit,
+  );
+  activity.pendingMessage = undefined;
+}
+
+function toolResult(update, previous) {
+  const content = update.content?.flatMap((part) => {
+    if (part.content?.type === "text" && !part.content.text) return [];
+    if (part.content) return [part.content];
+    return part.diff ? [{ type: "text", text: part.diff }] : [];
+  });
+  if (content?.length) return { content };
+  const raw = update.rawOutput;
+  const text = typeof raw === "string" ? raw : raw?.output;
+  if (typeof text === "string" && text.trim())
+    return { content: [{ type: "text", text }] };
+  return previous?.result;
+}
+
 export function applyAcpUpdate(activity, update, emit) {
   const { turn } = activity;
   const kind = update.sessionUpdate;
@@ -46,40 +102,24 @@ export function applyAcpUpdate(activity, update, emit) {
     activity.error = update.message || update.content?.text;
     return;
   }
-  if (kind === "agent_message_chunk" || kind === "agent_thought_chunk") {
-    const text = update.content?.text;
-    if (!text) return;
-    const field = kind === "agent_message_chunk" ? "message" : "thought";
-    const type = field === "message" ? "agentMessage" : "reasoning";
-    if (!activity[field]) {
-      const item = {
-        id: randomUUID(),
-        type,
-        ...(field === "message"
-          ? { text: "", phase: "final_answer" }
-          : { summary: [""] }),
-      };
-      activity[field] = item;
-      turn.items.push(item);
-      emit("item/started", { turnId: turn.id, item });
+  if (kind === "agent_thought_chunk") {
+    appendText(activity, "thought", update.content?.text, emit);
+    return;
+  }
+  if (kind === "agent_message_chunk") {
+    const chunk = update.content?.text;
+    if (!chunk) return;
+    if (activity.message) appendText(activity, "message", chunk, emit);
+    else {
+      const pending = (activity.pendingMessage || "") + chunk;
+      const visible = visibleAcpMessage(pending, false);
+      activity.pendingMessage = visible === null ? pending : undefined;
+      appendText(activity, "message", visible, emit);
     }
-    const item = activity[field];
-    if (field === "message") item.text += text;
-    else item.summary[0] += text;
-    emit(
-      field === "message"
-        ? "item/agentMessage/delta"
-        : "item/reasoning/summaryTextDelta",
-      {
-        itemId: item.id,
-        turnId: turn.id,
-        delta: text,
-        ...(field === "thought" && { summaryIndex: 0 }),
-      },
-    );
     return;
   }
   if (!["tool_call", "tool_call_update"].includes(kind)) return;
+  if (kind === "tool_call") flushAcpMessage(activity, emit);
   if (kind === "tool_call" && activity.message) {
     emit("item/completed", {
       turnId: turn.id,
@@ -89,23 +129,24 @@ export function applyAcpUpdate(activity, update, emit) {
     activity.message = undefined;
   }
   const previous = turn.items.find(({ id }) => id === update.toolCallId);
+  const exitCode = update.rawOutput?.exit_code;
   const item = {
     id: update.toolCallId,
     type: "mcpToolCall",
     server: "agy",
     tool: update.title || previous?.tool || update.kind || "工具",
     status:
-      update.status === "in_progress"
-        ? "inProgress"
-        : update.status || previous?.status,
+      update.status === "completed" &&
+      Number.isInteger(exitCode) &&
+      exitCode !== 0
+        ? "failed"
+        : update.status === "in_progress"
+          ? "inProgress"
+          : update.status || previous?.status,
     arguments: update.rawInput ?? previous?.arguments,
-    result: update.content
-      ? {
-          content: update.content.map(
-            (part) => part.content || { type: "text", text: part.diff || "" },
-          ),
-        }
-      : previous?.result,
+    result: toolResult(update, previous),
+    ...(Number.isInteger(exitCode) &&
+      exitCode !== 0 && { error: `命令退出码 ${exitCode}` }),
   };
   put(turn, item, emit);
   const changes = acpFileChanges(update, activity.session.cwd);

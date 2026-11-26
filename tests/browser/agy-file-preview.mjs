@@ -195,6 +195,50 @@ try {
       ),
     );
     await page.screenshot({ path: join(output, "browser-interrupt.png") });
+    await page
+      .getByText("任务已停止", { exact: true })
+      .waitFor({ state: "hidden" });
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.evaluate(() => {
+      document.documentElement.dataset.theme = "light";
+    });
+    await message.fill("AGY_BROWSER_TOOL_ERROR 核对缺失的演示文件");
+    await send.click();
+    const finalReply = page.getByText("文件不存在，已根据工具结果完成核对。", {
+      exact: true,
+    });
+    await finalReply.waitFor();
+    const tool = page
+      .getByText("ls fixture-missing.txt", { exact: false })
+      .last();
+    const processDisclosure = page
+      .locator("summary")
+      .filter({ hasText: "工作过程" })
+      .last();
+    if (!(await tool.isVisible())) await processDisclosure.click();
+    await tool.click();
+    await page.getByText("命令退出码 2", { exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "停止任务", exact: true })
+      .waitFor({ state: "hidden" });
+    assert.equal(
+      await page.getByText("USER_SETTINGS_CHANGE", { exact: false }).count(),
+      0,
+    );
+    await page.screenshot({
+      path: join(output, "tool-error-continued-light.png"),
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.reload();
+    await finalReply.waitFor();
+    assert.equal(
+      await page.getByText("USER_SETTINGS_CHANGE", { exact: false }).count(),
+      0,
+    );
+    await page.screenshot({
+      path: join(output, "tool-error-history-mobile-dark.png"),
+    });
   }
   console.log(
     before

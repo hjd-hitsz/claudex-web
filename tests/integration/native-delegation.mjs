@@ -201,6 +201,24 @@ const claude = await messagesServer((body) => {
     !prompt.includes("native-claude") &&
     token
   ) {
+    if (body.tools?.length && !prompt.includes("toolu_local_read_fixture")) {
+      return [
+        {
+          type: "tool_use",
+          id: "toolu_local_read_fixture",
+          name: "Read",
+          input: { file_path: join(cwd, "fixture.txt") },
+        },
+      ];
+    }
+    proof.claude.localToolDenied = body.messages
+      .flatMap(({ content }) => (Array.isArray(content) ? content : []))
+      .some(
+        ({ type, tool_use_id, is_error }) =>
+          type === "tool_result" &&
+          tool_use_id === "toolu_local_read_fixture" &&
+          is_error,
+      );
     proof.claude.firstRequestTool = Boolean(
       tool &&
       !tool.defer_loading &&
@@ -442,6 +460,7 @@ try {
   assert.equal(proof.codex.source, true);
   assert.equal(proof.claude.source, true);
   assert.equal(proof.claude.firstRequestTool, true);
+  assert.equal(proof.claude.localToolDenied, true);
   await manager.close();
   await conversations.close();
   await start();

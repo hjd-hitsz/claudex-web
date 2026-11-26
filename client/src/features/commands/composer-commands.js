@@ -306,7 +306,11 @@ export function submitComposer() {
       const annotations = readAnnotationDrafts(s.current?.id);
       if (!annotations.length && (await runComposerCommand(s.draft))) return;
       if (s.goalMode) await store.submitGoal();
-      else await store.sendMessage(s.draft, s.attachments, { annotations });
+      else
+        await store.sendMessage(s.draft, s.attachments, {
+          annotations,
+          delegationMode: s.delegationMode,
+        });
     })
     .catch(store.report);
 }

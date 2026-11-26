@@ -8,8 +8,37 @@ import {
   conversationTools,
   delegationToolName,
   delegationStepToolName,
+  claudeDelegationToolName,
 } from "../../conversation-manager/tools.mjs";
 import type { ConversationTool } from "./conversation-protocol.d.mts";
+import type { ActiveExecution } from "./execution-types.d.mts";
+
+export function claudeDispatchGuard(
+  current: () => ActiveExecution | null | undefined,
+): HookCallbackMatcher {
+  return {
+    onFailure: "block",
+    hooks: [
+      async (input) => {
+        if (
+          input.hook_event_name !== "PreToolUse" ||
+          !current()?.queued.delegationContext ||
+          input.tool_name === claudeDelegationToolName
+        )
+          return {};
+        return {
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: readPromptSections(
+              "delegation/workflow.md",
+            )("claudeDispatchGuard"),
+          },
+        };
+      },
+    ],
+  };
+}
 
 const schemas = conversationTools.map((definition) => ({
   ...definition,
@@ -25,6 +54,7 @@ const schemas = conversationTools.map((definition) => ({
 export function claudeConversationTools(
   threadId: string,
   call: ConversationTool,
+  current: () => ActiveExecution | null | undefined,
 ) {
   const tools = schemas.map((definition) =>
     tool(
@@ -33,7 +63,13 @@ export function claudeConversationTools(
       definition.schema,
       async (args) => {
         try {
+          const active = current();
           const outcome = await call({ threadId }, definition.name, args);
+          if (
+            definition.name === delegationToolName &&
+            active?.queued.delegationContext
+          )
+            active.delegationAccepted = true;
           return { content: [{ type: "text", text: JSON.stringify(outcome) }] };
         } catch (error) {
           return {

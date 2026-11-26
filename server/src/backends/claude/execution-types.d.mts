@@ -162,6 +162,7 @@ export type ActiveExecution = {
   peerInputIds?: Set<string>;
   completedInputs?: Set<string>;
   promptError?: unknown;
+  delegationAccepted?: boolean;
   status?: {
     turnId: string;
     kind: "retrying";

@@ -56,3 +56,54 @@ export function acpConfiguration(response) {
       }),
   };
 }
+
+export function updateAcpConfiguration(entry, response) {
+  entry.options = response.configOptions || entry.options;
+  entry.modelState = response.models || entry.modelState;
+  entry.config = acpConfiguration({
+    configOptions: entry.options,
+    models: entry.modelState,
+  });
+}
+export async function applyAcpSelection(entry, input, session) {
+  const { mode, modelOptionId, models: choices } = entry.config;
+  const modeValue = mode?.options?.some(({ value }) => value === "accept-edits")
+    ? "accept-edits"
+    : mode?.currentValue === "plan"
+      ? "default"
+      : undefined;
+  if (modeValue && mode.currentValue !== modeValue)
+    updateAcpConfiguration(
+      entry,
+      await entry.client.call("session/set_config_option", {
+        sessionId: entry.nativeId,
+        configId: mode.id,
+        value: modeValue,
+      }),
+    );
+  const model = input.model || session.model;
+  if (model && model !== entry.config.model) {
+    if (!modelOptionId || !choices.some((choice) => choice.model === model))
+      throw new Error("所选 agy 模型已不可用");
+    updateAcpConfiguration(
+      entry,
+      await entry.client.call("session/set_config_option", {
+        sessionId: entry.nativeId,
+        configId: modelOptionId,
+        value: model,
+      }),
+    );
+  }
+  const { effortOptionId, effort } = entry.config;
+  const selectedEffort =
+    input.effort || (model === session.model ? session.effort : "");
+  if (selectedEffort && effortOptionId && effort !== selectedEffort)
+    updateAcpConfiguration(
+      entry,
+      await entry.client.call("session/set_config_option", {
+        sessionId: entry.nativeId,
+        configId: effortOptionId,
+        value: selectedEffort,
+      }),
+    );
+}

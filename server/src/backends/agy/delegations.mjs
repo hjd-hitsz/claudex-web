@@ -125,7 +125,6 @@ export function createDelegations({
     return response;
   }
   async function prepareMcp(entry, activity) {
-    if (!activity.input.delegateTo && !activity.input.notice) return;
     if (entry.toolsReady) return;
     const { signal } = activity.controller;
     signal.throwIfAborted();

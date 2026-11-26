@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { networkProxyEnvironment } from "../network-proxy.mjs";
+import { secretaryName } from "./native-agent.mjs";
 
 export function createAcpClient({
   executable,
@@ -14,9 +15,11 @@ export function createAcpClient({
     executable,
     [
       "acp",
-      "--agent=claudex-secretary",
+      "--agent=" + secretaryName,
+      "--add-dir=" + cwd,
       "--include-default-customizations=false",
       "--sandbox",
+      "--dangerously-skip-permissions",
     ],
     {
       cwd,

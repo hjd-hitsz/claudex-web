@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { acpContent } from "./acp-events.mjs";
+import { agyConversationContext, visibleAgyItems } from "./acp-messages.mjs";
 import { createAcpSessions } from "./acp-session.mjs";
 import { createDelegations } from "./delegations.mjs";
 import { executing } from "../delegation/delegation-store.mjs";
@@ -91,7 +92,7 @@ export function createAgyAdapter({
     return allTurns.map((turn) => ({
       ...turn,
       items: [
-        ...turn.items,
+        ...visibleAgyItems(turn.items),
         ...tasks
           .filter(({ parentTurnId }) => parentTurnId === turn.id)
           .map(execution.project),
@@ -230,23 +231,7 @@ export function createAgyAdapter({
         ? s.turns.findIndex(({ id }) => id === turnId)
         : s.turns.length - 1;
       if (turnId && index < 0) throw new Error("找不到要继续的轮次");
-      const context = s.turns
-        .slice(0, index + 1)
-        .flatMap(({ items }) =>
-          items.filter(
-            ({ type, origin }) =>
-              !origin && ["userMessage", "agentMessage"].includes(type),
-          ),
-        )
-        .map(
-          ({ type, content, text }) =>
-            (type === "userMessage" ? "用户： " : "助手： ") +
-            (text ||
-              content
-                ?.map((part) => part.text || part.path || "[图片]")
-                .join("\n")),
-        )
-        .join("\n\n");
+      const context = agyConversationContext(s.turns.slice(0, index + 1));
       return create(
         {
           cwd: s.cwd,
