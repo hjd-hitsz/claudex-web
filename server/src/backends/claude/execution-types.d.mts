@@ -81,6 +81,7 @@ export type SessionRecord = {
       nativeSessionId: string;
       cwd: string;
       from: ConversationThread;
+      sourceMessageId?: string;
       nativeAccepted?: boolean;
       nativeReceipt?: "claude-native-stream" | "claude-native-result";
       rejected?: string;

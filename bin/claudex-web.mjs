@@ -37,7 +37,7 @@ async function main() {
   service start              启动网页服务及其 Codex 后端
   service stop               停止网页服务
   service restart            重启网页服务
-  service restart-when-idle   等待任务与上下文整理结束后重启网页服务
+  service restart-when-idle   提交空闲重启，由 systemd 用户单元执行
   p2p status                 查看 P2P 接入状态（默认关闭）
   p2p enable | disable      开启或暂停 P2P 接入
   p2p create [名称]          生成长期授权链接
@@ -128,9 +128,12 @@ async function main() {
       );
       break;
     }
-    case "service restart-when-idle":
-      await import("../scripts/restart-when-idle.mjs");
+    case "service restart-when-idle": {
+      const { requestIdleRestart } =
+        await import("../scripts/restart-when-idle.mjs");
+      requestIdleRestart();
       break;
+    }
     default: {
       const action = args[1];
       const units = ["claudex-web.service"];

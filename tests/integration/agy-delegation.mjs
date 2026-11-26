@@ -14,6 +14,7 @@ import { workerLocation } from "../../server/src/backends/agy/worker-ipc.mjs";
 import { shutdownBrowserClaudeWorker } from "../helpers/claude-worker-cleanup.mjs";
 import { messagesServer } from "../helpers/claude-messages-server.mjs";
 import { taskRequest } from "../../packages/background-terminal/client.mjs";
+import { traceId } from "../../server/src/backends/delegation/trace-ids.mjs";
 
 const root = await mkdtemp(join(tmpdir(), "claudex-agy-delegation-"));
 const cwd = join(root, "workspace");
@@ -613,7 +614,7 @@ try {
       target === "codex" ? "agy-background-" : "toolu_agy_background_";
     assert.deepEqual(
       final.callChain.map(({ callId }) => callId),
-      [prefix + "1", prefix + "2"],
+      [traceId(prefix + "1"), traceId(prefix + "2")],
     );
     const session = (await saved()).sessions[parent.id];
     const transcript = JSON.parse(
@@ -621,14 +622,14 @@ try {
     );
     const detail = transcript.find(({ evidence }) => evidence)?.evidence;
     assert.equal(detail.stepId, final.stepId);
-    assert.equal(detail.call.callId, prefix + "1");
+    assert.equal(detail.call.callId, traceId(prefix + "1"));
     if (target === "codex") {
       assert.match(detail.raw.input.payload.arguments, /codex-release-1/);
       const output = detail.raw.outputs[0].payload.output;
       const job = JSON.parse(
         output.find(({ text }) => text.startsWith("{")).text,
       ).job;
-      assert.equal(job.callId, detail.call.callId);
+      assert.equal(job.callId, prefix + "1");
       assert.equal(job.title, "Codex terminal 1");
     } else {
       assert.match(detail.raw[0].block.input.command, /claude-release-1/);

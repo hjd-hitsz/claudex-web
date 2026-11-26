@@ -10,6 +10,7 @@ export async function forkHistory(readSession, session, retained) {
       inputTurns: {},
       internalInputIds: {},
       historyAnchors: {},
+      peerInputs: {},
       initialized: false,
     };
   const messages = await readSession("getSessionMessages", sourceId, {
@@ -93,6 +94,25 @@ export async function forkHistory(readSession, session, retained) {
         .map((uuid) => [copiedIds.get(uuid), true]),
     ),
     historyAnchors,
+    peerInputs: Object.fromEntries(
+      original.flatMap(({ uuid, forkedFrom }) => {
+        const previousId = forkedFrom?.messageUuid ?? uuid;
+        const peer =
+          session.peerInputs?.[uuid] ?? session.peerInputs?.[previousId];
+        return peer
+          ? [
+              [
+                copiedIds.get(uuid),
+                {
+                  ...peer,
+                  nativeSessionId: sessionId,
+                  sourceMessageId: peer.sourceMessageId ?? previousId,
+                },
+              ],
+            ]
+          : [];
+      }),
+    ),
   };
 }
 

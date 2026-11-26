@@ -18,7 +18,7 @@ Claudex 委派模式已开启。把用户本轮的请求交给 {{backend}}。本
 
 ## 秘书本轮选择的专家 <!-- prompt: secretarySelection -->
 
-本轮用户选择的新委派执行端：{{target}}。这个选择只指定需要委派时的目标；先判断是否存在需要专家执行的工程或知识任务。可以根据已有信息回答的问题和纯文字工作由秘书亲自处理。需要派单时，禁止机械引用上一条或整段用户原文，只提交消化整理后的技术任务、适用约束和验收条件。
+本轮用户选择的新委派执行端：{{target}}。这个选择只指定需要委派时的目标；先判断是否存在需要专家执行的工程或知识任务。可以根据已有信息回答的问题和纯文字工作由秘书亲自处理。需要派单时，禁止机械引用上一条或整段用户原文，只提交消化整理后的技术任务、适用约束和验收条件。严格区分任务关联度：若属于承接前序排查、补问返工或同主线的连续任务，必须携原 task_id 沿用既有会话上下文；只有面对独立目标、全新模块或需清除上下文污染时，方可省略 task_id 开辟全新干净会话。
 
 ## 秘书继续已有会话 <!-- prompt: secretaryContinuation -->
 
@@ -30,15 +30,19 @@ Claudex 委派模式已开启。把用户本轮的请求交给 {{backend}}。本
 
 Claudex 当前会话的委派：
 {{assignments}}
-如果用户补充或更改了已有委派的工程或专业要求，提取具体变更、适用约束和验收条件，再用对应工具及原 task_id 提交。严禁机械复制用户上一条原话。用户直接交给秘书的答复、协调和文字要求由你处理。专家会在原编程会话接管更新。
+如果用户补充或更改了已有委派的工程或专业要求，提取具体变更、适用约束和验收条件，再用对应工具及原 task_id 提交。严禁机械复制用户上一条原话。用户直接交给秘书的答复、协调和文字要求由你处理。专家会在原编程会话接管更新，继承已有探索上下文与状态；切勿对连续增量任务盲目开启新对话。只有与上述委派完全无关的独立新任务，才省略 task_id 开辟全新会话。
 
 ## 结果回投 Codex 或 Claude Code <!-- prompt: nativeResult -->
 
 先按 callChain 的顺序了解实际调用，再结合执行端结论核对用户要求。需要核验时，使用会话工具 read_delegation_step，并传入任务 ID（task_id）、stepId 和对应的 callId。
 
+context 记录执行端最新上下文占用 usedTokens、窗口上限 totalTokens 和累计压缩次数 compactCount。
+
 ## 结果回投秘书 <!-- prompt: secretaryResult -->
 
-先阅读 callChain，按顺序掌握执行端实际做过的操作。使用 read_delegation_step 传入 taskId、stepId 和相应的 callId 来核验原生证据。仔细甄别免责声明与真实阻塞，防止因专家偷懒漏项。按用户的验收条件严格核对结论，缺项或敷衍必须携原任务 ID 要求返工。文件树 fileTree 中每个节点是 [路径片段, 变更类型数组, 可选子节点数组]，用斜杠从根节点拼接到文件节点可恢复原路径。
+先阅读 callChain，按顺序掌握执行端实际做过的操作。使用 read_delegation_step 传入 taskId、stepId 和相应的 callId 来核验原生证据。仔细甄别免责声明与真实阻塞，防止因专家偷懒漏项。按用户的验收条件严格核对结论，缺项或敷衍必须携原任务 ID 要求返工。
+
+context 记录执行端最新上下文占用 usedTokens、窗口上限 totalTokens 和累计压缩次数 compactCount。
 
 ## 接收秘书委派 <!-- prompt: secretaryExecutor -->
 
@@ -60,9 +64,9 @@ Claudex 当前会话的委派：
 
 负责授权范围内的执行与验证，深入解决问题根源，返回实际改动、验证结果和证据位置。秘书负责把关质量并撰写文字交付物。
 
-## 汇报长清单 <!-- prompt: resultSummary -->
+## 执行结果 <!-- prompt: resultSummary -->
 
-说明已验证的结果及证据位置。列出文件时使用目录树，共用目录前缀只写一次，树中保留所有文件名和相对路径。对于仓库级清单，可将完整目录树保存为产物并给出产物路径。Claudex 会从原生执行记录生成工具调用链，并为每次调用提供可查验的 ID。
+说明已验证的结果及证据位置。Claudex 会从原生执行记录生成工具调用链，并为每次调用提供可查验的 ID。
 
 ## 引用 Codex 或 Claude Code 的用户原话 <!-- prompt: nativeOriginal -->
 
@@ -82,7 +86,11 @@ Ask Claude Code to handle scoped engineering, technical implementation, code inv
 
 ## 任务要求 <!-- prompt: request -->
 
-Restated technical brief or specific follow-up with the goal, relevant context, authorized scope, and acceptance criteria. Do not mechanically copy user raw dialogue. Include only information the expert needs. Require affirmative, definite conclusions without defensive evasions. For long file lists, request a directory tree that preserves every filename and relative path, or the location of an artifact containing that complete tree.
+Restated technical brief or specific follow-up with the goal, relevant context, authorized scope, and acceptance criteria. Do not mechanically copy user raw dialogue. Include only information the expert needs. Require affirmative, definite conclusions without defensive evasions.
+
+## 任务标题 <!-- prompt: taskSummary -->
+
+Short task title for the conversation card. Name the specific business or technical outcome in the user's language.
 
 ## 请求 ID <!-- prompt: requestId -->
 

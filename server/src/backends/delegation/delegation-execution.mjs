@@ -1,6 +1,7 @@
-import { readRolloutTools } from "../codex/rollout-tools.mjs";
+import { readRolloutTrace } from "../codex/rollout-tools.mjs";
 import { executing, finishDelegation } from "./delegation-store.mjs";
 import {
+  awaitingCodexJob,
   delegationResults,
   initialTurn,
   saveDelegationResults,
@@ -129,15 +130,11 @@ export function createDelegationExecution({
       ) {
         const background = await executor.backgrounds(entry, threadId);
         if (
-          background.terminals.length ||
-          background.jobs.some(({ delivery }) =>
-            [
-              "pending",
-              "preparing",
-              "batched",
-              "sending",
-              "uncertain",
-            ].includes(delivery),
+          background.terminals.some(
+            ({ startedAt }) => startedAt >= step.acceptedAt,
+          ) ||
+          background.jobs.some(
+            (job) => awaitingCodexJob(job, step) && job.delivery !== "accepted",
           )
         )
           return;
@@ -178,13 +175,7 @@ export function createDelegationExecution({
     }
 
     if (task.target === "codex" && thread.path) {
-      const rollout = await readRolloutTools(
-        thread,
-        new Set(result.turnIds),
-      ).catch((error) => {
-        console.error("读取委派工具 Rollout 失败", error);
-        return new Map();
-      });
+      const rollout = await readRolloutTrace(thread, new Set(result.turnIds));
       result = delegationResults(
         thread,
         turn,

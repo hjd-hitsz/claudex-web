@@ -190,4 +190,61 @@ export async function testProcessDisplay(app, fixture) {
       "PASS 生成时更新最新有效提示、任务完成后收起、后续任务保持历史过程折叠",
     );
   }
+  {
+    const original = app.get();
+    const turnId = "background-turn";
+    await act(async () => {
+      app.set({
+        contextOpen: false,
+        panel: null,
+        items: [
+          {
+            id: "background-receipt",
+            type: "functionCallOutput",
+            name: "background_completed",
+            turnId,
+            output: JSON.stringify({
+              results: [
+                {
+                  job_id: "job",
+                  title: "验证规划模块",
+                  status: "succeeded",
+                  duration_ms: 70000,
+                  exit_code: 0,
+                  output_tail: "测试通过。".repeat(30),
+                },
+              ],
+            }),
+          },
+          {
+            id: "background-answer",
+            type: "agentMessage",
+            phase: "final_answer",
+            turnId,
+            text: "本轮结论。",
+          },
+        ],
+      });
+      view = create(React.createElement(app.Conversation));
+    });
+    const card = view.root.findByProps({ className: "delivery-summary" });
+    assert.match(
+      card.props["aria-label"],
+      /验证规划模块，已完成 · 1分10秒 · 退出码 0，查看输出/,
+    );
+    assert.match(
+      card.findByProps({ className: "delivery-summary-preview" }).props
+        .children,
+      /\.\.\.$/,
+    );
+    assert(view.root.findByProps({ className: "process-history" }));
+    await act(async () => card.props.onClick());
+    assert.equal(app.get().panelBackgroundTask.id, "job");
+    assert.equal(app.get().panel, "background-task");
+    await act(async () => {
+      view.unmount();
+      app.set(original);
+    });
+    console.log("PASS 后台终端摘要共用交付卡片，点击打开输出并保留模型正文");
+  }
 }

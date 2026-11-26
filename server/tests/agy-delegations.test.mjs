@@ -33,6 +33,7 @@ import {
   noticeMarker,
 } from "../src/backends/agy/delegation-delivery.mjs";
 import { createNativeDelegation } from "../src/backends/delegation/native.mjs";
+import { traceId } from "../src/backends/delegation/trace-ids.mjs";
 import { runtimeIdentity } from "../src/conversation-manager/address.mjs";
 
 test("软检查及未结算的完成续跑保持沉默，最终结果标注两种触发", () => {
@@ -81,7 +82,10 @@ test("软检查及未结算的完成续跑保持沉默，最终结果标注两�
     );
   const partial = read(check, { ...finished, status: "inProgress" });
   assert.equal(partial.pending, true);
-  assert.equal(partial.stages[0].answer, "已启动终端");
+  assert.equal(
+    partial.stages[0].answer,
+    "**阶段说明**\n\n工作过程\n\n**最终结论**\n\n已启动终端",
+  );
   assert.equal(partial.stages[1].triggers[0].kind, "check");
   const data = { notices: {} };
   const task = {
@@ -102,6 +106,69 @@ test("软检查及未结算的完成续跑保持沉默，最终结果标注两�
   assert.match(
     notice.payload.answer,
     /后台终端软检查 · 项目检查（ID job）[\s\S]*后台终端完成 · 项目检查（ID job）/,
+  );
+});
+
+test("补问只等待本步骤的后台任务与原生终端", () => {
+  const prior = {
+    id: "prior",
+    status: "completed",
+    items: [{ id: "prior-native", type: "commandExecution" }],
+  };
+  const current = {
+    id: "current",
+    status: "completed",
+    items: [{ id: "current-native", type: "commandExecution" }],
+  };
+  const step = { acceptedAt: 10 };
+  const oldJob = {
+    id: "old",
+    startedAt: 1,
+    status: "running",
+    delivery: "pending",
+  };
+  const priorTerminals = [
+    { processId: "old", itemId: "old" },
+    { processId: "prior-process", itemId: "prior-native" },
+  ];
+  const pending = (jobs, terminals) =>
+    delegationResults(
+      { turns: [prior, current] },
+      current,
+      step,
+      { jobs, terminals },
+      false,
+      "codex",
+    ).pending;
+  assert.equal(pending([oldJob], priorTerminals), false);
+  const newJob = { ...oldJob, id: "new", startedAt: 10 };
+  assert.equal(pending([oldJob, newJob], priorTerminals), true);
+  assert.equal(
+    pending(
+      [oldJob],
+      [
+        ...priorTerminals,
+        { processId: "current-process", itemId: "current-native" },
+      ],
+    ),
+    true,
+  );
+  assert.equal(
+    pending(
+      [
+        oldJob,
+        {
+          ...newJob,
+          delivery: "suppressed",
+          native: { processId: "current-process" },
+        },
+      ],
+      [
+        ...priorTerminals,
+        { processId: "current-process", itemId: "current-native" },
+      ],
+    ),
+    false,
   );
 });
 
@@ -148,11 +215,11 @@ test("结果通知按序投递完整调用链，任务保留执行证据", () =>
 
   const [notice] = Object.values(data.notices);
   const expected = {
-    stepId: step.id,
+    stepId: traceId(step.id),
     status: "failed",
+    context: { compactCount: 0 },
     callChain: step.result.callChain,
     turns: step.result.turns,
-    fileTree: [["report.md", [{ type: "add" }]]],
     answer,
     error: turn.error.message,
   };
@@ -167,7 +234,7 @@ test("结果通知按序投递完整调用链，任务保留执行证据", () =>
     items[0].aggregatedOutput.slice(-6000),
   );
   assert.deepEqual(step.result.turns, [
-    { turnId: turn.id, status: "failed", triggers: [] },
+    { turnId: turn.id, status: "failed", triggers: [], callCount: 149 },
   ]);
 
   const legacy = {
@@ -176,10 +243,15 @@ test("结果通知按序投递完整调用链，任务保留执行证据", () =>
   };
   assert(Buffer.byteLength(JSON.stringify(legacy.payload)) > 600000);
   const [{ text }] = delegationNotice(legacy, task).prompt;
+  assert.deepEqual(
+    delegationNotice(legacy, task).items[0].context,
+    expected.context,
+  );
   assert(text.startsWith(noticeMarker(notice.id)));
-  assert(text.includes(task.id));
+  assert(!text.includes(task.id));
+  assert(!text.includes(step.id));
   assert.deepEqual(JSON.parse(text.split("\n").at(-1)), {
-    taskId: task.id,
+    taskId: traceId(task.id),
     ...expected,
   });
   assert(Buffer.byteLength(text) < 24000);
@@ -187,7 +259,7 @@ test("结果通知按序投递完整调用链，任务保留执行证据", () =>
   assert.equal(legacy.payload.evidence.length, items.length);
 });
 
-test("长文件清单折叠公共目录，回投保留所有路径及完整结论", () => {
+test("回投从模型上下文移除目录树并保留技术结论及原始证据", () => {
   const paths = Array.from(
     { length: 120 },
     (_, index) => `src/file-${index}.mjs`,
@@ -199,7 +271,9 @@ test("长文件清单折叠公共目录，回投保留所有路径及完整结�
       turnId: "first",
       status: "completed",
       triggers: [],
-      answer: first,
+      answer:
+        first +
+        "\n\n本次引用的文件如下。\n\n```text\nsrc/\n├── file-0.mjs\n└── file-1.mjs\n```",
       artifacts,
       evidence: [{ id: "check", output: "完整命令结果" }],
     },
@@ -224,8 +298,8 @@ test("长文件清单折叠公共目录，回投保留所有路径及完整结�
 
   const notice = data.notices["step:result"];
   const { result } = task.steps[0];
-  const full = `## 当前委派\n\n${first}\n\n## 原生续跑 · second\n\n后续验证通过`;
-  assert.equal(result.answer, full);
+  const full = `## 当前委派\n\n${first}\n\n## 原生续跑 · 第 2 轮\n\n后续验证通过`;
+  assert(result.answer.includes("├── file-0.mjs"));
   assert.deepEqual(
     result.evidence,
     stages.flatMap(({ evidence }) => evidence),
@@ -234,9 +308,7 @@ test("长文件清单折叠公共目录，回投保留所有路径及完整结�
   assert.equal(task.status, "completed");
   assert.equal(notice.payload.status, task.status);
   assert.equal(notice.payload.answer, full);
-  assert.deepEqual(notice.payload.fileTree, [
-    ["src", [], paths.map((path) => [path.slice(4), [{ type: "add" }]])],
-  ]);
+  assert.equal(notice.payload.fileTree, undefined);
   assert.equal(notice.payload.evidence, undefined);
   for (const record of [
     notice,

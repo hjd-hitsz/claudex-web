@@ -94,10 +94,14 @@ export function createClaudeSessions({
     s = await session(id);
     const records = historyTurns(
       visibleSessionMessages(messages, s.internalInputIds).map((message) => {
-        const peer = message.type === "user" && s.peerInputs?.[message.uuid];
+        const previousId = message.forkedFrom?.messageUuid;
+        const peer =
+          message.type === "user" &&
+          (s.peerInputs?.[message.uuid] ?? s.peerInputs?.[previousId]);
         return peer
           ? {
               ...message,
+              peerMessageId: peer.sourceMessageId ?? previousId ?? message.uuid,
               origin: {
                 kind: "peer",
                 from: peer.from.threadId,

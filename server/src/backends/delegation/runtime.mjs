@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { delegationSummaries } from "./delivery-summary.mjs";
 import { currentResultNotice, executing } from "./delegation-store.mjs";
 import {
   delegationHistoryEvent,
@@ -65,7 +66,7 @@ export function createDelegationRuntime({
         target,
         status,
         executorThreadId: task.executor?.threadId,
-        result: task.steps.at(-1).result,
+        summaries: delegationSummaries(task.steps),
       },
     };
     return item;
@@ -160,7 +161,7 @@ export function createDelegationRuntime({
       (task) =>
         task.executor?.runtimeId === entry.runtimeId &&
         task.executor.threadId === threadId &&
-        executing.has(task.status),
+        (history || executing.has(task.status)),
     );
     if (!task) return;
     if (history) {

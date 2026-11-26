@@ -8,6 +8,7 @@ import { RichText } from "../markdown/rich-text.jsx";
 import { MessageAnnotations } from "../annotations/message-annotations.jsx";
 import { UserMessage } from "./user-message.jsx";
 import { Activity, Reasoning } from "./activity.jsx";
+import { DelegationResult } from "./delegation-result.jsx";
 
 import { PlanMessage } from "./plan-message.jsx";
 import { AsyncQuestion } from "./questions.jsx";
@@ -20,6 +21,8 @@ export function Message({
   cwd,
   focusComposer,
 }) {
+  if (item.type === "delegationResult")
+    return <DelegationResult item={item} readOnly={readOnly} />;
   if (item.type === "plan")
     return (
       <PlanMessage

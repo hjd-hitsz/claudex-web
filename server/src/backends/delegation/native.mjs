@@ -18,6 +18,7 @@ import {
   executing,
 } from "./delegation-store.mjs";
 import { noticeResult } from "./call-chain.mjs";
+import { findDelegationTask, traceId } from "./trace-ids.mjs";
 import { executorLabel } from "./executors.mjs";
 import { createDelegationRuntime } from "./runtime.mjs";
 import {
@@ -134,7 +135,7 @@ export function createNativeDelegation({
         token: grant.token,
       }),
       sourcePrompt,
-      ...active.map(({ id }) => renderPrompt(followUp, { id })),
+      ...active.map(({ id }) => renderPrompt(followUp, { id: traceId(id) })),
     ].join("\n");
     grants.set(id, grant);
     return {
@@ -199,11 +200,11 @@ export function createNativeDelegation({
     const { response, task, obsolete } = await store.change((data) => {
       if (grants.get(id) !== grant || active() !== turnId)
         throw new Error("委派发起轮次已结束");
-      const previous = Object.hasOwn(data.tasks, request.task_id)
-        ? data.tasks[request.task_id]
-        : null;
-      if (previous && previous.sourceRuntime !== grant.sourceRuntime)
-        throw new Error("委派发起后端实例已更换");
+      const previous = findDelegationTask(
+        data.tasks,
+        { id, runtimeId: grant.sourceRuntime },
+        request.task_id,
+      );
       const step = previous?.steps.at(-1);
       const pending = previous?.request;
       const settings = backendEntry("agy").backend;
@@ -232,7 +233,7 @@ export function createNativeDelegation({
     if (obsolete) runtime.resolveRequest(id, obsolete.localId);
     runtime.publish(task);
     runtime.wake();
-    return response;
+    return { ...response, task_id: traceId(response.task_id) };
   }
 
   async function deliver(notice, { tasks }) {
@@ -254,8 +255,12 @@ export function createNativeDelegation({
       const claiming = notice.status === "queued";
       // Codex checks the exact submitted text when reconciling a receipt.
       const payload = claiming ? noticeResult(notice, task) : notice.payload;
+      const wireId = claiming ? traceId(task.id) : (notice.wireId ?? task.id);
       const envelope = {
         id: notice.stepId,
+        ...((claiming || notice.wireId) && {
+          displayId: traceId(notice.stepId),
+        }),
         replyTo: null,
         delegation: true,
         from: {
@@ -263,7 +268,7 @@ export function createNativeDelegation({
           title: executorLabel(task.target),
         },
         to,
-        body: JSON.stringify({ task_id: task.id, ...payload }),
+        body: JSON.stringify({ task_id: wireId, ...payload }),
       };
       if (claiming) {
         const claimed = await store.change((data) => {
@@ -271,6 +276,7 @@ export function createNativeDelegation({
           if (item.status !== "queued" || !currentResultNotice(data, item))
             return false;
           item.payload = payload;
+          item.wireId = wireId;
           item.status = "submitting";
           return true;
         });

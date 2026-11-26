@@ -64,42 +64,6 @@
   color: var(--muted);
 }
 
-.background-completion-receipt {
-  padding: 0.461538rem 0.769231rem;
-  margin-block-start: 0.307692rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--subtle);
-}
-
-.background-completion-receipt p,
-.background-completion-receipt ul {
-  margin: 0;
-  padding: 0;
-}
-
-.background-completion-receipt li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.153846rem 0.615385rem;
-}
-
-.background-completion-receipt li > span {
-  color: var(--fg);
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-
-.background-completion-receipt button {
-  padding: 0.230769rem;
-  color: var(--link);
-}
-
-.background-completion-receipt button:hover {
-  text-decoration: underline;
-}
-
 .background-task-panel-title {
   flex: 1;
   min-width: 0;

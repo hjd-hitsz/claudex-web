@@ -233,10 +233,9 @@ async function handle({ method, params: p }) {
     reply = "已提交后台委派";
   }
   if (content.includes("[Claudex delegation notice:")) {
-    const id = /任务 ID：([\w-]+)/.exec(content)?.[1];
     const payload = JSON.parse(content.split("\n").at(-1));
-    const call = payload.callChain?.find(({ callId }) =>
-      ["agy-background-1", "toolu_agy_background_1"].includes(callId),
+    const call = payload.callChain?.find(({ action }) =>
+      /(?:codex|claude)-release-1\b/.test(action),
     );
     if (call) {
       const { tools } = await session.mcp.ready;
@@ -261,7 +260,7 @@ async function handle({ method, params: p }) {
         arguments: {
           request: "补齐核对结果",
           request_id: "follow-up",
-          task_id: id,
+          task_id: payload.taskId,
         },
       });
       reply = "已提交原任务补问";

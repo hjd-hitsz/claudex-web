@@ -7,6 +7,7 @@ import {
 } from "../delegation/delegation-store.mjs";
 import { buildDelegationSelection } from "../delegation/settings.mjs";
 import { createDelegationRuntime } from "../delegation/runtime.mjs";
+import { findDelegationTask, traceId } from "../delegation/trace-ids.mjs";
 import { delegationNotice, noticeMarker } from "./delegation-delivery.mjs";
 
 const forwarding = readPromptSections("delegation/workflow.md")(
@@ -80,7 +81,9 @@ export function createDelegations({
         type: "text",
         text: renderPrompt(forwarding, {
           assignments: assignments
-            .map(({ target, id }) => "ask_" + target + " · task_id " + id)
+            .map(
+              ({ target, id }) => "ask_" + target + " · task_id " + traceId(id),
+            )
             .join("\n"),
         }),
       },
@@ -102,7 +105,7 @@ export function createDelegations({
     const { response, task, obsolete } = await store.change((data) => {
       if (sessions().active.get(entry.id) !== activity || activity.cancelled)
         throw new Error("该 Antigravity 轮次已中断");
-      const before = data.tasks[input?.task_id];
+      const before = findDelegationTask(data.tasks, session, input?.task_id);
       const previous = before?.steps.at(-1).id;
       const request = before?.request;
       const response = acceptDelegation(data, {
@@ -122,7 +125,7 @@ export function createDelegations({
     if (obsolete) runtime.resolveRequest(task.parentId, obsolete.localId);
     runtime.publish(task);
     runtime.wake();
-    return response;
+    return { ...response, task_id: traceId(response.task_id) };
   }
   async function prepareMcp(entry, activity) {
     if (entry.toolsReady) return;
@@ -173,9 +176,10 @@ export function createDelegations({
           .map((update) => update.content?.text || "")
           .join("");
         await store.change((data) => {
-          data.notices[notice.id].status = history.includes(
+          data.notices[notice.id].status = [
             noticeMarker(notice.id),
-          )
+            noticeMarker(notice.id, true),
+          ].some((marker) => history.includes(marker))
             ? "delivered"
             : "uncertain";
         });

@@ -22,7 +22,7 @@ async function scan(path, endByteOffset) {
     let remainder = Buffer.alloc(0);
     let base = null;
     function visit(line) {
-      const result = extract(parse(line));
+      const result = codexRolloutUsage(parse(line));
       if (result.base) base = result.base;
       return result.tokenUsage ? result : null;
     }
@@ -47,7 +47,7 @@ async function scan(path, endByteOffset) {
   }
 }
 
-function extract(record) {
+export function codexRolloutUsage(record) {
   const info =
     record?.type === "event_msg" &&
     record.payload?.type === "token_count" &&
@@ -82,7 +82,7 @@ async function scanCompressed(path, endByteOffset) {
   let remainder = Buffer.alloc(0);
   let result = {};
   function visit(line) {
-    const next = extract(parse(line));
+    const next = codexRolloutUsage(parse(line));
     if (next.tokenUsage || next.base) result = next;
   }
   try {

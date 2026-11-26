@@ -85,6 +85,7 @@
     "@anthropic-ai/claude-agent-sdk": "0.3.318",
     "@claudex-web/translation-engine": "file:packages/translation-engine",
     "@opentunnel/client": "0.6.2",
+    "acorn": "8.19.0",
     "fflate": "0.8.2",
     "fuzzysort": "4.0.2",
     "ignore": "7.0.16",

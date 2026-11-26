@@ -3,7 +3,13 @@ import { backgroundCheckKey } from "../../domain/background-results.js";
 import { refreshBackgroundResults, rpc } from "../../store.js";
 import { useBackgroundPoll } from "./use-background-poll.js";
 
-const empty = { tasks: [], stopping: null, readError: "", stopError: null };
+const empty = {
+  tasks: [],
+  completed: [],
+  stopping: null,
+  readError: "",
+  stopError: null,
+};
 
 export function useBackgroundTasks(threadId, enabled) {
   const scope = useMemo(
@@ -33,6 +39,7 @@ export function useBackgroundTasks(threadId, enabled) {
         if (!current()) return;
         update(({ stopError }) => ({
           tasks,
+          completed,
           readError: "",
           stopError: tasks.some((task) => task.id === stopError?.id)
             ? stopError
@@ -83,6 +90,7 @@ export function useBackgroundTasks(threadId, enabled) {
 
   return {
     tasks: state.tasks,
+    completed: state.completed,
     stopping: state.stopping,
     error: state.stopError?.message || state.readError,
     stop,

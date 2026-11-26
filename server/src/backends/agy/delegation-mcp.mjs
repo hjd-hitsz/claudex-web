@@ -31,6 +31,12 @@ function tool(backend) {
           type: "string",
           description: descriptions("request"),
         },
+        taskSummary: {
+          type: "string",
+          minLength: 1,
+          maxLength: 80,
+          description: descriptions("taskSummary"),
+        },
         request_id: {
           type: "string",
           description: descriptions("requestId"),

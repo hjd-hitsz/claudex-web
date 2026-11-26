@@ -1,4 +1,6 @@
 import { renderPrompt, readPromptSections } from "../prompts.mjs";
+import { contextMetrics } from "../../../shared/delegation-context.mjs";
+import { delegationPreview } from "../../../shared/delivery-summary.mjs";
 
 const peer = readPromptSections("conversation/collaboration.md");
 
@@ -16,8 +18,50 @@ function peerMessagePrefix({ id, replyTo, from }) {
   return `Claudex thread_chat message ${id}\nPeer conversation: ${source}\n`;
 }
 
-function delegationResultPrefix({ id, from }) {
-  return "Claudex 委派执行结果 " + id + " · " + from.title + "\n";
+function delegationResultPrefix({ id, displayId, from }) {
+  return (
+    "Claudex 委派执行结果 " + (displayId ?? id) + " · " + from.title + "\n"
+  );
+}
+
+export function delegationResultItem(item, text, messageId) {
+  const header =
+    /^Claudex 委派执行结果 ([\da-f-]{8,36}) · (Codex|Claude Code)\n/i.exec(
+      text,
+    );
+  if (
+    !header ||
+    (messageId &&
+      header[1] !== messageId &&
+      header[1] !== messageId.slice(0, 8))
+  )
+    return item;
+  let payload;
+  try {
+    payload = JSON.parse(text.slice(text.lastIndexOf("\n") + 1));
+  } catch {
+    return item;
+  }
+  if (
+    payload?.stepId !== header[1] ||
+    !/^(?:[\da-f]{8}|[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12})$/i.test(
+      payload.task_id,
+    ) ||
+    !["completed", "failed", "interrupted", "unknown"].includes(payload.status)
+  )
+    return item;
+  const context = contextMetrics(payload.context);
+  return {
+    id: item.id,
+    turnId: item.turnId,
+    type: "delegationResult",
+    taskId: payload.task_id.slice(0, 8),
+    stepId: payload.stepId.slice(0, 8),
+    preview: delegationPreview(payload.answer),
+    target: header[2] === "Codex" ? "codex" : "claude",
+    status: payload.status,
+    ...(context && { context }),
+  };
 }
 
 export function matchesConversationMessage(text, envelope) {

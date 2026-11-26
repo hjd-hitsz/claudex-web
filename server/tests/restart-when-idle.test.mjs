@@ -3,13 +3,17 @@ import assert from "node:assert/strict";
 import https from "node:https";
 import { authenticationFixture } from "../../tests/helpers/auth.mjs";
 import { once } from "node:events";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
+
+const execute = promisify(execFile);
+const entry = new URL("../../scripts/restart-when-idle.mjs", import.meta.url);
 
 async function waitFor(read) {
   for (let attempt = 0; attempt < 200; attempt++) {
@@ -56,9 +60,9 @@ async function watcher(t, state, fail = false) {
   const child = spawn(
     process.execPath,
     [
-      fileURLToPath(
-        new URL("../../scripts/restart-when-idle.mjs", import.meta.url),
-      ),
+      "--input-type=module",
+      "-e",
+      `import { watchForIdle } from ${JSON.stringify(entry.href)}; await watchForIdle();`,
     ],
     {
       env: {
@@ -106,6 +110,43 @@ const idle = {
   compactions: {},
   terminals: { "open-shell": { running: true } },
 };
+
+test("空闲重启入口提交独立用户单元后退出，执行终端无法进入等待模式", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "claudex-idle-submission-"));
+  t.after(() => rm(directory, { force: true, recursive: true }));
+  const record = join(directory, "unit.json");
+  await writeFile(
+    join(directory, "systemd-run"),
+    `#!${process.execPath}\nimport {writeFileSync} from 'node:fs'; writeFileSync(${JSON.stringify(record)}, JSON.stringify(process.argv.slice(2)));\n`,
+    { mode: 0o755 },
+  );
+  const env = {
+    ...process.env,
+    PATH: directory + ":" + process.env.PATH,
+    PORT: "9999",
+    CLAUDEX_WEB_CONFIG_DIR: directory,
+  };
+  const { stdout } = await execute(process.execPath, [fileURLToPath(entry)], {
+    env,
+    timeout: 5000,
+  });
+  assert.match(stdout, /已提交网页空闲重启/);
+  const args = JSON.parse(await readFile(record, "utf8"));
+  assert(args.includes("--no-block"));
+  assert(args.includes("--unit=claudex-web-restart-when-idle.service"));
+  assert(args.includes("--setenv=PORT=9999"));
+  assert(args.includes("--setenv=CLAUDEX_WEB_CONFIG_DIR=" + directory));
+  assert.deepEqual(args.slice(-4), [
+    "--",
+    process.execPath,
+    fileURLToPath(entry),
+    "--watch",
+  ]);
+  await assert.rejects(
+    execute(process.execPath, [fileURLToPath(entry), "--watch"], { env }),
+    /空闲监视进程由 systemd 用户单元启动/,
+  );
+});
 
 test("网页终端保持打开时执行重启，健康检查就绪后报告实际版本", async (t) => {
   const app = await watcher(t, idle);

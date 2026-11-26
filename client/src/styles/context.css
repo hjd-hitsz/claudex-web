@@ -149,6 +149,19 @@
 .context-workspace.showing-panel[data-open="false"] {
   display: none;
 }
+@media (prefers-reduced-motion: no-preference) {
+  .context-workspace[data-open="true"]:has(
+      .subagent-conversation[data-delegated]
+    ) {
+    animation: delegation-details-enter 160ms ease-out;
+  }
+  @keyframes delegation-details-enter {
+    from {
+      opacity: 0;
+      transform: translateX(6px);
+    }
+  }
+}
 .context-backbar {
   display: flex;
   align-items: center;
@@ -187,10 +200,13 @@
 }
 .subagent-meta {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   flex: none;
-  gap: 0.461538rem 0.923077rem;
-  padding: 0.769231rem 1.076923rem;
+  gap: 0.769231rem;
+  padding: 0.538462rem 1.076923rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  white-space: nowrap;
   border-bottom: 1px solid var(--border);
   font-size: 0.846154rem;
   color: var(--muted);
@@ -198,6 +214,7 @@
 .subagent-meta > span {
   display: flex;
   align-items: center;
+  flex: none;
   gap: 0.384615rem;
 }
 .subagent-meta > code {

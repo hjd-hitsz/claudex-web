@@ -74,6 +74,9 @@ export async function testContextPanel(app, requests, setResponse, emit) {
           id: params.threadId,
           cwd: "/fixture/child",
           model: "child-model",
+          ...(params.threadId === "agent-a" && {
+            context: { usedTokens: 10, totalTokens: 100, compactCount: 0 },
+          }),
         },
       };
     if (method === "thread/turns/list")
@@ -281,6 +284,37 @@ export async function testContextPanel(app, requests, setResponse, emit) {
       text().includes("检查子代理分页任务") && text().includes("分页结果"),
     );
     assert(text().includes("child-model"));
+    const metadata = () =>
+      nodeText(view.root.findByProps({ className: "subagent-meta" }));
+    assert.match(metadata(), /10 \/ 100 Token（10.0%）压缩0 次/);
+    await act(async () =>
+      emit("thread/tokenUsage/updated", {
+        threadId: "agent-a",
+        tokenUsage: { last: { totalTokens: 15 } },
+      }),
+    );
+    assert.match(metadata(), /15 \/ 100 Token（15.0%）/);
+    await act(async () => {
+      const item = { id: "compaction", type: "contextCompaction" };
+      emit("item/completed", {
+        threadId: "agent-a",
+        turnId: "child-turn",
+        item,
+      });
+      emit("turn/completed", {
+        threadId: "agent-a",
+        turn: { id: "child-turn", status: "completed", items: [item] },
+      });
+      emit("thread/tokenUsage/updated", {
+        threadId: "agent-a",
+        tokenUsage: { last: { totalTokens: 7 } },
+      });
+      emit("thread/tokenUsage/updated", {
+        threadId: "agent-b",
+        tokenUsage: { last: { totalTokens: 90 } },
+      });
+    });
+    assert.match(metadata(), /7 \/ 100 Token（7.0%）压缩1 次/);
     assert(text().includes("主代理交付的检查要求"));
     await act(async () => {
       incoming = [
@@ -358,9 +392,14 @@ export async function testContextPanel(app, requests, setResponse, emit) {
         itemId: "stream",
         delta: "读取期间新增",
       });
+      emit("thread/tokenUsage/updated", {
+        threadId: "agent-a",
+        tokenUsage: { last: { totalTokens: 23 }, modelContextWindow: 200 },
+      });
       release();
     });
     assert(text().includes("历史前缀读取期间新增"));
+    assert.match(metadata(), /23 \/ 200 Token（11.5%）/);
     await click("刷新子代理对话");
     await act(async () =>
       app.openSubAgent({

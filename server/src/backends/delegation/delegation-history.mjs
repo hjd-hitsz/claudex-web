@@ -1,3 +1,6 @@
+import { readRolloutContext } from "../codex/rollout-tools.mjs";
+import { delegationContext } from "./context.mjs";
+
 export const agyHistoryMethods = new Set([
   "thread/read",
   "thread/items/list",
@@ -16,6 +19,7 @@ const historyEvents = new Set([
   "item/completed",
   "item/agentMessage/delta",
   "item/reasoning/summaryTextDelta",
+  "thread/tokenUsage/updated",
   "item/commandExecution/outputDelta",
 ]);
 
@@ -90,23 +94,40 @@ export async function readDelegationHistory(
     return { data: [], nextCursor: null };
   }
   const entry = await executor.resolve(task);
+  const step = task.steps?.at(-1);
+  const readContext = method === "thread/read" && !step?.result?.context;
   const result = await executor.readHistory(entry, method, {
     ...params,
     threadId: task.executor.threadId,
+    ...(readContext && task.target === "claude" && { includeTurns: true }),
     ...(task.target === "codex" &&
       method === "thread/items/list" && { includeStreaming: true }),
   });
-  if (method === "thread/read")
+  if (method === "thread/read") {
+    const last =
+      step?.result?.turns?.at(-1)?.turnId ??
+      step?.turnIds?.at(-1) ??
+      step?.turnId ??
+      result.thread.turns?.at(-1)?.id;
+    const trace =
+      readContext && last && task.target === "codex"
+        ? await readRolloutContext(result.thread, last)
+        : undefined;
+    const context =
+      step?.result?.context ??
+      (last && delegationContext(result.thread, last, trace));
     return {
       ...result,
       thread: {
         ...result.thread,
         id: agentId,
-        ...(result.thread.turns && {
-          turns: result.thread.turns.map((turn) => visibleTurn(turn, author)),
-        }),
+        ...(context && { context }),
+        turns: params.includeTurns
+          ? result.thread.turns?.map((turn) => visibleTurn(turn, author))
+          : undefined,
       },
     };
+  }
   return {
     ...result,
     data:

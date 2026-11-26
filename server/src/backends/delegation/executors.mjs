@@ -8,6 +8,7 @@ import { runtimeIdentity } from "../../conversation-manager/address.mjs";
 import { createBackgroundService } from "../codex/background-service.mjs";
 import { codexFullAccess } from "../codex/subscriptions.mjs";
 import { taskRequest } from "../../../../packages/background-terminal/client.mjs";
+import { traceItems, traceOrder } from "./turn-trace.mjs";
 
 const executorPrompt = readPromptSections("delegation/workflow.md");
 
@@ -332,22 +333,48 @@ export function createExecutors({ config, version, onEvent }) {
   };
 }
 
-export function executorResult(turn) {
-  const items = turn.items || [];
-  const replies = items.filter(
-    ({ type }) => type === "agentMessage" || type === "plan",
+function executorAnswer(turn, trace) {
+  const messages = traceOrder(
+    new Map(
+      [...traceItems(turn, trace)].filter(
+        ([, item]) =>
+          ["agentMessage", "plan"].includes(item.type) && item.text?.trim(),
+      ),
+    ),
+    trace,
   );
-  const final = replies.filter(
-    ({ phase, type }) => phase === "final_answer" || type === "plan",
-  );
-  return {
-    answer: (final.length
-      ? final
-      : replies.filter(({ phase }) => !phase).slice(-1)
+  const groups = [];
+  for (const { type, text, phase } of messages) {
+    const label =
+      type === "plan"
+        ? "计划"
+        : ({
+            commentary: "阶段说明",
+            final_answer: "最终结论",
+          }[phase] ?? "回复");
+    if (groups.at(-1)?.label !== label) groups.push({ label, texts: [] });
+    groups.at(-1).texts.push(text);
+  }
+  const answer = groups
+    .map(({ label, texts }) =>
+      [
+        ...(groups.length > 1 || label === "阶段说明" ? [`**${label}**`] : []),
+        ...texts,
+      ].join("\n\n"),
     )
-      .map(({ text }) => text)
-      .filter(Boolean)
-      .join("\n\n"),
+    .join("\n\n");
+  const last = messages.at(-1);
+  const conclusion =
+    messages.findLast(
+      ({ type, phase }) => type === "agentMessage" && phase === "final_answer",
+    )?.text ?? (last?.type === "agentMessage" && !last.phase ? last.text : "");
+  return { answer, conclusion };
+}
+
+export function executorResult(turn, trace) {
+  const items = turn.items || [];
+  return {
+    ...executorAnswer(turn, trace),
     evidence: items
       .filter(({ type }) =>
         ["commandExecution", "webSearch", "mcpToolCall"].includes(type),

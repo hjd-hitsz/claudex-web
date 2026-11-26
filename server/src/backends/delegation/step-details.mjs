@@ -1,11 +1,18 @@
 import { readClaudeToolRecords } from "../claude/tool-records.mjs";
-import { readRolloutTools } from "../codex/rollout-tools.mjs";
+import { readRolloutTrace } from "../codex/rollout-tools.mjs";
 import {
   conversationArguments,
   delegationStepToolName,
 } from "../../conversation-manager/tools.mjs";
-import { initialTurn } from "./delegation-results.mjs";
-import { turnCalls } from "./call-chain.mjs";
+import {
+  delegationStage,
+  initialTurn,
+  summarizeDelegationStages,
+  traceVersion,
+} from "./delegation-results.mjs";
+import { resultNoticePayload, traceCall, turnCalls } from "./call-chain.mjs";
+import { findDelegationTask, traceId, traceMatches } from "./trace-ids.mjs";
+import { delegationContext } from "./context.mjs";
 
 const pageSize = 4000;
 
@@ -30,19 +37,24 @@ export async function readDelegationStep(store, executor, parent, input) {
     input,
   );
   const { tasks } = await store.read();
-  const task = Object.hasOwn(tasks, taskId) && tasks[taskId];
-  if (
-    !task ||
-    task.parentId !== parent.id ||
-    task.sourceRuntime !== parent.runtimeId
-  )
-    throw new Error("当前会话找不到该委派任务");
-  const step = task.steps.find(({ id }) => id === stepId);
+  const task = findDelegationTask(tasks, parent, taskId);
+  if (!task) throw new Error("当前会话找不到该委派任务");
+  const steps = traceMatches(task.steps, stepId, (step) => step.id);
+  if (steps.length > 1) throw new Error("步骤短 ID 有重复，请提供完整步骤 ID");
+  const [step] = steps;
   if (!step) throw new Error("委派任务中找不到该步骤");
-  const identity = { taskId, stepId, backend: task.target };
-  if (!callId && (step.result?.callChain || !task.executor))
+  const identity = {
+    taskId: traceId(task.id),
+    stepId: traceId(step.id),
+    backend: task.target,
+  };
+  if (!callId && (step.result?.traceVersion === traceVersion || !task.executor))
     return detailPage(
-      { ...identity, request: step.request, result: step.result },
+      {
+        ...identity,
+        request: step.request,
+        result: step.result && resultNoticePayload(step.result),
+      },
       offset,
     );
   if (!task.executor) throw new Error("委派步骤尚无原生执行记录");
@@ -61,43 +73,77 @@ export async function readDelegationStep(store, executor, parent, input) {
         []),
     ].filter(Boolean),
   );
-  const turns = (thread.turns ?? []).filter((turn) => ids.has(turn.id));
+  const turns = (thread.turns ?? []).filter(
+    (turn) => ids.has(turn.id) && (!callId || !turnId || turn.id === turnId),
+  );
   const rollout =
     task.target === "codex"
-      ? await readRolloutTools(thread, ids, callId)
+      ? await readRolloutTrace(
+          thread,
+          new Set(turns.map(({ id }) => id)),
+          callId && ((id) => id === callId || traceId(id) === callId),
+        )
       : new Map();
-  const chain = turns.flatMap((turn) =>
-    turnCalls(turn, rollout.get(turn.id), task.target),
-  );
-  if (!callId)
+  if (!callId) {
+    const summaries = new Map(
+      step.result?.turns?.map((turn) => [turn.turnId, turn]),
+    );
+    const stages = turns.map((turn) =>
+      delegationStage(
+        turn,
+        summaries.get(turn.id)?.triggers ?? [],
+        task.target,
+        rollout.get(turn.id),
+      ),
+    );
+    const last = turns.at(-1)?.id;
+    const context =
+      last && delegationContext(thread, last, rollout.get(last)?.context);
     return detailPage(
       {
         ...identity,
         request: step.request,
-        result: { ...step.result, callChain: chain },
+        result: resultNoticePayload({
+          ...step.result,
+          ...(stages.length && summarizeDelegationStages(stages)),
+          ...(context && { context }),
+        }),
       },
       offset,
     );
+  }
 
-  const matches = chain.filter(
-    (call) => call.callId === callId && (!turnId || call.turnId === turnId),
+  const chain = turns.flatMap((turn) =>
+    turnCalls(turn, rollout.get(turn.id), task.target).map((call) => ({
+      call,
+      turn,
+    })),
   );
-  if (matches.length > 1) throw new Error("请提供调用链中的 turnId");
-  const call = matches[0];
-  if (!call) throw new Error("该委派步骤中找不到指定调用");
-  const items = turns.find(({ id }) => id === call.turnId).items;
-  const item = items?.find(({ id }) => id === callId);
+  const matches = traceMatches(chain, callId, ({ call }) => call.callId);
+  if (matches.length > 1)
+    throw new Error("调用 ID 有重复，请提供所属 turnId 或完整调用 ID");
+  const [match] = matches;
+  if (!match) throw new Error("该委派步骤中找不到指定调用");
+  const { call, turn } = match;
+  const nativeCallId = call.callId;
+  const items = turn.items;
+  const trace = rollout.get(turn.id);
+  const item =
+    items?.find(({ id }) => id === nativeCallId) ??
+    trace?.items.get(nativeCallId);
   const raw =
     task.target === "codex"
-      ? rollout.get(call.turnId)?.get(callId)
+      ? trace?.calls.get(nativeCallId)
       : await readClaudeToolRecords(entry.backend, thread, item);
   return detailPage(
     {
       ...identity,
-      call,
+      call: traceCall(call),
+      turnId: turn.id,
       item,
       ...(task.target === "claude" && {
-        changes: items?.find(({ id }) => id === "file-" + callId)?.changes,
+        changes: items?.find(({ id }) => id === "file-" + nativeCallId)
+          ?.changes,
       }),
       raw,
     },

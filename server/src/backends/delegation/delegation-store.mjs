@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { resultNoticePayload } from "./call-chain.mjs";
+import { findDelegationTask } from "./trace-ids.mjs";
 
 export const executing = new Set([
   "accepted",
@@ -14,7 +15,13 @@ export const terminal = new Set([
   "interrupted",
   "unknown",
 ]);
-const fields = new Set(["request", "request_id", "task_id", "scope"]);
+const fields = new Set([
+  "request",
+  "request_id",
+  "task_id",
+  "scope",
+  "taskSummary",
+]);
 
 export function acceptDelegation(
   data,
@@ -30,7 +37,11 @@ export function acceptDelegation(
     !/^[\w.-]{1,128}$/.test(input.request_id) ||
     (input.scope !== undefined &&
       !["research", "implementation"].includes(input.scope)) ||
-    (input.task_id !== undefined && typeof input.task_id !== "string")
+    (input.task_id !== undefined && typeof input.task_id !== "string") ||
+    (input.taskSummary !== undefined &&
+      (typeof input.taskSummary !== "string" ||
+        !input.taskSummary.trim() ||
+        input.taskSummary.length > 80))
   )
     throw new Error("委派要求、请求标识或任务范围无效");
   const key = JSON.stringify([parent.id, input.request_id]);
@@ -38,9 +49,15 @@ export function acceptDelegation(
   if (previous) {
     if (previous.target !== target || !isDeepStrictEqual(previous.input, input))
       throw new Error("请求标识已用于另一项委派");
+    if (data.tasks[previous.taskId]?.sourceRuntime !== parent.sourceRuntime)
+      throw new Error("委派发起后端实例已更换");
     return { task_id: previous.taskId, status: "accepted" };
   }
-  let task = data.tasks[input.task_id];
+  let task = findDelegationTask(
+    data.tasks,
+    { id: parent.id, runtimeId: parent.sourceRuntime },
+    input.task_id,
+  );
   if (input.task_id) {
     if (!task || task.parentId !== parent.id || task.target !== target)
       throw new Error("当前会话无法继续此委派任务");
@@ -78,6 +95,7 @@ export function acceptDelegation(
   task.steps.push({
     id: randomUUID(),
     request: input.request.trim(),
+    ...(input.taskSummary && { taskSummary: input.taskSummary.trim() }),
     parentTurnId: turn.id,
     acceptedAt: Date.now(),
     original: turn.original || [],

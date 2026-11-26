@@ -42,6 +42,11 @@ export const conversationTools = [
       properties: {
         token: text,
         request: { ...text, maxLength: 100000 },
+        taskSummary: {
+          ...text,
+          maxLength: 80,
+          description: workflow("taskSummary"),
+        },
         request_id: { ...text, maxLength: 128 },
         task_id: text,
         scope: { enum: ["research", "implementation"] },

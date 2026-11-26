@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { CheckCircle2, LoaderCircle, RefreshCw, Users } from "lucide-react";
 import { onEvent, rpc, useStore } from "../../store.js";
 import { resourceTarget } from "../../../../shared/backend-identity.mjs";
+import {
+  contextMetrics,
+  usageContext,
+} from "../../../../shared/delegation-context.mjs";
 import { modelChoiceLabel, modelProviderName } from "../../domain/backends.js";
 import {
   agentStatusLabels,
@@ -15,6 +19,7 @@ import { IconButton } from "../../ui/primitives.jsx";
 import { reasoningEffortLabels } from "../composer/reasoning-effort.jsx";
 import { readThreadHistory } from "../../domain/thread-history.js";
 import { delegationLabels } from "../../domain/delegation.js";
+import { DelegationContext } from "../conversation/delegation-context.jsx";
 
 export function SubAgentConversation({ agent, actions }) {
   const { connected, modelChoices: choices } = useStore();
@@ -36,6 +41,46 @@ export function SubAgentConversation({ agent, actions }) {
     let hydrated = false;
     const events = [];
     const liveTurns = new Map();
+    let snapshotContext;
+    let liveUsage;
+    let historyCompactions;
+    const liveCompactions = new Set();
+    function context() {
+      const known = historyCompactions?.size ?? 0;
+      const added = [...liveCompactions].filter(
+        (id) => !historyCompactions?.has(id),
+      ).length;
+      return contextMetrics({
+        ...snapshotContext,
+        ...liveUsage,
+        ...((snapshotContext?.compactCount !== undefined || known || added) && {
+          compactCount:
+            Math.max(snapshotContext?.compactCount ?? 0, known) + added,
+        }),
+      });
+    }
+    function applyContext(method, params) {
+      const usage =
+        method === "thread/tokenUsage/updated" &&
+        usageContext(params.tokenUsage);
+      if (usage) liveUsage = { ...liveUsage, ...usage };
+      const completed =
+        method === "item/completed"
+          ? [params.item]
+          : method === "turn/completed"
+            ? (params.turn.items ?? [])
+            : [];
+      const count = liveCompactions.size;
+      for (const item of completed)
+        if (item?.type === "contextCompaction" && item.id)
+          liveCompactions.add(item.id);
+      if (!usage && count === liveCompactions.size) return;
+      const metrics = context();
+      update((previous) => ({
+        ...previous,
+        thread: { ...previous.thread, context: metrics },
+      }));
+    }
     let messageRequest = 0;
     async function loadMessages() {
       if (delegated) return;
@@ -61,6 +106,7 @@ export function SubAgentConversation({ agent, actions }) {
       )
         loadMessages();
       if (p?.threadId !== agent.id) return;
+      applyContext(method, p);
       if (["turn/started", "turn/completed"].includes(method)) {
         loadMessages();
         liveTurns.set(p.turn.id, { ...liveTurns.get(p.turn.id), ...p.turn });
@@ -121,11 +167,20 @@ export function SubAgentConversation({ agent, actions }) {
           }),
         ]);
         if (cancelled) return;
+        snapshotContext = {
+          ...usageContext(thread.tokenUsage),
+          ...thread.context,
+        };
+        historyCompactions = new Set(
+          records
+            .filter(({ type, id }) => type === "contextCompaction" && id)
+            .map(({ id }) => id),
+        );
         const items = mergeAgentHistory(records, events);
         events.length = 0;
         hydrated = true;
         update({
-          thread,
+          thread: { ...thread, context: context() },
           items,
           turns: [
             ...[...liveTurns.values()].reverse().map((turn) => ({
@@ -180,6 +235,7 @@ export function SubAgentConversation({ agent, actions }) {
   return (
     <section
       className="subagent-conversation"
+      data-delegated={delegated || undefined}
       aria-label={agent.name + (delegated ? " 委派对话" : "的对话")}
       ref={heading}
       tabIndex={-1}
@@ -198,7 +254,12 @@ export function SubAgentConversation({ agent, actions }) {
           />
         )}
       </div>
-      <div className="subagent-meta">
+      <div
+        className="subagent-meta"
+        role="group"
+        aria-label="执行信息"
+        tabIndex={0}
+      >
         <span data-status={status}>
           {status === "completed" ? <CheckCircle2 size={13} /> : null}
           {(delegated ? delegationLabels[status] : agentStatusLabels[status]) ||
@@ -208,6 +269,7 @@ export function SubAgentConversation({ agent, actions }) {
         {effort && (
           <span>思考强度 {reasoningEffortLabels[effort] || effort}</span>
         )}
+        <DelegationContext context={history.thread?.context} />
       </div>
       <div
         className="subagent-history"

@@ -74,6 +74,12 @@ export function ProcessGroup({
       : null;
   return (
     <div className="process-group">
+      {background && (
+        <BackgroundTaskReceipt
+          items={group.items}
+          threadId={readOnly ? undefined : threadId}
+        />
+      )}
       <details
         className="process-history"
         onToggle={(event) => setOpen(event.currentTarget.open)}
@@ -127,16 +133,6 @@ export function ProcessGroup({
           </div>
         )}
       </details>
-      {background &&
-        !group.hasReply &&
-        ["completed", "failed", "interrupted"].includes(turnStatus) && (
-          <BackgroundTaskReceipt
-            items={group.items}
-            status={turnStatus}
-            threadId={threadId}
-            check={check}
-          />
-        )}
       {working && !open && latest && (
         <div className="process-content process-preview">
           {summary ? (

@@ -1,4 +1,5 @@
 import { executionError } from "./execution-errors.mjs";
+import { delegationResultItem } from "../../conversation-manager/message.mjs";
 
 function imageUrl(block) {
   return block.source?.type === "base64"
@@ -60,16 +61,27 @@ export function convertMessage(
               url: imageUrl(b),
             },
       );
-    if (content.length && isUserPrompt(message))
-      items.push({
+    if (content.length && isUserPrompt(message)) {
+      const peer = message.origin?.kind === "peer";
+      const item = {
         id: message.uuid,
         turnId,
         type: "userMessage",
         content,
-        ...(message.origin?.kind === "peer" && {
+        ...(peer && {
           authorLabel: message.origin.name || message.origin.from,
         }),
-      });
+      };
+      items.push(
+        peer && content.length === 1 && content[0].type === "text"
+          ? delegationResultItem(
+              item,
+              content[0].text,
+              message.peerMessageId ?? message.uuid,
+            )
+          : item,
+      );
+    }
     for (const block of blocks.filter((b) => b.type === "tool_result")) {
       const prior = tools.get(block.tool_use_id);
       if (prior) {

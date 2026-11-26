@@ -41,6 +41,6 @@ codex mcp add claudex_background -- "$(command -v node)" "$entry" mcp "$state_di
 
 启用时，网页通过原生轮次的 `additionalContext` 提供前后台选择、估算检查时间和续跑的应用指令。模型按任务阶段和实际依赖估算检查时间。任务进展依赖其他会话时，模型可通过 [通用会话管理器](architecture/backends.md#通用会话管理器) 直接询问对方的当前状态和预计就绪时间，并依据回复安排或调整检查。若只需等待回复，模型结束本轮，回复送达时会自动唤醒原对话。短间隔的连续唤醒和读日志轮询由工具约定约束。
 
-服务等待原对话空闲后通过 `turn/start` 投递 `background_check_due` 或 `background_completed`，持有原生订阅直到续跑轮次结束。检查通知携带任务状态、运行时长、检查时间和日志摘要。发送前重新核对任务状态及检查点版本，改期、停止或退出使旧检查失效。成功、非零退出及硬超时各自产生终态结果，完成投递独立于一个或多个检查轮次。对话按原生轮次顺序显示通知与模型回复，检查或完成轮次没有可见回复时显示任务状态和输出入口。已读取的终态退出待投递队列，运行中读日志仍保留最终结果投递。提交响应丢失时进入 `uncertain`，按事件名和通知 ID 核对历史。任务工具仍可主动读取结果。
+服务等待原对话空闲后通过 `turn/start` 投递 `background_check_due` 或 `background_completed`，持有原生订阅直到续跑轮次结束。检查通知携带任务状态、运行时长、检查时间和日志摘要。发送前重新核对任务状态及检查点版本，改期、停止或退出使旧检查失效。成功、非零退出及硬超时各自产生终态结果，并记录任务的总耗时。完成投递独立于一个或多个检查轮次。对话按原生轮次顺序显示任务摘要与模型回复，摘要卡片显示任务状态、耗时和日志预览，整卡打开任务输出。已读取的终态退出待投递队列，运行中读日志仍保留最终结果投递。提交响应丢失时进入 `uncertain`，按事件名和通知 ID 核对历史。任务工具仍可主动读取结果。
 
 ZCode 的 Bash 结束后先入队并保存面向模型的任务通知，再由运行时执行对应会话。通知包含任务标识、状态、输出文件和摘要，由独立来源标记区分人工输入。Claudex Web 使用 Codex 原生轮次请求中的结构化工具结果和应用上下文分别承载任务事实与汇报要求。[ZCode 后台调度](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/runtime-command-queue.ts) · [ZCode 通知持久化](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/background-notifications.ts) · [Codex 原生提交](https://github.com/openai/codex/blob/rust-v0.170.0/codex-rs/app-server/src/request_processors/turn_processor.rs)

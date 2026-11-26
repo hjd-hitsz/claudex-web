@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { createZstdDecompress } from "node:zlib";
+import { codexRolloutUsage } from "./token-usage.mjs";
 
 const inputs = new Set([
   "function_call",
@@ -15,8 +16,37 @@ const outputs = new Set([
   "custom_tool_call_output",
   "tool_search_output",
 ]);
+const traceItems = new Set([
+  "agentMessage",
+  "plan",
+  "commandExecution",
+  "fileChange",
+  "mcpToolCall",
+  "dynamicToolCall",
+  "collabAgentToolCall",
+  "webSearch",
+  "imageView",
+  "imageGeneration",
+]);
+
+function recordPosition(trace, id, time, sequence) {
+  const previous = trace.positions.get(id);
+  if (!previous || time < previous.time)
+    trace.positions.set(id, { time, sequence });
+}
+
+function fileChanges(changes) {
+  if (Array.isArray(changes))
+    return changes.map(({ path, kind }) => ({ path, kind }));
+  return Object.entries(changes).map(([path, { type, move_path }]) => ({
+    path,
+    kind: type === "update" ? { type, move_path } : { type },
+  }));
+}
 
 async function scan(path, threadId, turnIds, onlyCallId) {
+  const matches =
+    typeof onlyCallId === "function" ? onlyCallId : (id) => id === onlyCallId;
   const source = createReadStream(path);
   const input = path.endsWith(".zst")
     ? source.pipe(createZstdDecompress())
@@ -26,8 +56,12 @@ async function scan(path, threadId, turnIds, onlyCallId) {
   const turns = new Map();
   let turnId;
   let identified = false;
+  let sequence = 0;
+  let time = 0;
+  let context = { compactCount: 0 };
   try {
     for await (const line of lines) {
+      sequence++;
       let record;
       try {
         record = JSON.parse(line);
@@ -37,6 +71,8 @@ async function scan(path, threadId, turnIds, onlyCallId) {
       }
       const { type, payload } = record ?? {};
       if (!payload || typeof payload !== "object") continue;
+      const timestamp = Date.parse(record.timestamp);
+      if (Number.isFinite(timestamp)) time = timestamp;
       if (!identified) {
         if (type !== "session_meta" || payload.id !== threadId)
           return new Map();
@@ -48,32 +84,103 @@ async function scan(path, threadId, turnIds, onlyCallId) {
         (type === "event_msg" && payload.type === "task_started")
       )
         turnId = payload.turn_id;
+      if (type === "compacted")
+        context = {
+          totalTokens: context.totalTokens,
+          compactCount: context.compactCount + 1,
+        };
+      if (type === "event_msg" && payload.type === "token_count") {
+        const { tokenUsage } = codexRolloutUsage(record);
+        if (tokenUsage)
+          context = {
+            ...context,
+            usedTokens: tokenUsage.last.totalTokens,
+            totalTokens: tokenUsage.modelContextWindow ?? context.totalTokens,
+          };
+      }
       if (
         type === "event_msg" &&
         ["task_complete", "turn_aborted"].includes(payload.type)
       )
         turnId = undefined;
       const owner =
-        payload.internal_chat_message_metadata_passthrough?.turn_id ?? turnId;
+        payload.internal_chat_message_metadata_passthrough?.turn_id ??
+        payload.turn_id ??
+        turnId;
+      if (!turnIds.has(owner)) continue;
+      if (!turns.has(owner))
+        turns.set(owner, {
+          calls: new Map(),
+          items: new Map(),
+          positions: new Map(),
+        });
+      const trace = turns.get(owner);
+      trace.context = context;
+
       if (
-        type !== "response_item" ||
-        !turnIds.has(owner) ||
-        (!inputs.has(payload.type) && !outputs.has(payload.type))
-      )
+        type === "event_msg" &&
+        ["item_started", "item_completed"].includes(payload.type)
+      ) {
+        const item = payload.item;
+        if (!item?.id || (onlyCallId && !matches(item.id))) continue;
+        if (typeof item.type !== "string") continue;
+        const kind = item.type.charAt(0).toLowerCase() + item.type.slice(1);
+        if (!traceItems.has(kind)) continue;
+        const start = payload.started_at_ms;
+        recordPosition(
+          trace,
+          item.id,
+          Number.isFinite(start) ? start : time,
+          sequence,
+        );
+        trace.items.set(item.id, {
+          id: item.id,
+          type: kind,
+          phase: item.phase,
+          text: item.text,
+          command: item.command,
+          status: item.status,
+          tool: item.tool,
+          server: item.server,
+          path: item.path,
+          query: item.query,
+          ...(kind === "fileChange" &&
+            item.changes && { changes: fileChanges(item.changes) }),
+        });
         continue;
+      }
+
+      if (type !== "response_item") continue;
+      if (
+        !onlyCallId &&
+        payload.type === "message" &&
+        payload.role === "assistant"
+      ) {
+        const id = payload.id ?? "rollout-message-" + sequence;
+        recordPosition(trace, id, time, sequence);
+        const text = payload.content?.map(({ text }) => text ?? "").join("");
+        if (text?.trim())
+          trace.items.set(id, {
+            id,
+            type: "agentMessage",
+            phase: payload.phase,
+            text,
+          });
+        continue;
+      }
+      if (!inputs.has(payload.type) && !outputs.has(payload.type)) continue;
       const callId =
         payload.call_id ?? (inputs.has(payload.type) && payload.id);
-      if (!callId || (onlyCallId && onlyCallId !== callId)) continue;
-      if (!turns.has(owner)) turns.set(owner, new Map());
-      const calls = turns.get(owner);
-      if (inputs.has(payload.type))
-        calls.set(callId, {
+      if (!callId || (onlyCallId && !matches(callId))) continue;
+      if (inputs.has(payload.type)) {
+        recordPosition(trace, callId, time, sequence);
+        trace.calls.set(callId, {
           callId,
           input: record,
           ...(onlyCallId && { outputs: [] }),
         });
-      else {
-        const call = calls.get(callId);
+      } else {
+        const call = trace.calls.get(callId);
         if (!call) continue;
         call.returned = true;
         call.outputs?.push(record);
@@ -87,7 +194,7 @@ async function scan(path, threadId, turnIds, onlyCallId) {
   }
 }
 
-export async function readRolloutTools(thread, turnIds, callId) {
+export async function readRolloutTrace(thread, turnIds, callId) {
   if (!thread.path) return new Map();
   try {
     return await scan(thread.path, thread.id, turnIds, callId);
@@ -102,4 +209,9 @@ export async function readRolloutTools(thread, turnIds, callId) {
       );
     return new Map();
   }
+}
+
+export async function readRolloutContext(thread, turnId) {
+  const trace = await readRolloutTrace(thread, new Set([turnId]), () => false);
+  return trace.get(turnId)?.context;
 }

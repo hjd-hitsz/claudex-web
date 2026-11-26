@@ -95,6 +95,9 @@ export function createDelivery(directory, url, jobs) {
               exit_code: job.exitCode,
               output_file: join(directory, `output-${job.id}.log`),
               output_tail: [...output].slice(-3000).join(""),
+              ...(Number.isFinite(job.completedAt) && {
+                duration_ms: Math.max(0, job.completedAt - job.startedAt),
+              }),
               ...(checkpoint && {
                 check_id: checkpoint.id,
                 check_due_at_ms: checkpoint.dueAt,
