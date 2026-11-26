@@ -9,6 +9,7 @@ function isLocalWorkspace(backend) {
   return (
     !backend ||
     backend.type === "claude" ||
+    backend.type === "agy" ||
     ["127.0.0.1", "localhost", "[::1]"].includes(new URL(backend.url).hostname)
   );
 }

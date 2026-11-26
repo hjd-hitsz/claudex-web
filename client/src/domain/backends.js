@@ -27,7 +27,7 @@ export function modelChoiceLabel({ providerName, displayName, model }) {
 }
 export function modelProviderName(choices, backendId, providerId) {
   if (!providerId || providerId === "@native")
-    return backendId === "claude" ? "Claude" : "ChatGPT";
+    return { claude: "Claude", agy: "Antigravity" }[backendId] || "ChatGPT";
   return (
     choices?.find(
       (entry) =>

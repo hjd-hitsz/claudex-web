@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { runtimeIdentity } from "./address.mjs";
 import { join, normalize } from "node:path";
 import { createConversationGateway } from "./gateway.mjs";
 import { openConversationStore } from "./store.mjs";
@@ -20,15 +20,6 @@ const dispatchKey = ({ runtimeId, threadId }) =>
   JSON.stringify([runtimeId, threadId]);
 const replyPriority = (item) =>
   Number(item.status === "accepted" && !!item.replyTo);
-
-function runtimeIdentity(backend) {
-  return createHash("sha256")
-    .update(
-      JSON.stringify([backend.id, backend.type, backend.url, backend.dataDir]),
-    )
-    .digest("hex")
-    .slice(0, 32);
-}
 
 function externalId({ runtimeId, threadId }) {
   return `conversation:${runtimeId}:${Buffer.from(threadId).toString("base64url")}`;

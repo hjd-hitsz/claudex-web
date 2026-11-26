@@ -128,16 +128,10 @@
   color: var(--fg);
 }
 .backend-badge > .backend-symbol,
-.backend-badge > svg {
+.backend-badge > img {
   width: 1.25em;
   height: 1.25em;
   flex: none;
-}
-.topbar > .backend-badge {
-  padding: 0.25em 0.5em;
-  border: 1px solid var(--border);
-  border-radius: 0.5em;
-  background: var(--subtle);
 }
 .thread-link > .backend-badge {
   flex: none;

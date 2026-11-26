@@ -60,15 +60,43 @@ export function Question({ request }) {
     p = request.params;
   const [error, setError] = useState("");
   const input = request.method === "item/tool/requestUserInput";
+  const executor = p.executorName;
   if (input)
     return (
-      <UserInputForm
-        questions={p.questions}
-        disabled={!s.connected}
-        onSubmit={(answers) =>
-          respond(request, { answers }, undefined, raiseFailure)
-        }
-      />
+      <div>
+        {executor && <p>{executor} · 等待你的回答</p>}
+        <UserInputForm
+          questions={p.questions}
+          disabled={!s.connected}
+          onSubmit={(answers) =>
+            respond(request, { answers }, undefined, raiseFailure)
+          }
+        />
+      </div>
+    );
+  if (request.method === "lan/agy/permission")
+    return (
+      <div className="request-card">
+        <div className="request-title">
+          <Shield size={18} />
+          {executor || "Antigravity"} · 等待你的确认
+        </div>
+        <p>{p.reason}</p>
+        {p.scope && <pre>{JSON.stringify(p.scope, null, 2)}</pre>}
+        <div className="request-actions">
+          {p.options?.map(({ optionId, name, kind }) => (
+            <button
+              key={optionId}
+              className={kind === "allow_once" ? "primary" : "secondary"}
+              disabled={!s.connected}
+              onClick={() => answer({ optionId })}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        {error && <p role="alert">{error}</p>}
+      </div>
     );
   const permission = request.method === "item/permissions/requestApproval";
   const standard = [
@@ -83,6 +111,7 @@ export function Question({ request }) {
     <div className="request-card">
       <div className="request-title">
         <Shield size={18} />
+        {executor && executor + " · "}
         {permission ? "权限请求" : standard ? "等待你的确认" : "工具请求"}
       </div>
       <p>{p.reason || p.command || "此操作需要你的确认。"}</p>

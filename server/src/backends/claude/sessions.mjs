@@ -1,7 +1,7 @@
 import { recoverAgents, agentTurns } from "./agent-history.mjs";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { createHistoryPages } from "./history-pages.mjs";
+import { createHistoryPages } from "../history-pages.mjs";
 import {
   createHistoryActions,
   forkHistory,
@@ -70,7 +70,7 @@ export function createClaudeSessions({
     };
   }
   async function turns(id) {
-    const s = await session(id);
+    let s = await session(id);
     const dir = s.historySearchAll ? undefined : s.cwd;
     if (s.agentId)
       return agentTurns(
@@ -91,6 +91,7 @@ export function createClaudeSessions({
           readSession("listSubagents", nativeId, { dir }),
         ])
       : [[], []];
+    s = await session(id);
     const records = historyTurns(
       visibleSessionMessages(messages, s.internalInputIds).map((message) => {
         const peer = message.type === "user" && s.peerInputs?.[message.uuid];

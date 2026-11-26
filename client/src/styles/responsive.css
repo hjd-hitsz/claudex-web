@@ -312,6 +312,7 @@
   .topbar {
     position: relative;
   }
+  .backend-switcher,
   .breadcrumb,
   .project-switcher {
     position: static;
@@ -331,6 +332,7 @@
     padding-inline: 0.307692rem;
   }
   .header-switcher-options,
+  .backend-switcher .header-switcher-options,
   .conversation-switcher .header-switcher-options {
     --switcher-menu-available: calc(100vw - 1.538462rem);
     top: calc(100% - 0.307692rem);

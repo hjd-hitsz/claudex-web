@@ -65,6 +65,7 @@ export function createThreadNavigation({
     localStorage.removeItem("cx-current");
     set({
       current: null,
+      agyDelegateTo: undefined,
       mode: "default",
       items: [],
       cwd: cwd || projectlessCwd || get().defaultCwd,
@@ -102,6 +103,7 @@ export function createThreadNavigation({
       sidebar: false,
       ...(get().current?.id !== id && {
         contextOpen: false,
+        agyDelegateTo: undefined,
         panelFile: null,
       }),
     });

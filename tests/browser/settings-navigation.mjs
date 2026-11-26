@@ -8,7 +8,11 @@ import { createStaticHandler } from "../../server/src/http/static.mjs";
 import { configuredProviders } from "../../server/src/backends/provider-presets.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
-import { settingsPage } from "../helpers/settings-navigation.mjs";
+import {
+  settingsBackend,
+  settingsPage,
+  openSettingsPage,
+} from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const artifacts = join(root, ".cache/settings-navigation");
@@ -170,6 +174,7 @@ try {
   assert(await focus(pick("后端")));
   await page.keyboard.press("Enter");
   assert.equal(await heading.textContent(), "后端");
+  await settingsBackend(page, "Claude Code").click();
   await dialog.getByRole("checkbox", { name: "启用 Claude Code" }).waitFor();
   assert.equal(
     await dialog.getByRole("button", { name: "添加供应商" }).count(),
@@ -291,14 +296,15 @@ try {
           await open.click();
           assert.equal(await heading.textContent(), "通用");
           for (const title of scale === 1 ? titles : ["后端"]) {
-            await pick(title).click();
+            await openSettingsPage(page, title);
             assert.equal(await heading.textContent(), title);
-            assert.equal(
-              await pick(title).getAttribute("aria-current"),
-              "page",
-            );
+            if (await nav.isVisible())
+              assert.equal(
+                await pick(title).getAttribute("aria-current"),
+                "page",
+              );
           }
-          await pick("后端").click();
+          await openSettingsPage(page, "后端");
           const metrics = await measureLayout(dialog);
           const result = { ...dimensions, theme, scale, ...metrics };
           results.push(result);
@@ -315,7 +321,7 @@ try {
           );
           assert.equal(metrics.theme, theme);
           assert.equal(metrics.railColor, metrics.sidebarColor, diagnostic);
-          if (metrics.activeThread) {
+          if (metrics.activeThread && metrics.activeTab) {
             assert.deepEqual(
               metrics.activeThread,
               metrics.activeTab,
@@ -437,7 +443,8 @@ function measureLayout(dialog) {
     const body = element.querySelector(".settings-body");
     const buttons = [
       ...element.querySelectorAll(".settings-navigation button"),
-    ];
+    ].filter((control) => control.getClientRects().length);
+    const compact = element.querySelector(".settings-compact-navigation");
     const rows = new Map();
     const columns = new Map();
     for (const button of buttons) {
@@ -474,27 +481,30 @@ function measureLayout(dialog) {
       sidebarColor: getComputedStyle(document.querySelector(".sidebar"))
         .backgroundColor,
       activeTab: selectionStyle(
-        element.querySelector('.settings-navigation [aria-current="page"]'),
+        buttons.find(
+          (button) => button.getAttribute("aria-current") === "page",
+        ),
       ),
       activeThread: selectionStyle(
         document.querySelector(".thread-row.selected"),
       ),
-      controls: [...buttons, element.querySelector(".settings-close")].map(
-        (control) => {
-          const { x, y, width, height, right, bottom } =
-            control.getBoundingClientRect();
-          return {
-            name: control.textContent || control.title,
-            x,
-            y,
-            right,
-            bottom,
-            visible: control.contains(
-              document.elementFromPoint(x + width / 2, y + height / 2),
-            ),
-          };
-        },
-      ),
+      controls: [
+        ...(buttons.length ? buttons : [compact]),
+        element.querySelector(".settings-close"),
+      ].map((control) => {
+        const { x, y, width, height, right, bottom } =
+          control.getBoundingClientRect();
+        return {
+          name: control.textContent || control.title,
+          x,
+          y,
+          right,
+          bottom,
+          visible: control.contains(
+            document.elementFromPoint(x + width / 2, y + height / 2),
+          ),
+        };
+      }),
     };
   });
 }

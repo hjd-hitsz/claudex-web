@@ -48,6 +48,10 @@
   display: grid;
   gap: 0.307692rem;
 }
+.settings-compact-navigation,
+.backend-settings-compact-selector {
+  display: none;
+}
 .settings-navigation button {
   position: relative;
   display: flex;
@@ -189,5 +193,60 @@
   .modal.modal-settings {
     --window-inset: 0.615385rem;
     height: calc(100dvh - 2 * var(--window-inset));
+  }
+}
+@media (max-height: 460px), (max-width: 260px) {
+  .modal-settings > .settings-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .settings-rail {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding-inline-end: calc(
+      var(--settings-close-right) + var(--settings-close-size) + 0.5rem
+    );
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--border);
+  }
+  .settings-brand {
+    flex: none;
+    margin: 0;
+    padding: 0;
+  }
+  .settings-brand span,
+  .settings-navigation {
+    display: none;
+  }
+  .settings-compact-navigation {
+    display: block;
+    flex: 1;
+    min-inline-size: 0;
+    max-inline-size: 15rem;
+    min-block-size: var(--settings-close-size);
+    padding-inline: 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--settings-card);
+    color: var(--fg);
+    font: inherit;
+  }
+  .settings-page-heading:not(:has(button)) {
+    min-height: 0;
+    padding: 0;
+    margin-bottom: 0.75rem;
+  }
+  .settings-page-heading h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+@media (max-width: 260px) {
+  .settings-brand {
+    display: none;
   }
 }

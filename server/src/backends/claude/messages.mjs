@@ -209,8 +209,23 @@ export function historyTurns(
     ),
   );
   let turn;
+  let notifications = [];
   for (const message of messages) {
-    const anchorId = anchors.get(message.uuid);
+    if (
+      message.type === "user" &&
+      message.origin?.kind === "task-notification"
+    ) {
+      const text = contentBlocks(message)
+        .map((block) => block.text || "")
+        .join("");
+      const id = /^<task-notification>\s*<task-id>([^<]+)<\/task-id>/.exec(
+        text,
+      )?.[1];
+      if (id) notifications.push({ id, runId: message.origin.runId });
+    }
+    const anchorId =
+      anchors.get(message.uuid) ||
+      (message.type === "assistant" && anchors.get(message.message?.id));
     if (isUserPrompt(message) || anchorId) {
       const id =
         anchorId ||
@@ -232,6 +247,12 @@ export function historyTurns(
       }
     }
     if (!turn) continue;
+    if (message.type === "assistant" && notifications.length) {
+      // The transcript can expose a wake-up before the worker saves its turn.
+      if (anchorId || !turn.items.some(({ phase }) => phase === "final_answer"))
+        (turn.backgroundTriggers ||= []).push(...notifications);
+      notifications = [];
+    }
     if (
       message.isApiErrorMessage ||
       (message.type === "assistant" && message.error)

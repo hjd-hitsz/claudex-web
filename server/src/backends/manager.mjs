@@ -1,3 +1,4 @@
+import { listBackendThreads } from "./thread-pages.mjs";
 import { createBackgroundService } from "./codex/background-service.mjs";
 import { bindConversationTools } from "../conversation-manager/backend-binding.mjs";
 import { createThreadFolders } from "../thread-folders.mjs";
@@ -28,7 +29,12 @@ import {
   mapState,
   nativeParams,
 } from "./identity-mapping.mjs";
+import { createAgyWorkerAdapter } from "./agy/worker-client.mjs";
+import { agyStateDirectory, isAgyPreference } from "./agy/configuration.mjs";
+import { readAgyRole, saveAgyRole } from "./agy/role-settings.mjs";
+import { createDelegatedThreadIndex } from "./agy/delegated-threads.mjs";
 const adapterFactories = {
+  agy: createAgyWorkerAdapter,
   codex: createCodexAdapter,
   claude: createClaudeWorkerAdapter,
 };
@@ -44,6 +50,7 @@ export function createBackendManager({
   const tokenUsage = createTokenUsageStore(config.configDir);
   const workspace = createWorkspace({ broadcast, configDir: config.configDir });
   const configuration = createBackendConfiguration(config);
+  const hideDelegatedThreads = createDelegatedThreadIndex(config.configDir);
   const background = createBackgroundService(config);
   const providers = createProviders(configuration);
   const instances = new Map();
@@ -113,6 +120,8 @@ export function createBackendManager({
         ],
         projectModels: true,
         questions: states.flatMap((s) => s.questions),
+        delegationTasks:
+          instances.get("agy")?.adapter?.state().params.delegationTasks || {},
         activeTurns: merge("activeTurns"),
         executionStatuses: merge("executionStatuses"),
         compactions: merge("compactions"),
@@ -127,12 +136,10 @@ export function createBackendManager({
   async function install(backend) {
     const entry = { backend, adapter: null, error: null, proxies: new Map() };
     instances.set(backend.id, entry);
-    const deps = bindConversationTools(
-      conversations,
-      entry,
-      folders,
-      () => !closed,
-    );
+    const deps =
+      backend.id === "agy"
+        ? {}
+        : bindConversationTools(conversations, entry, folders, () => !closed);
     if (!backend.enabled) return;
     try {
       const factory = factories[backend.type] || adapterFactories[backend.type];
@@ -181,14 +188,23 @@ export function createBackendManager({
       throw new Error(entry?.error || "后端未启用，请在设置中检查配置。");
     return entry;
   }
-  function projectResult(entry, result, method, usageRevision, forkUsage) {
-    return tokenUsage.result(
+  async function projectResult(
+    entry,
+    result,
+    method,
+    usageRevision,
+    forkUsage,
+  ) {
+    const projected = await tokenUsage.result(
       folders.result(mapResult(result, entry.backend.id, method), method),
       method,
       usageRevision,
       forkUsage,
       entry.adapter.readTokenUsage,
     );
+    return method === "thread/list" && entry.backend.id !== "agy"
+      ? hideDelegatedThreads(projected)
+      : projected;
   }
   function proxy(entry, client) {
     if (!entry.proxies.has(client)) {
@@ -270,41 +286,8 @@ export function createBackendManager({
       });
     });
   }
-  async function listThreads(params) {
-    const ids = [...instances.values()]
-      .filter((i) => i.backend.enabled)
-      .map((i) => i.backend.id);
-    const position = params.cursor
-      ? JSON.parse(decodeURIComponent(params.cursor))
-      : { index: 0 };
-    const errors = [];
-    while (position.index < ids.length) {
-      const backendId = ids[position.index];
-      try {
-        const entry = instance(backendId);
-        const page = await call(entry, "thread/list", {
-          ...params,
-          cursor: position.cursor,
-        });
-        const next = page.nextCursor
-          ? { ...position, cursor: page.nextCursor }
-          : { index: position.index + 1 };
-        return {
-          ...page,
-          backendErrors: errors,
-          nextCursor:
-            next.index < ids.length
-              ? encodeURIComponent(JSON.stringify(next))
-              : null,
-        };
-      } catch (error) {
-        errors.push({ backendId, message: error.message });
-        position.index++;
-        delete position.cursor;
-      }
-    }
-    return { data: [], nextCursor: null, backendErrors: errors };
-  }
+  const listThreads = (params) =>
+    listBackendThreads(params, { instances, instance, call });
   async function saveBackend(params, prepare) {
     validateBackend(params, config);
     const old = instances.get(params.id);
@@ -316,6 +299,12 @@ export function createBackendManager({
       !old?.backend.backgroundTerminalEnabled
     )
       await background.ensure();
+    if (!prepare && isAgyPreference(params)) {
+      old.backend = await configuration.save(params);
+      await old.adapter?.configure?.(old.backend);
+      emitState();
+      return { backends: publicBackends() };
+    }
     if (!prepare && (preference || isSubagentSettings(params))) {
       old.backend = await configuration.save(params);
       emitState();
@@ -380,7 +369,15 @@ export function createBackendManager({
       throw new Error("未知后端");
     if (["lan/backends/list", "lan/backends/versions"].includes(method))
       return reply({ backends: publicBackends() });
+    if (method === "lan/backends/agy/role/read")
+      return reply(await readAgyRole(agyStateDirectory(config.configDir)));
+    if (method === "lan/backends/agy/role/save")
+      return reply(
+        await saveAgyRole(agyStateDirectory(config.configDir), params.content),
+      );
     if (method === "lan/backends/install") {
+      if (params.id === "agy")
+        throw new Error("Antigravity CLI 由系统环境提供");
       const entry = instances.get(params.id);
       if (!entry) throw new Error("未知后端");
       if (!installationJobs.has(params.id)) {
@@ -480,6 +477,7 @@ export function createBackendManager({
           ready: initialized,
           activeTurns: params.activeTurns,
           compactions: params.compactions,
+          delegationTasks: params.delegationTasks,
           installingBackends: [...installationJobs.keys()],
           tokenUsageReconciliation: usageReconciliation.snapshot(),
         },

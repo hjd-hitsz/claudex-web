@@ -31,3 +31,13 @@ export const claudeCapabilities = Object.freeze({
   review: true,
   plugins: true,
 });
+
+export const agyCapabilities = Object.freeze({
+  compact: true,
+  questions: true,
+  fork: true,
+  subagents: true,
+  mcp: true,
+  fileUndo: true,
+  delegation: true,
+});

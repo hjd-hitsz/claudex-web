@@ -68,7 +68,13 @@ assert(process.env.CHROME_PATH, "通过 CHROME_PATH 指定 Chromium 可执行文
 const buildDirectory = await mkdtemp(
   join(tmpdir(), "claudex-web-readme-build-"),
 );
-await cp(join(root, "client/dist"), buildDirectory, { recursive: true });
+await cp(
+  process.env.BROWSER_BUILD_DIR || join(root, "client/dist"),
+  buildDirectory,
+  {
+    recursive: true,
+  },
+);
 const buildInfo = JSON.parse(
   await readFile(join(root, "build-info.json"), "utf8"),
 );

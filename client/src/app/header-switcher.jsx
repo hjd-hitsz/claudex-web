@@ -8,6 +8,8 @@ export function HeaderSwitcher({
   triggerLabel,
   groupLabel,
   title = label,
+  icon,
+  iconOnly = false,
   compactIcon,
   emptyLabel,
   current,
@@ -25,7 +27,10 @@ export function HeaderSwitcher({
   useEffect(() => {
     if (!open) return;
     if (focusEdge.current) {
-      panel.current.querySelector(focusEdge.current)?.focus();
+      const buttons = [
+        ...panel.current.querySelectorAll("button:not(:disabled)"),
+      ];
+      buttons.at(focusEdge.current === "first" ? 0 : -1)?.focus();
       focusEdge.current = null;
     }
     function closeOnOutsidePress(event) {
@@ -52,12 +57,14 @@ export function HeaderSwitcher({
     if (!open) {
       if (event.key !== "ArrowUp" && !down) return;
       event.preventDefault();
-      focusEdge.current = down ? "button:first-child" : "button:last-child";
+      focusEdge.current = down ? "first" : "last";
       setOpen(true);
       return;
     }
     event.preventDefault();
-    const buttons = [...panel.current.querySelectorAll("button")];
+    const buttons = [
+      ...panel.current.querySelectorAll("button:not(:disabled)"),
+    ];
     const index = buttons.indexOf(document.activeElement);
     if (event.key === "Home") buttons[0]?.focus();
     else if (event.key === "End") buttons.at(-1)?.focus();
@@ -91,7 +98,8 @@ export function HeaderSwitcher({
         }}
       >
         {compactIcon}
-        <span>{label}</span>
+        {icon}
+        {!iconOnly && <span>{label}</span>}
         <ChevronDown
           className="switcher-chevron"
           size={12}
@@ -118,6 +126,7 @@ export function HeaderSwitcher({
               title={option.title || option.label}
               aria-description={option.description}
               aria-current={option.value === current || undefined}
+              disabled={option.disabled}
               onClick={() => {
                 close();
                 if (option.value !== current) onSelect(option.value);

@@ -84,7 +84,7 @@ requires_openai_auth = true
 
 ### 使用 Claude 账户
 
-以运行服务的同一系统用户登录，然后在网页模型菜单中选择 Claude 原生模型。
+以运行服务的同一系统用户登录。点击顶部文件夹左侧的后端图标选择 Claude Code，再从输入区选择 Claude 原生模型。
 
 ```bash
 claude auth login
@@ -95,6 +95,10 @@ claude auth login
 在网页「设置 → 模型服务商」中点击「添加供应商」。
 
 DeepSeek 等预置供应商直接填写 API Key。
+
+## 配置 Antigravity
+
+安装官方 Antigravity CLI 后，在「设置 → 后端 → Antigravity」启用。这里可以勾选显示的原生模型，并配置 Codex 和 Claude Code 委派。顶部文件夹左侧的后端图标用于切换到 Antigravity。[配置说明](docs/deployment.md#antigravity-与委派)
 
 ## 命令行用法
 

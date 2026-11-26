@@ -100,12 +100,16 @@ test("两个后端独立持久保存子代理模型，局部保存保留启停�
   }
   let restored = await createBackendConfiguration(config).read();
   assert.deepEqual(
-    restored.backends.map((backend) => backend.subagentModel),
+    restored.backends
+      .filter(({ id }) => id !== "agy")
+      .map((backend) => backend.subagentModel),
     ["codex-child", "claude-child"],
   );
   assert.ok(restored.backends.every((backend) => !backend.enabled));
   assert.deepEqual(
-    restored.backends.map((backend) => backend.subagentEffort),
+    restored.backends
+      .filter(({ id }) => id !== "agy")
+      .map((backend) => backend.subagentEffort),
     ["high", "high"],
   );
   assert.deepEqual(restored.backends[0].hiddenModels, ["hidden"]);

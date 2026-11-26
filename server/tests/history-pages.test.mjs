@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createHistoryPages } from "../src/backends/claude/history-pages.mjs";
+import { createHistoryPages } from "../src/backends/history-pages.mjs";
 import { page } from "../src/backends/claude/history.mjs";
 
 test("Claude 分页游标复用原生历史快照，新读取看见实时追加和原地编辑", async (t) => {

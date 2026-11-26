@@ -216,7 +216,9 @@ export function ResizableDialog({ resizeId, onDismiss, children, ...props }) {
   useLayoutEffect(() => {
     const dialog = ref.current;
     dialog.showModal();
-    dialog.querySelector("[data-dialog-focus]")?.focus({ preventScroll: true });
+    [...dialog.querySelectorAll("[data-dialog-focus]")]
+      .find((element) => element.getClientRects().length)
+      ?.focus({ preventScroll: true });
     return () => dialog.close();
   }, []);
 

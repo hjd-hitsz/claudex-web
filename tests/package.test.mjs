@@ -123,7 +123,7 @@ test(
     } while (response.id !== "settings");
     assert.deepEqual(
       response.result.backends.map((entry) => entry.id),
-      ["codex", "claude"],
+      ["codex", "claude", "agy"],
     );
 
     await writeFile(join(bin, "codex"), '#!/bin/sh\nprintf "%s\\n" "$*"\n', {
@@ -183,6 +183,9 @@ test(
       "server/src/auth-http.mjs",
       "server/src/auth-login.mjs",
       "server/src/auth-totp.mjs",
+      "server/src/backends/agy/role-settings.mjs",
+      "server/src/backends/agy/secretary.md",
+      "server/src/backends/agy/secretary-agent.md",
       "server/src/backends/codex/adapter.mjs",
       "server/src/backends/codex/upstream.mjs",
       "server/src/backends/codex/resume-lifecycle.mjs",

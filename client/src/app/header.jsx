@@ -5,8 +5,7 @@ import { PanelLeft, Plus, MoreHorizontal } from "lucide-react";
 import { useStore, newChat } from "../store.js";
 import { IconButton } from "../ui/primitives.jsx";
 import { useDismissibleMenu } from "../ui/dismissible-menu.js";
-import { BackendBadge } from "../features/backends/backend-badge.jsx";
-import { currentBackendId } from "../domain/backends.js";
+import { BackendSwitcher } from "./backend-switcher.jsx";
 import { ThreadMenu } from "./thread-row.jsx";
 import { ProjectSwitcher } from "./project-switcher.jsx";
 import { ConversationSwitcher } from "./conversation-switcher.jsx";
@@ -23,7 +22,7 @@ export function Header({ sidebarOpener, onShowSidebar, onShowMaintenance }) {
         ref={sidebarOpener}
         onClick={onShowSidebar}
       />
-      <BackendBadge backendId={currentBackendId(s)} />
+      <BackendSwitcher state={s} />
       <div className="breadcrumb">
         <ProjectSwitcher state={s} path={path} />
         <ConversationSwitcher state={s} path={path} />

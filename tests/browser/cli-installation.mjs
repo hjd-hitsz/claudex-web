@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { settingsPage } from "../helpers/settings-navigation.mjs";
+import {
+  settingsBackend,
+  openSettingsPage,
+} from "../helpers/settings-navigation.mjs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
@@ -99,7 +102,10 @@ try {
     if (!(await settings.isVisible()))
       await page.getByRole("button", { name: "显示侧栏", exact: true }).click();
     await settings.click();
-    if (!before) await settingsPage(page, "后端").click();
+    if (!before) {
+      await openSettingsPage(page, "后端");
+      await settingsBackend(page, "Codex").click();
+    }
     await page.locator(".backend-card").first().waitFor();
   };
   await open();
@@ -119,6 +125,7 @@ try {
     const claude = page
       .locator(".backend-card")
       .filter({ has: page.locator("strong", { hasText: /^Claude Code$/ }) });
+    await settingsBackend(page, "Claude Code").click();
     await claude.getByRole("button", { name: "一键安装", exact: true }).click();
     await claude.locator(".backend-version").waitFor();
     assert.equal(await claude.locator(".cli-error-details").count(), 0);

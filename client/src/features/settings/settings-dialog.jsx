@@ -52,6 +52,19 @@ export function SettingsDialog({
           <img src={productIcon} width="28" height="28" alt="" />
           <span>设置</span>
         </div>
+        <select
+          className="settings-compact-navigation"
+          aria-label="设置分类"
+          data-dialog-focus={!focusMaintenance ? "" : undefined}
+          value={active}
+          onChange={(event) => select(event.target.value)}
+        >
+          {pages.map(({ id, title }) => (
+            <option key={id} value={id}>
+              {title}
+            </option>
+          ))}
+        </select>
         <nav className="settings-navigation" aria-label="设置分类">
           {pages.map(({ id, title, Icon }) => (
             <button
@@ -88,7 +101,7 @@ export function SettingsDialog({
           )}
           {visited.has("backends") && (
             <div hidden={active !== "backends"}>
-              <BackendSettings />
+              <BackendSettings visible={active === "backends"} />
             </div>
           )}
           {visited.has("providers") && (

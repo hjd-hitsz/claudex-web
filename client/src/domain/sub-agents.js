@@ -34,7 +34,14 @@ export function isSubAgentItem(item) {
 }
 
 export function isActiveSubAgent(agent) {
-  return ["pendingInit", "running", "inProgress"].includes(agent.status);
+  return [
+    "accepted",
+    "starting",
+    "waiting",
+    "pendingInit",
+    "running",
+    "inProgress",
+  ].includes(agent.status);
 }
 
 export function subAgentAction(item) {
@@ -70,7 +77,15 @@ export function subAgents(items) {
           path?.split("/").filter(Boolean).at(-1) ||
           previous?.name ||
           `子代理 ${agents.size + 1}`,
-        status: state?.status || eventStatus || previous?.status || "unknown",
+        status:
+          item.agentStatus ||
+          state?.status ||
+          eventStatus ||
+          previous?.status ||
+          "unknown",
+        ...((item.delegation || previous?.delegation) && {
+          delegation: item.delegation || previous.delegation,
+        }),
         message: state?.message || previous?.message,
         prompt: item.prompt || previous?.prompt,
         model: item.model || previous?.model,

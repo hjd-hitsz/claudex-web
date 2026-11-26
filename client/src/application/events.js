@@ -18,6 +18,7 @@ export function createEvents({
   report,
   notice,
   notifications,
+  updateAgyCatalogue,
 }) {
   function closeTerminal(processId) {
     const terminal = get().terminals[processId];
@@ -42,6 +43,10 @@ export function createEvents({
     }
   }
   function handle({ method, params: p = {} }) {
+    if (p.threadId) {
+      const { backendId, nativeId } = resourceTarget(p.threadId);
+      if (backendId === "agy" && nativeId.startsWith("delegation/")) return;
+    }
     if (method === "lan/executionStatus") {
       if (get().active[p.threadId] === p.turnId)
         set({
@@ -77,6 +82,10 @@ export function createEvents({
     }
     if (method === "thread/deleted") {
       catalog.forgetThread(p.threadId);
+      return;
+    }
+    if (method === "lan/agy/models") {
+      updateAgyCatalogue(p);
       return;
     }
     if (method === "thread/archived") {
@@ -262,6 +271,11 @@ export function createEvents({
     if (p.threadId !== get().current?.id) return;
     if (method === "thread/settings/updated")
       set({
+        ...(get().backendId === "agy" &&
+          p.threadSettings.model && {
+            model: p.threadSettings.model,
+            effort: p.threadSettings.reasoningEffort || "",
+          }),
         serviceTier: p.threadSettings.serviceTier ?? null,
         ...(p.threadSettings.collaborationMode?.mode && {
           mode: p.threadSettings.collaborationMode.mode,

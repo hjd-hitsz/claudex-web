@@ -42,6 +42,8 @@ export const {
   setDraft,
   setProjectDirectory,
   newChat,
+  switchBackend,
+  readAgyCatalogue,
   openThread,
   refreshThreadAccess,
   loadHistory,

@@ -94,6 +94,11 @@ export function parseComposerCommand(text, native = []) {
 }
 
 export function commandAvailable(command, state) {
+  if (
+    state.backendId === "agy" &&
+    ["plan", "goal", "review", "skills", "stop"].includes(command.id)
+  )
+    return false;
   return (
     (!command.current || !!state.current) &&
     (!command.active || !!state.active[state.current?.id])
@@ -153,6 +158,8 @@ async function executeCommand(text) {
   const { command, name, args } = parsed;
   if (!command) throw new Error(`未识别的命令 /${name}。输入 / 查看可用命令。`);
   let s = store.get();
+  if (s.backendId === "agy" && !commandAvailable(command, s))
+    throw new Error(`Antigravity 当前无法使用 /${name}。`);
   if (command.id === "goal" && !s.current) {
     if (!args) {
       store.set({ goalMode: true, mode: "default" });

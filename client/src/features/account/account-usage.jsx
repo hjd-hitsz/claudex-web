@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { Settings, Wallet } from "lucide-react";
 import { useStore, set, refreshUsage } from "../../store.js";
+import antigravityIcon from "../../assets/antigravity.svg";
 import { providerBrandIcons } from "../../assets/providers/brand-icons.js";
 import {
   quotaSnapshot,
@@ -70,12 +71,16 @@ export function AccountFooter() {
   const s = useStore();
   const backendId = currentBackendId(s);
   const codex = backendId === "codex";
+  const agy = backendId === "agy";
   const connected = s.connected && backendReady(s);
   const quotaEnabled = codex
     ? !s.account || s.account.type === "chatgpt"
-    : s.account?.usageSupported === true;
-  const provider = !codex && s.providers?.find(({ id }) => id === s.providerId);
-  const brandIcon = providerBrandIcons.get(provider?.icon);
+    : agy || s.account?.usageSupported === true;
+  const provider =
+    !codex && !agy && s.providers?.find(({ id }) => id === s.providerId);
+  const brandIcon = agy
+    ? antigravityIcon
+    : providerBrandIcons.get(provider?.icon);
   const [expanded, setExpanded] = useState(false);
   const footer = useRef(null);
   const toggle = useRef(null);
@@ -132,6 +137,8 @@ export function AccountFooter() {
 
   const windows = quotaWindows(s.usage);
   const hasWindows = windows.length > 0;
+  const summaryWindows = agy ? windows.slice(0, 2) : windows;
+  const amounts = quotaSnapshot(s.usage)?.amounts || [];
   const balances = quotaSnapshot(s.usage)?.balances || [];
   const money = (value, currency) =>
     Number(value).toLocaleString("zh-CN", {
@@ -146,12 +153,15 @@ export function AccountFooter() {
   const plan = quotaPlan(s.account, s.usage);
   const name = codex
     ? s.account?.email?.split("@")[0] || plan || "Codex"
-    : provider?.name || s.account?.email?.split("@")[0] || "Claude Code";
+    : agy
+      ? "Antigravity"
+      : provider?.name || s.account?.email?.split("@")[0] || "Claude Code";
   const apiAccount = s.account && !quotaEnabled;
   const stale =
     (s.usageError || !connected) &&
     (hasWindows ||
       balances.length > 0 ||
+      amounts.length > 0 ||
       credits !== null ||
       extraUsage !== null);
   return (
@@ -187,6 +197,12 @@ export function AccountFooter() {
             {plan && <span className="account-plan">{plan}</span>}
           </div>
           <UsageMeters usage={s.usage} />
+          {amounts.map(({ id, label, remaining }) => (
+            <div className="quota-credits" key={id}>
+              <span>{label}</span>
+              <b>{remaining.toLocaleString("zh-CN")}</b>
+            </div>
+          ))}
           {balances.map((balance) => (
             <div key={balance.currency}>
               <div className="quota-credits">
@@ -227,6 +243,7 @@ export function AccountFooter() {
           )}
           {!hasWindows &&
             !balances.length &&
+            !amounts.length &&
             credits === null &&
             extraUsage === null && (
               <p
@@ -282,14 +299,14 @@ export function AccountFooter() {
             data-stale={stale ? "true" : undefined}
             onClick={() => setExpanded(!expanded)}
           >
-            {windows.map((window, index) => {
+            {summaryWindows.map((window, index) => {
               const remaining = quotaRemaining(window);
               return (
                 <span
                   className="quota-summary"
                   key={index}
                   role="progressbar"
-                  aria-label={`${quotaLabel(window.windowDurationMins)}剩余`}
+                  aria-label={`${quotaLabel(window.windowDurationMins, window.label)}剩余`}
                   aria-valuenow={Math.round(remaining)}
                   aria-valuemin={0}
                   aria-valuemax={100}

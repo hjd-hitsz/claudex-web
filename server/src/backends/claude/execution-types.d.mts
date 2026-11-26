@@ -24,7 +24,8 @@ import type {
 
 export type PendingQuestion = {
   threadId: string;
-  input: AskUserQuestionInput;
+  input: AskUserQuestionInput | Record<string, unknown>;
+  permission?: boolean;
   question: { id: string; method: string; params: Record<string, unknown> };
   resolve: (result: PermissionResult) => void;
 };
@@ -133,6 +134,7 @@ export type QueuedExecution = {
   mode: string;
   review?: boolean;
   compact?: boolean;
+  delegation?: "research" | "implementation";
 };
 
 export type InputPart = { type: string; text?: string; url?: string };
@@ -147,7 +149,7 @@ export type QueuedInput = QueuedExecution & {
 
 export type ActiveExecution = {
   turn: ExecutionTurn;
-  queued: Pick<QueuedInput, "review" | "compact" | "peer">;
+  queued: Pick<QueuedInput, "review" | "compact" | "peer" | "delegation">;
   query?: Query | null;
   interrupted?: boolean;
   goalId?: string;
@@ -297,7 +299,13 @@ export type RuntimeDependencies = Pick<
 export type TurnRequest = Partial<
   Pick<
     QueuedInput,
-    "model" | "providerId" | "effort" | "serviceTier" | "review" | "goalId"
+    | "model"
+    | "providerId"
+    | "effort"
+    | "serviceTier"
+    | "review"
+    | "goalId"
+    | "delegation"
   >
 > & {
   input: readonly InputPart[];

@@ -2,12 +2,19 @@ import { newDraftKey } from "../infrastructure/backend-storage.js";
 import { persist, saved } from "../infrastructure/storage.js";
 import { compatibleEffort } from "../domain/model-preferences.js";
 import { backendEnabled } from "../domain/backend-visibility.js";
+import { isModelHidden, modelProviderName } from "../domain/backends.js";
 import { isBackendPreference } from "../../../shared/backend-preferences.mjs";
 import { isSubagentSettings } from "../../../shared/subagent-settings.mjs";
 import {
   modelServiceTiers,
   resolveServiceTier,
 } from "../domain/service-tier.js";
+function modelChoicesFor(choices, backendId, providerId) {
+  return (choices || []).filter(
+    (entry) => entry.backendId === backendId && entry.providerId === providerId,
+  );
+}
+
 export function createBackends({
   get,
   set,
@@ -18,8 +25,73 @@ export function createBackends({
   onSelectionChanged = () => {},
 }) {
   let revision = 0;
-  let selectionRevision = 0;
   const attachments = new Map();
+  let agyCatalogue;
+
+  function readAgyCatalogue(cwd) {
+    const connection = transport?.connection;
+    if (!agyCatalogue || agyCatalogue.connection !== connection)
+      agyCatalogue = { connection };
+    const cache = agyCatalogue;
+    if (cache.data) return Promise.resolve(cache.data);
+    return (cache.pending ||= rpc("model/list", {
+      backendId: "agy",
+      cwd,
+      providerId: "",
+    })
+      .then(({ data }) => {
+        if (
+          !cache.data &&
+          cache === agyCatalogue &&
+          transport?.connection === connection
+        )
+          updateAgyCatalogue({ models: data });
+        return cache.data ?? data;
+      })
+      .finally(() => (cache.pending = undefined)));
+  }
+
+  function updateAgyCatalogue({ models: data, model, effort }) {
+    if (!backendEnabled(get().backends, "agy")) return;
+    const connection = transport?.connection;
+    if (!agyCatalogue || agyCatalogue.connection !== connection)
+      agyCatalogue = { connection };
+    agyCatalogue.data = data;
+    const { backendId, cwd, current, projectless } = get();
+    const choices = data.map((entry) => ({
+      ...entry,
+      backendId: "agy",
+      providerId: "",
+      providerName: "Antigravity",
+    }));
+    const patch = {
+      modelChoices: [
+        ...(get().modelChoices || []).filter(
+          (entry) => entry.backendId !== "agy",
+        ),
+        ...choices,
+      ],
+    };
+    if (backendId === "agy") {
+      patch.models = choices;
+      if (model !== undefined || effort !== undefined)
+        models.configure({ model: model || "", effort: effort || "" });
+      if (!current && !choices.some((choice) => choice.model === get().model)) {
+        const backend = get().backends.find((entry) => entry.id === "agy");
+        Object.assign(
+          patch,
+          models.projectModelSelection?.(
+            cwd,
+            projectless,
+            models.defaults,
+            choices.filter((entry) => !isModelHidden(backend, entry.model, "")),
+          ),
+        );
+      }
+    }
+    set(patch);
+  }
+
   async function activateBackend(id, choice) {
     if (!get().backends?.length) return;
     const epoch = ++revision;
@@ -75,12 +147,40 @@ export function createBackends({
       localStorage.setItem(newDraftKey(previous), get().draft);
       attachments.set(previous, get().attachments);
     }
+    const cachedModels =
+      sameAccount && !choice
+        ? get().models
+        : modelChoicesFor(get().modelChoices, id, initialProvider);
+    const available = (list) => {
+      const backend = get().backends.find((entry) => entry.id === id);
+      return id === "agy"
+        ? list.filter((entry) => !isModelHidden(backend, entry.model, ""))
+        : list;
+    };
+    const restoreDraft = (list) => {
+      const choices = available(list);
+      return (
+        models.projectModelSelection?.(
+          cwd,
+          get().projectless,
+          models.defaults,
+          choices,
+        ) || {
+          model:
+            choices.find((entry) => entry.isDefault)?.model ||
+            choices[0]?.model ||
+            "",
+          effort: "",
+        }
+      );
+    };
     models.disconnect();
     set({
       backendId: id,
       ...(previous !== id && {
         terminalOpen: false,
         contextOpen: false,
+        agyDelegateTo: undefined,
         panel: null,
         panelFile: null,
       }),
@@ -90,15 +190,7 @@ export function createBackends({
       }),
       providers: sameAccount ? get().providers : [],
       providerId: initialProvider,
-      models: choice
-        ? get().modelChoices.filter(
-            (entry) =>
-              entry.backendId === choice.backendId &&
-              entry.providerId === choice.providerId,
-          )
-        : sameAccount
-          ? get().models
-          : [],
+      models: cachedModels,
       model: "",
       effort: "",
       ...(!sameAccount && {
@@ -114,199 +206,162 @@ export function createBackends({
       ...threadSelection,
     });
     persist("cx-backend", id);
-    const accountProvider = get().providerId;
-    const [
-      modelResult,
-      providerResult,
-      accountResult,
-      codexResult,
-      claudeResult,
-      configResult,
-    ] = await Promise.allSettled([
-      rpc("model/list", {
-        backendId: id,
-        cwd,
-        providerId: get().providerId,
-      }),
-      rpc("lan/providers/list", { backendId: "claude" }),
-      rpc("account/read", {
-        backendId: id,
-        cwd,
-        providerId: get().providerId,
-        refreshToken: false,
-      }),
-      id === "codex"
-        ? get().backends.some(
-            (backend) => backend.id === "claude" && backend.enabled,
-          )
-          ? rpc("model/list", { backendId: "claude", cwd })
-          : Promise.resolve(null)
-        : rpc("model/list", { backendId: "codex", cwd }),
-      id === "claude"
-        ? rpc("model/list", {
-            backendId: "claude",
-            providerId: "",
-            cwd,
-          })
-        : Promise.resolve(null),
-      rpc("config/read", {
-        backendId: id,
-        cwd,
-        providerId: get().providerId,
-        includeLayers: false,
-      }),
-    ]);
-    if (!current()) return;
-    if (modelResult.status === "rejected") report(modelResult.reason);
-    const nativeModels =
-      modelResult.status === "fulfilled" ? modelResult.value.data : [];
-    const configured =
-      providerResult.status === "fulfilled"
-        ? providerResult.value.providers
-        : [];
-    const catalogues = await Promise.allSettled(
-      configured.map((provider) =>
-        rpc("model/list", {
-          backendId: "claude",
-          providerId: provider.id,
-          cwd,
-        }),
-      ),
-    );
-    if (!current()) return;
-    const allProviders = configured.map((provider, index) => ({
-      ...provider,
-      modelRecords:
-        catalogues[index].status === "fulfilled"
-          ? catalogues[index].value.data.map((model) => ({
-              ...model,
-              displayName:
-                provider.modelAliases?.[model.model] ||
-                model.displayName ||
-                model.model,
-            }))
-          : provider.models.map((model) => ({
-              id: model,
-              model,
-              displayName: provider.modelAliases?.[model] || model,
-              supportedReasoningEfforts: [],
-            })),
-    }));
-    const codex = get().backends.find((b) => b.id === id)?.type === "codex";
-    const providers = codex ? [] : allProviders;
-    const codexModels = codex
-      ? nativeModels
-      : codexResult.status === "fulfilled"
-        ? codexResult.value?.data || []
-        : [];
-    const modelChoices = [
-      ...codexModels.map((model) => ({
-        backendId: "codex",
-        providerId: "",
-        providerName: "ChatGPT",
-        ...model,
-      })),
-      ...((id === "claude" ? claudeResult : codexResult).status === "fulfilled"
-        ? (
-            (id === "claude" ? claudeResult : codexResult).value?.data || []
-          ).map((model) => ({
-            ...model,
-            backendId: "claude",
-            providerId: "",
-            providerName: "Claude",
-          }))
-        : []),
-      ...allProviders.flatMap((provider) =>
-        provider.modelRecords.map((model) => ({
-          ...model,
-          backendId: "claude",
-          providerId: provider.id,
-          providerName: provider.name,
-        })),
-      ),
-    ].filter((choice) =>
-      get().backends.some((b) => b.id === choice.backendId && b.enabled),
-    );
-    const preserveSelection = Boolean(get().model);
-    const selected = preserveSelection
-      ? get().providerId
-      : saved("cx-provider-" + id, "");
-    const provider = providers.find((p) => p.id === selected);
-    const list =
-      provider?.modelRecords ||
-      (provider
-        ? provider.models.map((model) => ({
+    if (!threadSelection && !get().current && cachedModels?.length)
+      set(restoreDraft(cachedModels));
+
+    const initialSelection = () =>
+      !choice && !get().current && models.revision === modelRevision;
+    const preferences = models.syncProjectModels?.().catch((error) => {
+      if (current()) report(error);
+    });
+    const providerList = rpc("lan/providers/list", { backendId: "claude" })
+      .then((result) => result.providers || [])
+      .catch(() => null);
+    const catalogues = new Map();
+    function readCatalogue(backendId, providerId, provider) {
+      const key = JSON.stringify([backendId, providerId]);
+      if (catalogues.has(key)) return catalogues.get(key);
+      const list =
+        backendId === "agy"
+          ? readAgyCatalogue(cwd)
+          : rpc("model/list", { backendId, cwd, providerId }).then(
+              (result) => result.data,
+            );
+      const request = list
+        .catch((error) => {
+          if (!provider) throw error;
+          return provider.models.map((model) => ({
             id: model,
             model,
-            displayName: provider.modelAliases?.[model] || model,
             supportedReasoningEfforts: [],
-          }))
-        : id === "claude"
-          ? claudeResult.status === "fulfilled"
-            ? claudeResult.value?.data || []
-            : []
-          : nativeModels);
-    const model = list.find((m) => m.isDefault)?.model || list[0]?.model || "";
-    const selectedModel = list.find((entry) => entry.model === get().model);
-    const tier =
-      selectedModel && resolveServiceTier(get().serviceTier, selectedModel);
-    const config =
-      configResult.status === "fulfilled"
-        ? configResult.value.config || {}
-        : {};
-    models.configure({
-      model: config.model || model,
-      effort: config.model_reasoning_effort || "",
-    });
-    set({
-      providers,
-      modelChoices,
-      models: list,
-      ...(!preserveSelection && {
-        providerId: provider?.id || "",
-        model,
-        effort: "",
-        serviceTier: config.service_tier ?? null,
-      }),
-      ...(preserveSelection &&
-        selectedModel && {
-          effort: compatibleEffort(get().effort, selectedModel),
-          serviceTier: modelServiceTiers(selectedModel).some(
-            (option) => option.id === tier,
-          )
-            ? tier
-            : null,
-        }),
-      ...(get().providerId === accountProvider && {
-        account:
-          accountResult.status === "fulfilled"
-            ? accountResult.value.account
-            : sameAccount
-              ? get().account
-              : null,
-      }),
-    });
-    try {
-      await models.syncProjectModels?.();
-    } catch (error) {
-      if (current()) report(error);
+          }));
+        })
+        .then((list) => {
+          const providerName =
+            provider?.name || modelProviderName([], backendId, providerId);
+          const choices = list.map((model) => ({
+            ...model,
+            displayName:
+              provider?.modelAliases?.[model.model] ||
+              model.displayName ||
+              model.model,
+            backendId,
+            providerId,
+            providerName,
+          }));
+          if (current())
+            set({
+              modelChoices: [
+                ...(get().modelChoices || []).filter(
+                  (entry) =>
+                    entry.backendId !== backendId ||
+                    entry.providerId !== providerId,
+                ),
+                ...choices,
+              ],
+            });
+          return choices;
+        });
+      catalogues.set(key, request);
+      return request;
     }
-    if (
-      current() &&
-      !choice &&
-      !get().current &&
-      models.revision === modelRevision &&
-      models.projectModelSelection
-    ) {
-      set(
-        models.projectModelSelection(
-          cwd,
-          get().projectless,
-          models.defaults,
-          get().models,
-        ),
+
+    async function restoreActiveBackend() {
+      const configured = initialProvider ? await providerList : null;
+      if (!current() || get().providerId !== initialProvider) return;
+      const provider = configured?.find(
+        (entry) => entry.id === initialProvider,
       );
+      const providerId =
+        configured && !provider && initialSelection() ? "" : initialProvider;
+      if (providerId !== initialProvider)
+        set({ providerId, model: "", effort: "", models: [] });
+      const selected = () => current() && get().providerId === providerId;
+      const params = { backendId: id, cwd, providerId };
+      const account = rpc("account/read", { ...params, refreshToken: false })
+        .then((result) => {
+          if (selected()) set({ account: result.account });
+        })
+        .catch(() => {});
+      const configuration = rpc("config/read", {
+        ...params,
+        includeLayers: false,
+      })
+        .then((result) => result.config || {})
+        .catch(() => ({}));
+      const catalogue = await readCatalogue(id, providerId, provider).catch(
+        (error) => {
+          if (selected()) report(error);
+          return null;
+        },
+      );
+      if (catalogue && selected()) {
+        const applyDraft = () => {
+          if (selected() && initialSelection()) set(restoreDraft(get().models));
+        };
+        const selectedModel = catalogue.find(
+          (entry) => entry.model === get().model,
+        );
+        const tier = resolveServiceTier(get().serviceTier, selectedModel);
+        set({
+          models: catalogue,
+          ...(selectedModel && {
+            effort: compatibleEffort(get().effort, selectedModel),
+            serviceTier: modelServiceTiers(selectedModel).some(
+              (option) => option.id === tier,
+            )
+              ? tier
+              : null,
+          }),
+        });
+        applyDraft();
+        const config = await configuration;
+        if (selected()) {
+          models.configure({
+            model: config.model || "",
+            effort: config.model_reasoning_effort || "",
+          });
+          if (initialSelection()) {
+            if (!threadSelection)
+              set({ serviceTier: config.service_tier ?? null });
+            applyDraft();
+          }
+        }
+        await preferences;
+        applyDraft();
+      }
+      await account;
     }
+
+    const active = restoreActiveBackend();
+    const native = get()
+      .backends.filter(
+        (backend) =>
+          backend.enabled &&
+          (backend.id !== id || initialProvider) &&
+          (backend.id !== "agy" || backend.ready),
+      )
+      .map((backend) => readCatalogue(backend.id, "").catch(() => {}));
+    const providers = providerList.then(async (configured) => {
+      if (!configured || !current()) return;
+      const enabled = new Set(configured.map(({ id }) => id));
+      set({
+        modelChoices: (get().modelChoices || []).filter(
+          (entry) =>
+            entry.backendId !== "claude" ||
+            !entry.providerId ||
+            enabled.has(entry.providerId),
+        ),
+      });
+      const records = await Promise.all(
+        configured.map(async (provider) => ({
+          ...provider,
+          modelRecords: await readCatalogue("claude", provider.id, provider),
+        })),
+      );
+      if (current() && id === "claude") set({ providers: records });
+    });
+    await Promise.all([active, preferences, providers, ...native]);
   }
   function selectProvider(id, choice) {
     id ??= "";
@@ -345,31 +400,16 @@ export function createBackends({
     if (changed) onSelectionChanged();
   }
   async function selectModelChoice(choice) {
-    if (!choice) return;
-    if (get().busy || get().loading) return;
+    if (
+      !choice ||
+      get().busy ||
+      get().loading ||
+      choice.backendId !== get().backendId
+    )
+      return;
     if (
       get().active[get().current?.id] &&
       choice.providerId !== get().providerId
-    )
-      return;
-    if (get().current && choice.backendId !== get().backendId) return;
-    const selection = ++selectionRevision;
-    const threadId = get().current?.id;
-    const draft = get().draft;
-    const attachments = get().attachments;
-    if (choice.backendId !== get().backendId) {
-      const activating = activateBackend(choice.backendId, choice);
-      persist("cx-provider-" + choice.backendId, choice.providerId);
-      models.selectModel(choice);
-      set({ draft, attachments });
-      localStorage.setItem(newDraftKey(choice.backendId), draft);
-      await activating;
-      return;
-    }
-    if (
-      selection !== selectionRevision ||
-      threadId !== get().current?.id ||
-      choice.backendId !== get().backendId
     )
       return;
     if (choice.backendId === "claude" && choice.providerId !== get().providerId)
@@ -386,7 +426,12 @@ export function createBackends({
   async function saveBackend(value) {
     const result = await rpc("lan/backends/save", value);
     set({ backends: result.backends });
-    if (isSubagentSettings(value) || isBackendPreference(value)) return;
+    if (
+      isSubagentSettings(value) ||
+      isBackendPreference(value) ||
+      value.delegates
+    )
+      return;
     await refreshBackends();
   }
   async function saveProvider(value) {
@@ -405,6 +450,8 @@ export function createBackends({
   return {
     removeProvider,
     activateBackend,
+    readAgyCatalogue,
+    updateAgyCatalogue,
     selectModelChoice,
     selectProvider,
     refreshBackends,

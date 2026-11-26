@@ -348,6 +348,18 @@ export function createClaudeAdapter({
         const q = questions.get(String(message.id));
         if (q) {
           questions.delete(String(message.id));
+          if (q.permission) {
+            q.resolve(
+              message.result?.optionId === "allow" && !message.error
+                ? { behavior: "allow", updatedInput: q.input }
+                : { behavior: "deny", message: "用户拒绝操作" },
+            );
+            notify("serverRequest/resolved", {
+              requestId: message.id,
+              threadId: q.threadId,
+            });
+            return;
+          }
           const answers = Object.fromEntries(
             q.input.questions.flatMap((question, index) => {
               const values = message.result?.answers?.[index]?.answers;

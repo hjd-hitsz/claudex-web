@@ -28,11 +28,15 @@
 .project-switcher {
   max-width: min(180px, 45%);
 }
+.backend-switcher {
+  flex: none;
+}
+.backend-switcher > button > .backend-badge {
+  display: inline-flex;
+}
 .conversation-switcher {
   display: inline-flex;
   max-width: min(470px, 100%);
-  padding-inline-start: 0.538462rem;
-  border-inline-start: 1px solid var(--border);
 }
 .header-switcher > button {
   padding: 0.384615rem 0.615385rem;

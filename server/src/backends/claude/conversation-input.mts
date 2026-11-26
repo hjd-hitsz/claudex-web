@@ -26,6 +26,7 @@ export function queuedInput(
     effort: params.effort,
     serviceTier: params.serviceTier,
     review: params.review === true,
+    delegation: params.delegation,
     goalId: params.goalId,
     createdAt: Date.now() / 1000,
     ...(peer && { peer }),
