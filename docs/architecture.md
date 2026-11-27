@@ -28,7 +28,7 @@ flowchart LR
 - `client/src/app` 组装应用外壳与路由，`features` 组织业务界面并通过参数取得外壳操作，`ui` 提供基础控件。`main.jsx` 只挂载，`store.js` 连接 React 订阅与应用动作。
 - 前端核心依赖方向为 `application → infrastructure → domain → shared`，应用层也可直接使用领域规则。`application` 管理用例与请求生命周期，`infrastructure` 访问 RPC 和浏览器存储，`domain` 维护纯规则。核心三层保持与 React 无关；`ui` 只依赖本层与领域层。
 - `server/src/server.mjs` 与 `application.mjs` 组装服务。`http` 处理 HTTP，`bridge` 维护公共网页操作，`backends/manager.mjs` 路由固定的执行后端和可选秘书后端，`workspace` 提供主机文件和网页交互终端。
-- `server/src/conversation-manager` 位于后端路由上层，通过注入的适配器发现会话、异步投递消息并核对回执。适配器持有原生协议，应用负责组装与关闭。
+- `server/src/conversation-manager` 负责跨后端会话目录、活动状态、异步投递与回执核对。网页与 MCP 共用管理器的活动判断。适配器持有原生协议并提供轮次与后台任务事实，应用负责组装与关闭。
 - HTTP 与公共桥接通过参数取得所需服务和状态；`backends/codex` 与 `backends/claude` 分别管理自己的原生传输、订阅与执行。公共桥接保持与具体后端解耦，两个原生适配器保持独立。
 - `shared` 提供跨端纯逻辑，只依赖本层；前后端通过协议协作。`packages/background-terminal` 与 `packages/translation-engine` 各自只依赖本子项目及外部包。
 
@@ -46,7 +46,7 @@ flowchart LR
 
 请求链为“界面 → 应用用例 → RPC → 桥接 → 所属后端”，通知与历史读取共同更新界面。请求确认、轮次结束和进程退出分别结算。异步结果按资源标识、请求修订和连接代次隔离，实时事件优先于迟到读取；断线保留草稿和可读历史，恢复后核对原生状态。每个异步操作明确取消、清理、失败呈现和恢复依据。
 
-局域网浏览器使用同源 HTTPS/WSS。可选 P2P 使用链接授权和 HTTPS 信令建立 WebRTC 直连，随后使用与局域网一致的网页登录流程。业务请求校验所属传输的登录会话，退出或过期撤销会话和传输权限。协议和生命周期见[传输与维护契约](architecture/behavior.md#传输与维护契约)。
+局域网浏览器使用同源 HTTPS/WSS。可选 P2P 使用链接授权和 HTTPS 信令建立 WebRTC 直连，随后使用与局域网一致的网页登录流程。业务请求校验所属传输的登录会话，退出或过期撤销会话和传输权限。配置与使用见[HTTPS 与系统登录](deployment.md#https-与系统登录)及 [P2P 远程访问](deployment.md#p2p-远程访问)。
 
 ## 构建与验证
 
@@ -58,12 +58,12 @@ flowchart LR
 
 以下按职责提供下一层入口，Agent 自主判断本任务需要哪些内容。
 
-- **产品行为**：[功能与状态契约](architecture/behavior.md)。
-  - [对话与历史](architecture/behavior.md#对话项目与历史)、[输入与草稿](architecture/behavior.md#输入草稿与执行)、[计划](architecture/behavior.md#计划模式)及[目标](architecture/behavior.md#目标交互)。
-  - [工作区、文件与终端](architecture/behavior.md#工作区文件与终端)、[子代理与渲染](architecture/behavior.md#子代理与共享渲染)、[账户与界面](architecture/behavior.md#账户登录与外观)。
-- **原生后端**：[双后端产品契约与实施](architecture/backends.md)，包含适配器职责、执行生命周期与协议差异；[回归审查](architecture/backend-regressions.md)保留兼容基线与验证依据。
-  - [秘书会话与委派](architecture/backends.md#antigravity-委派)维护秘书会话、后台任务和原生审批的契约。
-  - [通用会话管理器](architecture/backends.md#通用会话管理器)维护活跃会话发现、会话间通信与投递恢复契约。
+- **产品行为**：[产品行为与交互契约](architecture/behavior.md)。
+  - [侧栏与会话状态](architecture/behavior.md#1-侧栏导航会话列表与状态指示)、[草稿](architecture/behavior.md#2-草稿生命周期与跨后端共享)、[计划](deployment.md#计划与执行)及[目标交互回归](development.md#目标交互回归)。
+  - [后台任务与终端](architecture/behavior.md#4-后台任务概览与交互终端-pty)、[外观与恢复](architecture/behavior.md#6-系统外观尺寸调节与异常恢复)。
+- **原生后端**：[多后端架构契约与实施规范](architecture/backends.md)，包含适配器职责、执行生命周期与协议差异；[回归审查](architecture/backend-regressions.md)保留兼容基线与验证依据。
+  - [秘书会话与委派](architecture/backends.md#42-antigravity-秘书后端与委派全链路)维护秘书会话、后台任务和原生审批的契约。
+  - [通用会话管理器](architecture/backends.md#3-通用会话管理器-conversation-manager)维护活跃会话发现、会话间通信与投递恢复契约。
   - [命令覆盖](cli-command-coverage.md)维护快捷命令及原生扩展；[Codex 后台终端](background-tasks.md)维护独立任务扩展；[翻译引擎](../packages/translation-engine/README.md)维护独立翻译子项目。
 - **开发与交付**：[开发者指南](development.md)提供本地环境、测试入口和源码服务操作。
   - [部署与维护](deployment.md)维护安装、配置、迁移和排障；[版本管理](versioning.md)维护版本准备、发布及重试。

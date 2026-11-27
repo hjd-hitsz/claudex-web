@@ -16,12 +16,23 @@ export function isArchivedThread(thread) {
   );
 }
 
-export function sortThreads(threads, active = {}) {
+export function isThreadRunning(thread, { active, conversationActivity }) {
+  const observed = conversationActivity?.[thread.id];
+  return Boolean(
+    active[thread.id] ||
+    (observed?.live &&
+      (!observed.turnId || observed.background) &&
+      !isArchivedThread(thread)),
+  );
+}
+
+export function sortThreads(threads, active = {}, conversationActivity) {
   return threads.slice().sort((a, b) => {
     const aRunning = Boolean(active[a.id]);
     const bRunning = Boolean(active[b.id]);
     return (
-      Number(bRunning) - Number(aRunning) ||
+      Number(isThreadRunning(b, { active, conversationActivity })) -
+        Number(isThreadRunning(a, { active, conversationActivity })) ||
       threadTime(b, bRunning) - threadTime(a, aRunning) ||
       a.id.localeCompare(b.id)
     );
@@ -71,13 +82,14 @@ export function projectGroups(
   projectlessRoot = "",
   projectOrder = [],
   active,
+  conversationActivity,
 ) {
   const groups = new Map(
     ["", ...projectOrder, ...projects].map((path) => [path, []]),
   );
   const times = new Map();
   const positions = new Map(projectOrder.map((path, index) => [path, index]));
-  for (const thread of sortThreads(threads, active)) {
+  for (const thread of sortThreads(threads, active, conversationActivity)) {
     const path = threadGroupPath(
       thread,
       projects,
@@ -109,6 +121,7 @@ export function sidebarProjectGroups(state, { includePinned = false } = {}) {
       : state.projectlessRoot,
     state.projectOrder ?? [],
     state.active,
+    state.conversationActivity,
   );
 }
 

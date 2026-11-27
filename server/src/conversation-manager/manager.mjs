@@ -3,6 +3,11 @@ import { join, normalize } from "node:path";
 import { createConversationGateway } from "./gateway.mjs";
 import { openConversationStore } from "./store.mjs";
 import {
+  conversationLifecycle,
+  createConversationActivity,
+  listConversationActivities,
+} from "./activity.mjs";
+import {
   conversationArguments,
   delegationStepToolName,
   delegationToolName,
@@ -17,7 +22,6 @@ const receiptStates = new Set([
 ]);
 const publicStatus = (status) =>
   status === "dispatching" ? "unknown" : status;
-const statusOf = (value) => value || "unknown";
 const stringFilter = (value, query) =>
   !query || value?.toLocaleLowerCase().includes(query.toLocaleLowerCase());
 const dispatchKey = ({ runtimeId, threadId }) =>
@@ -103,6 +107,7 @@ export function createConversationManager({
     console.error("Conversation manager:", error.message),
 }) {
   const backends = new Map();
+  const observe = createConversationActivity();
   const processing = new Map();
   const reconciliationDue = new Map();
   let closed = false;
@@ -126,6 +131,7 @@ export function createConversationManager({
       if (entry.backendId === backend.id) backends.delete(id);
     const entry = {
       backendId: backend.id,
+      enabled: backend.enabled !== false,
       getAdapter,
       projectThread,
       delegation,
@@ -184,13 +190,11 @@ export function createConversationManager({
       [...backends]
         .filter(([runtimeId]) => canRoute(caller.runtimeId, runtimeId))
         .map(async ([runtimeId, entry]) => {
-          const adapter = entry.getAdapter();
-          if (!adapter) return { threads: [], complete: false };
-          const result = await adapter.listActive();
-          const observed = Array.isArray(result) ? result : result.threads;
-          const threads = observed
+          const result = await observe(entry);
+          const threads = result.threads
             .filter(
               (thread) =>
+                (thread.live || thread.status === "unknown") &&
                 !sameAddress(
                   { runtimeId, threadId: thread.threadId },
                   caller,
@@ -202,9 +206,9 @@ export function createConversationManager({
             )
             .map((thread) => ({
               ...publicThread({ ...thread, runtimeId }),
-              status: statusOf(thread.status),
+              status: thread.status,
             }));
-          return { threads, complete: result.complete ?? true };
+          return { threads, complete: result.complete };
         }),
     );
     current(caller.runtimeId, callerEntry);
@@ -441,13 +445,19 @@ export function createConversationManager({
     timer.unref();
   }
 
+  function wakeThread(backendId, threadId) {
+    for (const [runtimeId, entry] of backends)
+      if (entry.backendId === backendId) wake({ runtimeId, threadId });
+  }
+
   return {
     bindBackend,
     wake,
-    wakeThread(backendId, threadId) {
-      for (const [runtimeId, entry] of backends)
-        if (entry.backendId === backendId) wake({ runtimeId, threadId });
-    },
+    wakeThread,
+    onNotification: (message) =>
+      conversationLifecycle(message, wake, wakeThread),
+    listActivity: (readActiveTurns) =>
+      listConversationActivities(backends, observe, readActiveTurns),
     async start() {
       try {
         await gateway.start();

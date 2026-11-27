@@ -1,7 +1,10 @@
 import React from "react";
 import { MessageSquare } from "lucide-react";
 import { openThread, titleOf } from "../store.js";
-import { sidebarProjectGroups } from "../domain/thread-order.js";
+import {
+  isThreadRunning,
+  sidebarProjectGroups,
+} from "../domain/thread-order.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { BackendBadge } from "../features/backends/backend-badge.jsx";
 import { HeaderSwitcher } from "./header-switcher.jsx";
@@ -28,9 +31,11 @@ export function ConversationSwitcher({ state, path }) {
       getOptions={() => {
         const groups = sidebarProjectGroups(state, { includePinned: true });
         const threads = groups.find(([folder]) => folder === path)?.[1] || [];
-        const hasRunning = threads.some((thread) => state.active[thread.id]);
+        const hasRunning = threads.some((thread) =>
+          isThreadRunning(thread, state),
+        );
         return threads.map((thread) => {
-          const running = Boolean(state.active[thread.id]);
+          const running = isThreadRunning(thread, state);
           return {
             value: thread.id,
             label: titleOf(thread),

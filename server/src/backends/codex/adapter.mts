@@ -1,4 +1,5 @@
 import { backgroundTaskViews } from "./background-task-views.mjs";
+import { createCodexBackgroundActivity } from "./background-activity.mjs";
 import {
   backgroundParams,
   backgroundTerminals,
@@ -226,9 +227,15 @@ export function createCodexAdapter({
     broadcast,
   });
   const { files } = methods;
+  const backgroundActivity = createCodexBackgroundActivity(
+    transport,
+    background,
+    config.upstreamUrl,
+  );
   const conversationManager = createCodexConversationManager({
     transport,
     subscriptions,
+    backgroundActivity,
     busy: (threadId: string, replying: boolean) =>
       compactions.busy(threadId) ||
       files.undoing.has(threadId) ||

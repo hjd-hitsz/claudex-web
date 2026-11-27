@@ -1,10 +1,12 @@
 import React, { createContext } from "react";
 import { useStoreSelector } from "../../store.js";
 import { useBackgroundTasks } from "./use-background-tasks.js";
+import { useConversationActivity } from "./use-conversation-activity.js";
 
 export const BackgroundTasks = createContext({ tasks: [] });
 
 export function BackgroundTaskProvider({ children }) {
+  useConversationActivity();
   const threadId = useStoreSelector((state) =>
     !state.loading && state.threadAccess?.status !== "loadError"
       ? state.current?.id

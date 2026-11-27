@@ -68,7 +68,11 @@ type WorkerOperations = {
   conversationList: {
     input: object;
     result: {
-      threads: (ConversationThread & { status: string })[];
+      threads: (ConversationThread & {
+        status: string;
+        background?: boolean;
+        generating?: boolean;
+      })[];
       complete: boolean;
     };
   };

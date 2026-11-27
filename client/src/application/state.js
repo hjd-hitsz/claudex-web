@@ -44,6 +44,7 @@ export function createAppState() {
     turns: {},
     turnTimings: {},
     active: {},
+    conversationActivity: {},
     executionStatuses: {},
     messageEditRequest: null,
     unreadCompletions: {},

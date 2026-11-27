@@ -13,7 +13,11 @@ import {
 } from "lucide-react";
 import { useStore, set, newChat, loadThreads, report } from "../store.js";
 import { IconButton } from "../ui/primitives.jsx";
-import { sidebarProjectGroups, sortThreads } from "../domain/thread-order.js";
+import {
+  isThreadRunning,
+  sidebarProjectGroups,
+  sortThreads,
+} from "../domain/thread-order.js";
 import { ProjectGroup } from "./project-group.jsx";
 import { ResizableSidebar } from "./sidebar-resize.jsx";
 import { AccountFooter } from "../features/account/account-usage.jsx";
@@ -24,18 +28,22 @@ export function Sidebar({ drawerOpen, onClose, onShowMaintenance }) {
   const [selection, setSelection] = useState({ id: null, retained: false });
   const selectedId = s.current?.id ?? null;
   const retained =
-    !!(s.active[selectedId] || s.unreadCompletions[selectedId]) ||
+    !!(
+      (s.current && isThreadRunning(s.current, s)) ||
+      s.unreadCompletions[selectedId]
+    ) ||
     (selection.id === selectedId && selection.retained);
   if (selection.id !== selectedId || selection.retained !== retained)
     setSelection({ id: selectedId, retained });
   const shortcuts = sortThreads(
     s.threads.filter(
       (t) =>
-        s.active[t.id] ||
+        isThreadRunning(t, s) ||
         s.unreadCompletions[t.id] ||
         (t.id === selectedId && retained),
     ),
     s.active,
+    s.conversationActivity,
   );
   const pinned = s.threads.filter((t) => s.pins.includes(t.id));
   const groups = sidebarProjectGroups(s);

@@ -5,6 +5,7 @@ import {
   formatLegacyConversationMessage,
 } from "../src/conversation-manager/message.mjs";
 import { createCodexConversationManager } from "../src/backends/codex/conversation-manager.mjs";
+import { createCodexBackgroundActivity } from "../src/backends/codex/background-activity.mjs";
 import {
   codexConversationMcpName,
   codexConversationToolParams,
@@ -44,6 +45,7 @@ function fixture(handlers, busy = () => false) {
   };
   const manager = createCodexConversationManager({
     transport,
+    backgroundActivity: createCodexBackgroundActivity(transport),
     subscriptions: {
       releasing: new Map(),
       retainThread: (threadId) => () => released.push(threadId),
@@ -63,10 +65,24 @@ test("discovers native loaded active threads and preserves available metadata", 
       cursor
         ? { data: [target.threadId, unavailable], nextCursor: null }
         : { data: [sender.threadId], nextCursor: "page-2" },
+    "thread/backgroundTerminals/list": ({ threadId, limit }) => {
+      assert.equal(limit, 1);
+      return {
+        data:
+          threadId === target.threadId ? [{ processId: "fixture-pty" }] : [],
+      };
+    },
     "thread/read": ({ threadId }) => {
       if (threadId === unavailable) throw new Error("metadata unavailable");
       if (threadId === target.threadId)
-        return { thread: { id: threadId, status: { type: "idle" } } };
+        return {
+          thread: {
+            id: threadId,
+            cwd: target.cwd,
+            name: target.title,
+            status: { type: "idle" },
+          },
+        };
       return {
         thread: {
           id: sender.threadId,
@@ -78,10 +94,16 @@ test("discovers native loaded active threads and preserves available metadata", 
       };
     },
   });
-  assert.deepEqual(await manager.listActive(), {
+  assert.deepEqual(await manager.observeThreads(), {
     complete: false,
     threads: [
-      { ...sender, projectId: "active-project", status: "waitingForApproval" },
+      {
+        ...sender,
+        projectId: "active-project",
+        status: "waitingForApproval",
+        background: false,
+      },
+      { ...target, status: "idle", background: true },
       { threadId: unavailable, title: "", cwd: "", status: "unknown" },
     ],
   });

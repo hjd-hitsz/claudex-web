@@ -1,229 +1,194 @@
-# 双后端产品契约与实施
+# 多后端架构契约与实施规范
 
-Claudex Web 提供一致的浏览器工作台，连接一个 Codex app-server 和一个 Claude Code 运行时。模型选择决定执行后端，用户操作及其状态、错误恢复和数据保护规则由网页产品契约决定。后端适配层负责实现完整契约；原生协议差异在服务端吸收。既有 Codex 的正常调用链作为回归基线，Claude 适配补齐同一产品操作，共享实现按实际职责确定。
+本文档定义 Claudex Web 连接与调度多个底层 AI 运行时（Codex、Claude Code、Antigravity）的核心系统架构、接口契约及状态流转标准。后端适配层负责吸收原生协议差异，向前端统一工作台提供一致的产品操作语义。
 
-## 职责与依赖
+---
+
+## 1. 系统架构与分层设计
+
+Claudex Web 采用“统一应用工作台 + 通用会话管理 + 插件化后端适配器”的分层架构：
 
 ```mermaid
 flowchart TD
-  UI[统一网页：对话、输入、工作区、设置] --> UseCases[应用用例：操作与恢复规则]
-  UseCases --> Contract[产品操作契约与资源标识]
-  Contract --> Workspace[工作区服务：文件、命令、网页终端]
-  Contract --> Router[对话路由与后端生命周期]
-  Conversations[通用会话管理器] --> Router
-  Router --> Codex[Codex 适配器]
-  Router --> IPC[本机 IPC 客户端]
-  IPC --> Worker[Claude 独立执行服务]
-  Worker --> Claude[Claude Code 适配器]
-  Claude --> Sessions[原生会话与历史服务]
-  Claude --> Runs[执行、计划、整理、提问]
-  Claude --> Tasks[目标与后台任务]
-  Claude --> Extensions[模型、技能、插件、MCP]
+    subgraph Client ["前端应用层 (Browser Client)"]
+        UI["统一工作台：会话、富文本输入、工作区、设置"]
+        State["前端状态机：连接管理、草稿同步、事件总线"]
+    end
+
+    subgraph CoreServer ["服务端核心 (Server Core)"]
+        Router["协议路由与资源调度 (Router)"]
+        ConvMgr["通用会话管理器 (Conversation Manager)"]
+        WorkspaceSvc["宿主工作区服务：文件、内容搜索、网页交互终端 (PTY)"]
+    end
+
+    subgraph Adapters ["后端适配层 (Adapters)"]
+        CodexAdapter["Codex 适配器\n(WebSocket 客户端)"]
+        ClaudeAdapter["Claude 网页适配器\n(Worker IPC 客户端)"]
+        AgyAdapter["Antigravity 网页适配器\n(Worker IPC 客户端)"]
+    end
+
+    subgraph Runtimes ["原生执行层 (Native Runtimes)"]
+        CodexServer["Codex app-server"]
+        ClaudeWorker["Claude 独立执行服务 (Worker Process)\n• SDK 持续流式会话\n• 状态与后台任务持久化"]
+        AgyWorker["Antigravity 独立执行服务\n• agy acp 子进程 (JSON-RPC)\n• ACP 提示词与委派 MCP"]
+    end
+
+    UI <--> State
+    State <-->|WebSocket / LAN RPC| Router
+    Router --> WorkspaceSvc
+    Router <--> ConvMgr
+    ConvMgr <--> CodexAdapter
+    ConvMgr <--> ClaudeAdapter
+    ConvMgr <--> AgyAdapter
+    CodexAdapter <-->|JSON-RPC| CodexServer
+    ClaudeAdapter <-->|Unix Socket / 行式 JSON| ClaudeWorker
+    AgyAdapter <-->|Unix Socket / 行式 JSON| AgyWorker
 ```
 
-工作区目录浏览、文件保存和网页交互终端属于桥接主机。Codex 的工作区请求沿用原生 app-server；Claude 的查询和文件读取优先使用原生控制接口，超出原生读取大小范围的完整文件由已有认证 HTTP 服务传输。模型生成的文件变更、对话历史、计划与后台任务按所属对话保存；后台任务的管理与网页交互终端分别维护。
+### 1.1 核心职责划分
 
-浏览器继续采用现有消息协议名称以兼容既有状态控制器。方法名是传输表示，产品契约中的功能分组、输入输出及生命周期才是适配器实现依据。`shared/product-contract.mjs` 将工作区方法与对话方法分别注册为 `workspaceMethods` 和 `conversationMethods`，供桥接按状态所有者路由。完整产品范围按下文的用户操作与状态契约维护，新增网页功能同步维护所属路由及实际操作验收。
+- **服务端核心路由与标识映射**：负责管理全局连接与资源标识转换。默认 Codex 保留原生 ID，其他后端统一投影为 `backend:<后端ID>:<原生ID>`，屏蔽各原生 ID 的命名冲突与协议差异。
+- **宿主工作区服务 (`server/src/workspace/service.mjs`)**：统一提供本地文件操作、基于 `rg --fixed-strings` 的代码片段内容精准匹配（`codeLine`）、文件名模糊搜索（`fuzzyFileSearch`），以及由 `node-pty` 持有的网页交互终端。
+- **通用会话管理器 (`server/src/conversation-manager/`)**：作为所有会话活跃状态与跨会话协作事实的全局单一事实源（Single Source of Truth），统一汇聚轮次生成状态与后台终端状态。
+- **后端适配层 (`server/src/backends/`)**：实现标准化的适配器接口，吸收不同运行时的进程生命周期、认证环境与原生协议。
 
-### 适配器边界
+---
 
-管理器通过相同接口连接各后端。Codex、Claude Code 和 Antigravity 原生实现分别位于 `backends/codex/`、`backends/claude/` 和 `backends/agy/`。接口的操作与生命周期约定如下：
+## 2. 后端适配器通用契约 (Backend Adapter Contract)
 
-- `connect()` 启动所属传输，`ready` 表达当前就绪状态，`capabilities` 提供真实模型参数与扩展能力。
-- `receive(client, message)` 接收原生资源标识的请求或提问回答，通过注入的 `send` 返回同一请求编号的结果或错误，通过 `broadcast` 发布统一事件。管理器承担浏览器资源标识与原生标识的转换，用户正文和工具参数保持原样。
-- `state()` 返回 `lan/state` 快照，其中活动轮次、提问、整理、原生命令及撤销结果均使用原生标识。网页手动终端独立使用工作区标识，由管理器合并工作区快照。Claude 执行服务补充后台任务、排队输入及内部命令占用。管理器汇总快照并加入网页配置与版本信息。
-- `releaseClient(client)` 释放该适配器中属于指定浏览器代理的连接资源。Codex 清除订阅所有者并检查空闲释放，Claude 的模型会话独立于浏览器连接，释放浏览器保持执行服务运行。管理器只调用接口，订阅集合由 Codex 自己持有。
-- `releaseUnusedThreads()` 按所属运行时的生命周期释放空闲资源；`close()` 关闭桥接连接并结算其在途请求。独立执行服务通过 `shutdown()` 原子检查实际占用并确认停止，网页桥接的 `close()` 只断开 IPC。
-- `workspaceOwner` 明确工作区路由所有者：`backend` 保留原生工作区调用，`bridge` 使用管理器持有的主机工作区服务。Codex 选择前者，Claude 选择后者。管理器按声明路由，两端原生文件搜索与文件读取继续进入所属适配器。
+所有后端适配器均在 `server/src/backends/manager.mjs` 中通过工厂组装，满足统一的服务端契约方法：
 
-`bridge/product-methods.mts` 为两个适配器提供同一套网页操作处理器：项目模型读取与保存、目录创建、单文件撤销，以及注入的整理核对和子代理消息读取。单文件撤销读取带完整轮次的历史响应，再按路径应用补丁，处理器核对操作所需的对话、轮次和文件路径。模型偏好保存成功广播 `lan/projectModels/updated`，失败保留原文件并允许重试。Codex 继续读取网页配置目录中的偏好，并在目标文件缺失时继承旧目录；Claude 继续使用已有后端状态目录。管理器独立提供桌面端未分类目录索引，切换或停用后端保持相同来源。
-
-公共写入规则只读取执行方提供的即时状态。整理占用期间暂停开始轮次、补充输入、审查、回退和再次整理；活动任务或待提交输入阻止新整理；单文件撤销占用期间暂停可能写入的相关操作。原生订阅恢复、会话变更锁和队列原子检查继续归所属适配器。两端共用产品规则，同时保留原生状态的唯一所有者。
-
-### 通用会话管理器
-
-`server/src/conversation-manager` 是独立于原生适配器的服务端模块。应用为每个后端实例注册原生会话查询、投递与核对接口。会话地址由后端实例和原生会话标识组成，发起身份来自当前工具调用的原生上下文。管理器统一判断会话发现、发送和回复的允许范围，当前开放同一后端实例内的通信。Codex 本机 MCP 子进程使用受限 Unix socket，Claude Code 使用会话绑定的 SDK MCP 工具和现有执行服务 IPC。原生适配器执行接收端的忙闲判断、输入队列和原生提交，现有运行权限及审批随接收端保留。
-
-`list_active_threads` 默认查调用方实际所属的工作区。有显式项目归属时按项目归属匹配，否则依据原生项目标识和实际工作目录。任务需要联系其他工作区时，使用 `scope: "global"` 查询同一后端实例已观测的活跃会话，也可用 `cwd` 按工作目录筛选。两种范围均可按标题筛选，返回会话标识、标题、实际工作目录与状态。状态暂不可见时返回 `unknown`。后端报告观察范围不完整时，查询结果的 `complete` 为 `false`。
-
-`thread_chat` 的 `send` 以查询结果的 `threadId` 为目的地址，`reply` 通过 `replyTo` 接收原消息 ID。管理器确认调用方是原消息的收件会话后才保存回复。无权回复时，工具直接返回相同错误。回复保存后，Claudex 立即发起投递，将它送回原提问会话。如果该会话的上一轮已经结束，Claudex 在同一会话开启新一轮。收发双方可通过 `status` 排查投递，并通过 `inbox` 找回来信。
-
-`requestId` 是模型为每次新发送或回复选择的唯一字符串，例如 `restart-eta-20261126-01` 或 UUID。管理器持久保存消息后回显 `requestId`，同时返回生成的 `messageId`。发起会话、目标、原消息和完整正文一致时，沿用原 `requestId` 重试会返回同一个 `messageId`。收到消息后，把它的 `messageId` 传给回复操作的 `replyTo`。Claude Code 的调用显式提供 `requestId`。Codex 调用省略该字段时，可使用原生上下文提供的工具调用 ID。
-
-两端按各自实际注册的 MCP 服务器名称向模型提供同一份主动协作说明。用户要求协调、工作重叠、争用共用资源、需要同伴提供的信息或进度，以及工作交接，都是联系现有会话的场景。向明确对象发送具体问题后，只继续独立于回复的工作。剩余工作都要等回复时，结束这一轮，由管理器把回复送回原会话。收到同伴问题就作答。事实够用就当场回复，需要核实时先用工具查清再回复。发送回复本身可以直接进行，无需等用户另行指示、授权或审批。核实事实和分享信息仍遵守当前用户的指令、范围与审批。收到回复后，继续推进可以开展的工作。
-
-SQLite 账本持有原文、发送和接收两端的会话地址、请求标识、原消息关联和投递证据。请求去重以发送地址为范围，投递及核对按接收地址进入所属后端，收件箱和回执权限按对应端点地址校验。适配器确认可以安全等候时保留受理状态（`accepted`）。`queued` 表示已确认进入接收端队列，`delivered` 表示已有原生输入证据，`failed` 表示已确认失败，`unknown` 表示尚需核对提交结果。回复本身有独立消息 ID 和投递状态。原生输入携带固定的会话来源和消息标识，并根据原消息关联分别提供提问、回复提示。Codex 的原生历史核对接受同一条消息生成的当前完整文本或旧版完整文本。
-
-同一配置目录的管理器在本机持有独占租约，每个目标会话由一个调度任务推进。已保存的回复优先于同一目标尚未提交的普通消息。新消息或目标轮次的状态变化会触发后续调度，后端暂时不能接收时沿用等待和核对。桥接恢复后继续处理已保存的待投递消息，并核对已排队、提交中断及结果不明的记录。管理器取得明确的未提交证明后才能再次投递。证据暂不可用时，状态和来信仍可按原 ID 查询，等待原生证据出现。指定的后端实例停用时保留其待处理消息，重新启用该实例后继续处理。
-
-### Codex 订阅与恢复
-
-取消订阅以原生响应确认释放本连接，其他连接的订阅仍有效。后续请求等待取消订阅确认，写入按原生流程重新订阅。Codex 0.169.0 的取消订阅确认先于异步关闭，`resume-lifecycle.mts` 仅允许 `thread/resume` 在原生错误码、完整错误文本和目标对话 ID 均匹配关闭中状态时，等待该对话的 `thread/closed` 后重试一次。关闭事件先于恢复错误到达时同样处理。网页恢复和内部写入恢复都沿用原请求期限，超时或断线清理等待，其他错误按原路径结算。调用方在恢复成功后才提交轮次。验证入口见[双后端回归审查](backend-regressions.md#验证入口)。
-
-Codex 连接持有原生请求编号和在途记录，分别结算网页转发和内部调用。`native-protocol.d.mts` 根据原生协议定义恢复、取消订阅及历史分页中本产品读取的字段。新增已知原生类型时用对应版本的 `codex app-server generate-ts --experimental` 核对请求和响应，通用转发继续携带完整原生结果。
-
-Codex 的持久历史在助手消息完成后提供完整正文。适配器按对话、轮次和消息 ID 缓存当前订阅收到的未完成正文。原生发出同轮用户消息的开始事件时，适配器清除被中途输入打断的正文，并随事件发出移除的消息 ID，页面据此移除实时片段。首屏历史响应携带当前流式快照，包括空快照。页面恢复时以原生历史和快照接续正文，读取期间收到的较新事件保留。消息完成后采用原生完整正文，轮次结束、对话释放或适配器断开时清理快照。
-
-### Claude Code 历史分页
-
-历史首批读取原生状态并构造快照，后续页复用该快照。有效游标绑定对话、读取方式和排序方向。首批读取、旧数字游标及过期游标按原有位置读取当前原生历史。执行服务保留最近访问的 8 份分页快照，访问间隔超过 30 秒、删除或改写历史、执行服务关闭时清理对应快照。浏览器继续合并较新的实时消息。
-
-## Antigravity 委派
-
-Antigravity 是可选的秘书后端，由本机官方 CLI 通过 ACP 执行。Claudex 独立服务持有 ACP 连接、网页创建的会话映射、委派任务和待投递通知。IPC 目录权限为 0700，socket 和状态文件为 0600。用户服务和普通进程部署均保持任务独立于网页桥接。
-
-创建、加载和续接通过 ACP 的 `systemPrompt.append` 注入 Antigravity 发起端的提示词。三种发起端可独立选择具名预设。默认正文来自 `CLAUDEX_WEB_CONFIG_DIR/backends/agy/secretary.md`，文件缺失时使用随版本发布的 `secretary.md`。自定义默认正文通过已登录的网页设置接口以 `0600` 权限原子写入（非空、无 NUL 字符、上限 64 KiB），保存内置模板则删除覆盖文件。已有会话在下一轮发现角色正文变化时，以原生会话 ID 重新续接。正在执行的轮次保留启动时的设定。
-
-执行服务将 `claudex-secretary` 代理定义写入私有运行目录，通过 ACP 启动参数和会话的附加工作目录提供给原生发现。工具范围由发布的代理定义和本轮可用的 Claudex 委派工具共同决定。新会话注册 MCP 后通过原生关闭和续接加载模型工具目录，每轮在工具发现完成后提交。agy 1.5.18 的 ACP 续接沿用原生会话创建时绑定的代理，执行服务只读核对 Antigravity 本机摘要记录。已确认使用默认代理的旧会话在下一轮建立秘书原生会话，沿用网页对话、历史及委派关联，并将既有文字对话作为续接上下文。
-
-Antigravity 以原生全自动同意模式启动。仍由 ACP 客户端处理的工具权限请求优先选择允许一次。工具失败保留原生输出，轮次按原生回复结算，失败后直接结束且无后续回复时展示失败信息。原生模型设置通知在 ACP 转换和历史投影时处理，网页模型状态沿用结构化配置事件。
-
-模型目录通过独立的 ACP 配置查询读取。服务创建并关闭一个不提交提示的原生会话，从 `configOptions` 读取模型名称及顺序，再以 `models.availableModels` 校验可用模型和思考版本。执行服务连接后预热目录，并发读取共用同一查询。已有快照直接用于模型目录与默认配置读取，每次查询完成后间隔 5 分钟后台刷新，失败保留上次成功结果。网页连接内切换后端复用目录，执行服务通过 `lan/agy/models` 推送变化。恢复历史时保留对话已保存的模型与思考强度。每轮开始前通过 `session/set_config_option` 应用本轮选择，委派结果回投等未指定模型的轮次沿用所属对话的选择。轮次提交时保存实际生效的配置。
-
-Codex 委派沿用网页 Codex 的完全访问权限。创建和恢复使用同一访问配置，发送复用已建立会话的权限。只读调查作为任务要求传给执行端，Claude Code 的同类任务使用原生计划模式。
-
-`ask_codex` 和 `ask_claude` 以来源会话和请求 ID 去重。首次委派绑定本轮用户选择、原始输入、工作目录、目标模型和思考强度。补问凭原任务 ID 在同一执行实例和会话继续。执行端持有原生轮次及权限，独立服务持久保存原生回执和归属。结果和通知在同次状态更新保存，原会话空闲时按通知 ID 唤醒。结果不明确时先查原生回执，审批在网页展示并路由回原生请求。
-
-主会话历史从本地状态读取。委派详情按任务 ID 校验主会话，再向绑定的执行实例读取原生会话、分页轮次和消息。网页重连或独立服务重启后，历史读取等待执行端握手，可以在 ACP 尚未连接时进行。已结束的委派仍从原 Antigravity 对话打开。原生委派会话从项目列表及对话搜索中排除。
-
-Codex 和 Claude Code 的新对话默认使用原生助手。创建请求携带输入区选择，响应和续接返回服务端模式。新建会话在目标可用时沿用当前委派开关，首轮创建写入新对话；打开已有会话读取服务端保存的选择。已创建的会话通过独立的开关请求更新，普通轮次从服务端读取选择。桥接按发起后端实例和原生会话写入 `delegation/modes.json`。Claude 工作器同时在会话索引中持有模式，并从桥接记录读取旧会话的选择。入队时保存轮次有效模式，空闲回投按同一规则入队。审查和独立专家轮次使用各自的执行配置。
-
-Claude Code 使用 SDK 的 `agent` 和 `agents` 将 `claudex-secretary` 绑定为主代理，代理正文使用当前发起端预设。角色变化时以同一原生会话 ID 续接 SDK 进程，关闭提示词快照，提交前核对 SDK 已连接的委派工具。关闭后由原生助手续接。原生工具和权限沿用会话设置。
-
-Claude 的提交钩子按祖先目录读取有效 AGENTS.md 或 AGENTS.override.md 原文。SDK 使用 `claudeMdExcludes` 排除提交钩子负责的 AGENTS.md 路径，原生 CLAUDE.md 和其他作用域的项目规则继续由 Claude Code 加载。标准 Messages 传输将中途系统上下文投影到顶层 `system`，其中项目规则使用最新的提交快照，保留同块的其他原生上下文。
-
-显式配置的供应商收到秘书主会话请求时，传输层用会话已经绑定的完整角色识别系统正文。角色排在单一文本块首行，随后是其余系统上下文。转换去除 SDK 前置身份、计费文本和环境中的代理类型目录，保留项目规则、模型选项及工具声明。带缓存标记的末尾系统块将其标记交给合并后的文本块。普通会话、专用子代理路由及未携带秘书正文的辅助请求沿用各自供应商的协议。
-
-Codex 通过原生协作模式的 `developer_instructions` 应用完整角色，关闭时由 Codex 恢复默认协作指令。历史保留原生的协作模式变更记录。Codex 的派单工具目录在会话创建或加载时决定，切换时等待旧订阅对应的会话关闭，再用原 ID 恢复。
-
-两个发起端在委派模式开启时提供 `delegate_task`。Claude Code 从 SDK 工具闭包取得会话和活动轮次 ID，派单受理与工作器确认该轮绑定的秘书角色。Codex 从经过本机鉴权的 MCP 请求取得原生会话、轮次和调用 ID，工具处理与网页轮次通知独立进行。任务受理时核对运行时实例、接收设置、工作区和原任务归属。请求 ID 按发起会话去重，Codex 同时按原生轮次和调用 ID 保存回执。普通轮次按各自原生结果结算，可以直接回答、写作或读取材料。
-
-任务和执行回执保存在配置目录的 `delegation/state.json`。结果由通用会话管理器回投原会话，秘书可用原任务 ID 继续同一专家会话。两个入口的流式事件共用同批任务状态读取，按执行实例及会话标识路由。
-
-结果回投按原生轮次组织阶段说明、计划和最终结论。轮次记录中的 `callCount` 标明对应的调用数量。Codex 以 Rollout 补齐原生历史中的可见回复与调用，外层工具输入按提交时间、原生命令按开始时间合并，同一时刻沿用原生记录顺序。结构化参数和静态编排脚本给出命令原文，运行时生成参数的调用保留提交脚本以供核验。Claude Code 使用 SDK 工具记录，将文件钩子的差异关联到实际调用。原生文件变更可按调用查阅。
-
-委派补问按步骤结算后台工作。后台任务以开始时间归属步骤，未登记为后台任务的 Codex 原生终端按工具记录 ID 归属轮次。旧步骤的后台任务继续由原生执行端管理。
-
-任务、步骤和调用在回投中使用 8 位引用，内部保存原生完整 ID。补问和 `read_delegation_step` 接受短 ID 和完整 ID。调用 ID 在多轮重复时，用相应轮次记录中的 `turnId` 定位。查阅按所属会话、运行时实例和步骤范围校验，单次调用可返回原始输入输出，长详情按可拼接的 JSON 分片返回。
-
-回投的 `context` 记录执行端的最新上下文占用 `usedTokens`、有效窗口 `totalTokens` 和累计压缩次数 `compactCount`。Codex 按结果轮次读取 Rollout 的最近一次用量及原生窗口，按持久化压缩记录计数。Claude Code 使用会话保存的 SDK 上下文及配置窗口，按原生压缩边界计数。缺少原生记录的指标省略。网页卡片显示同一结果快照，旧委派在打开执行记录时按原生历史读取现有指标。
-
-模型收到完整委派结果。网页按 Claude 的原生输入回执、Codex 的会话工具通知或 Antigravity 的投递事件生成结果卡片。卡片按步骤关联派单标题及执行端最后一轮的最终结论预览，旧记录从原任务要求提取标题。卡片打开执行端的历史与命令，发起端模型的回复继续进入主对话正文。Claude 的实时与历史投影共用同一规则，普通对等消息和用户主动提交的相同文字沿用各自的消息归属。
-
-执行详情将状态、模型、思考强度和上下文指标显示在同一行，窄屏可横向滚动。委派运行时将原生用量事件按执行会话转发给对应抽屉，压缩按已完成的原生记录计数。抽屉打开时载入历史快照，读取期间更新的用量继续优先显示。
-
-```mermaid
-sequenceDiagram
-  participant Browser as 网页
-  participant Agy as Antigravity 秘书
-  participant Worker as Claudex 独立服务
-  participant Executor as Codex 或 Claude Code
-  Browser->>Worker: 提交用户消息与选定执行端
-  Worker->>Agy: ACP 开始秘书轮次
-  Agy->>Worker: MCP 委派任务
-  Worker->>Worker: 持久保存任务与提交标识
-  Worker-->>Agy: 返回任务 ID
-  par 秘书回执
-    Agy-->>Worker: 结束当前轮次
-  and 后台执行
-    Worker->>Executor: 启动原生轮次并记录回执
-  end
-  opt 执行端请求用户决定
-    Executor-->>Worker: 原生提问或审批
-    Worker-->>Browser: 显示执行端、问题与范围
-    Browser->>Worker: 用户决定
-    Worker->>Executor: 回答原生请求
-  end
-  Executor-->>Worker: 原始结果与产物
-  Worker->>Worker: 同时保存结果与待投递回执
-  Worker->>Agy: 会话空闲后投递调用链与结果
-  opt 核验单次调用
-    Agy->>Worker: 按任务、步骤和调用 ID 读取原生记录
-    Worker-->>Agy: 返回工具输入输出及原生证据
-  end
-  opt 证据仍不足
-    Agy->>Worker: 携原任务 ID 补问
-    Worker->>Executor: 续接原执行会话
-  end
-  Agy-->>Browser: 核对结果并回复，按需写入文档
+```typescript
+interface BackendAdapter {
+  connect(): Promise<void> | void;
+  ready: boolean;
+  capabilities: BackendCapabilities;
+  receive(client: ClientContext, message: RpcMessage): Promise<void>;
+  state(): BackendStateSnapshot;
+  releaseClient(client: ClientContext): void;
+  releaseUnusedThreads(): Promise<void> | void;
+  close(): Promise<void> | void;
+  workspaceOwner: "backend" | "bridge";
+}
 ```
 
-网页按已登记的 agy 原生会话管理归档、软删除和历史续接。从历史继续创建新会话并保存选中轮次与来源。原生整理通过 `/compact` 提交，无结构化整理证据时展示命令结束状态。文件恢复使用 ACP 返回的本机文本差异，并校验文件当前内容。账户额度通过官方 CLI 状态栏的结构化额度桶读取，ACP 用量事件提供会话上下文用量。
+### 2.1 核心契约方法与生命周期行为
 
-## 完整功能范围
+1. **握手与就绪判定 (`connect`, `ready`, `capabilities`)**：
+   - `shared/product-contract.mjs` 冻结了导出的工作区方法、会话方法与 Antigravity 委派方法清单；
+   - **Codex**：`connect` 建立原生 WebSocket 连接，在成功完成原生 `initialize` 握手并收到 `initialized` 响应后置 `ready: true`；
+   - **Claude Code 与 Antigravity**：适配器先连接底层的独立 Worker IPC 服务，取得当前 Worker 的就绪快照后置 `ready: true`；
+   - `capabilities` 声明真实可用的模型列表、上下文窗口大小及思考强度档位。
 
-以下清单同时约束 Codex 和 Claude Code。Antigravity 遵循上节的秘书后端契约。共用界面只实现一次；运行时相关功能分别提供适配及契约回归。
+2. **请求代理与资源标识转换 (`receive`)**：
+   - 接收经过路由分发的产品 RPC 请求；适配器负责在浏览器全局标识与底层原生标识之间进行解包与包装；
+   - 客户端提问回答、审批确认及工具请求均通过统一通道双向中继。
 
-- 对话与项目：创建、重命名、归档、恢复、删除、固定、搜索、实际活动时间排序、未分类目录、完整分页历史、最近页优先、分支与原地编辑重发。
-- 输入：Markdown、GFM、公式、中文输入、快捷建议、全部现有命令、Ctrl+Enter、图片附件、文件和目录引用、回复批注、技能、即时发送、草稿及附件隔离。
-- 执行：流式消息、思考与翻译、工作过程、命令及工具结果、运行中补充、中断、断线恢复、关闭网页后继续执行、完成通知及多页面去重。
-- 计划：只读调查、方案流式正文、预览收放、修改、批准后执行、批准失败重试、刷新恢复及对话切换隔离。
-- 整理：异步提交、常驻状态、写入门控、成功和失败、历史核对、刷新与多页面恢复。
-- 工作区：文件和目录浏览、模糊查询、源码编辑及未保存缓冲区、差异、媒体和下载、变更汇总、单文件撤销、代码审查、网页交互终端。
-- 目标：读取、设置、修改、暂停、恢复、清除、预算、实际用量、持续执行与完成状态。
-- 后台任务：读取全部分页、呈现实际运行任务、停止全部后台终端、独立于当前轮次中断。
-- 子代理：名称、任务、进度、初始任务和后续消息、完整历史、计划预览、切换隔离和失败重试。
-- 配置与连接：账户或供应商身份、模型、思考强度、速度、项目默认选择、插件目录、MCP 状态与工具、后端独立故障、认证、证书、主题、字体、快捷键与版本。
+3. **工作区所有权与命令路由 (`workspaceOwner`)**：
+   - **Codex (`workspaceOwner: "backend"`)**：工作区文件操作与原生命令交由底层 app-server 执行；当跨主机连接时直接操作远端工作区；
+   - **Claude Code 与 Antigravity (`workspaceOwner: "bridge"`)**：工作区文件操作与命令由服务端宿主工作区服务统一承接；
+   - **网页交互终端**：所有后端的 `lan/terminal/*` 均独立于 `workspaceOwner`，由宿主 `node-pty` 统一管理。
 
-账户余额和套餐等外部事实使用所属服务真实提供的数据，配置自定义供应商时保留供应商身份。使用量、读取失败与缺少外部数据分别表达，任何外部字段缺失均不能影响对话和工作区操作。
+4. **客户端连接释放与会话回收 (`releaseClient`, `releaseUnusedThreads`, `close`)**：
+   - **Codex 链路**：
+     - `releaseClient`：移除指定浏览器连接的会话订阅权，并触发空闲释放检查；
+     - 空闲释放机制：已落盘持久化的空闲会话即使仍在网页中打开，也能释放桥接连接占用的原生订阅；若存在进行中轮次、上下文整理、活动目标、后台终端交接或在途请求，则自动推迟释放；
+     - 启动参数配置 `-c thread_unload_delay_secs=0`，使无订阅的空闲会话能够被底层及时卸载；
+   - **Claude Code 链路**：
+     - `releaseClient` 为空操作（会话由独立常驻 Worker 管理，浏览器关闭不中断模型任务）；
+     - `releaseUnusedThreads`：向 Worker 发送 IPC `release` 指令；Worker 内部每 30 秒扫描一次，当会话空闲满 5 分钟且无运行轮次、无未决提问、无活动目标且无 `running` / `pending` 后台任务时，关闭该会话对应的 SDK 查询进程；
+   - **Antigravity 链路**：
+     - 会话由 ACP 会话内部独立的空闲计时器进行生命周期回收。
 
-Claude Code 原生账户依据 SDK `initializationResult().account` 的实际认证来源确定。未登录时 `account/read` 返回空账户及 `usageSupported: false`，模型选择省去 CLI 在未登录状态仍返回的默认原生模型；配置供应商继续按其配置提供模型和身份。OAuth 认证、API Key 及外部原生提供方分别保留真实身份与适用的用量入口。
+---
 
-自定义模型的上下文容量由供应商模型参数中的 `contextWindow` 记录服务实际加载的 tokens 上限，并通过原生 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 配置保持 CLI 计量及整理策略一致。模型最大支持容量与当前服务加载容量分别核对；产品默认值保持为空。流式消息开始时即通过 `getContextUsage({detail: "summary"})` 读取原生容量，轮次结束再校准已用上下文；更换原生进程或模型时重新查询，查询失败保留实际用量及错误信息。
+## 3. 通用会话管理器 (Conversation Manager)
 
-Claude Code 的附加能力通过后端扩展描述提供，采用显式命令、工具记录、任务和提问界面呈现。扩展描述保留参数及生命周期，前端无需根据后端名称硬编码功能路径。原生技能、插件、MCP 和子代理目录按当前工作目录与本机 CLI 原有配置读取。Codex 沿用 `CODEX_HOME`，Claude 沿用 `CLAUDE_CONFIG_DIR`，未设置时分别使用 `~/.codex` 和 `~/.claude`。网页自身配置与 Claude 执行状态存入 `CLAUDEX_WEB_CONFIG_DIR`，原生 `dataDir` 与网页 `stateDir` 分别传递。原生模式保留本机认证环境；用户显式选择供应商时，在首次输入前通过原生 `applyFlagSettings` 覆盖该会话的供应商环境，避免原有用户设置改变已选择的请求目标，原配置文件保持原样。
+通用会话管理器独立于各原生适配器，集中处理会话活跃度归并、多后端目录分页与跨会话消息调度。
 
-## 验收规则
+### 3.1 会话活动状态机与多源归并 (`activity.mjs`)
 
-能力声明用于描述真实的模型参数、外部账户数据和附加能力。完整功能范围中的通用入口始终可用，适配器承担能力转换。新增实现必须通过实际行为验证后才算完成，空结果和硬编码支持标记不能作为实现证据。
+为根除多端状态割裂，管理器抽象出统一的状态投影函数 `projectConversationActivity(thread)`：
 
-两端的验收场景覆盖创建、输入、执行、恢复、编辑、分支、计划、整理、审查、目标及任务，按具体操作记录证据。临时目录和模拟传输验证状态所有者及失败恢复；真实 CLI/SDK 配合隔离 Messages 服务验证原生会话、控制接口和工具；真实模型验证实际供应商调用与模型操作；浏览器验证界面、布局及完整用户流程。每项结果注明实际使用的 CLI、模型与传输来源。
+```javascript
+const status =
+  background && ["idle", "unknown"].includes(observed)
+    ? "background"
+    : observed;
 
-每个异步结果携带所属资源和修订依据。切换模型、供应商、主对话、子代理及断线后，旧结果只归属原目标。历史与索引的修改保持原子性，编辑重发保留原生历史分叉并将网页对话重新指向保留后的会话。
+return {
+  ...thread,
+  status,
+  background,
+  generating,
+  live: status !== "idle" && status !== "unknown",
+};
+```
 
-## 已实现的模块与事实来源
+#### 状态投影与流转规则：
 
-- `workspace/service.mjs` 提供共用文件、目录、文件搜索与网页交互终端。网页手动终端统一使用 `lan/terminal/*`，在后端路由之前由工作区服务处理；node-pty 持有实际 shell 和前台进程名称，终端按绝对启动目录隔离，同目录跨模型后端保留。输入区的 `fuzzyFileSearch` 由工作区所有者提供。本机工作区按根目录共享 FuzzySort 索引，跨主机 Codex 通过原生 app-server 搜索实际远端路径。
-- `claude/sessions.mjs` 管理网页逻辑对话与原生会话的对应关系。`history-actions.mjs` 使用 SDK 原生分支保留消息前缀，依据原生 `forkedFrom.messageUuid` 重新建立轮次、补充输入和自动唤醒消息锚点，截断使用下一轮输入的 `parentUuid` 保留已完成轮次的全部输出附件；网页对话标识保持稳定。`nativeAliases` 将保留的历史分支归入同一逻辑对话，列表和删除后的恢复避免重复导入。
-- `session-worker.mjs` 在独立工作进程中使用同一原生配置目录调用 SDK 会话 API；SDK 选择原生 `parentUuid` 链，`native-records.mjs` 通过 SDK `importSessionToStore` 加载临时内存快照，按 UUID 补回投影省略的时间、系统子类型及错误字段。原生正文和工具结果是事实来源，索引补充已确认的轮次状态、计划类型、错误分类和文件变更。
-- `worker-client.mts` 与独立 `worker-server.mts` 通过受限本机 IPC 协作，共用握手、状态、RPC 和关闭的请求与结果类型。执行服务持有 Claude 适配器、原生进程和后台任务。systemd 环境使用独立用户 service 及 cgroup，网页桥接关闭或崩溃后仍保留任务。IPC 目录 0700、socket 0600，双方核对用户归属。源码、入口路径或运行配置变化时，忙碌服务先继续执行，完全空闲后确认停止并替换，较旧桥接保持较新执行代际。
-- 执行服务握手就绪后再检查自动替换。停止时先锁定新请求入口，再原子检查在途请求和活动快照。忙时返回 `EWORKERBUSY` 并解除入口限制，自动替换继续等待，只读请求结束时也能继续检查。证书和代理的 Node.js 启动环境通过权限 0600 的环境文件在创建进程前加载，供应商的会话环境覆盖保留代理设置。
-- `runtime.mts` 管理每个逻辑对话的活动轮次、待提交输入和原生进程；`execution-session.mts` 持有可持续接收输入的 SDK 会话。输入、启动选项、工具钩子和结果事件采用所安装 SDK 的类型，文件索引预热和同时取消排队输入的中断选项由 `native-control.mts` 适配原生控制请求。两条 SDK 启动路径（执行会话和目录查询）共用 `query-settings.mjs`，通过 flag settings 关闭内置提交与 PR 工作流指引及提交、PR、会话链接归因，优先级高于用户、项目和本地设置。普通轮次结束后继续保留原生会话和后台任务，运行中补充进入当前轮次。持续会话空闲满 5 分钟且没有活动轮次、待启动任务、活动目标或原生后台任务时释放，后续发送从原生历史恢复。编辑、分支及删除先结束空闲的原生会话，变更锁与发送入口共用；浏览器和网页桥接连接释放保持模型任务独立运行。正常网页重连恢复同一执行服务的活动快照，独立执行服务故障才进入原生进程核对及未确认输入恢复。
-- `messages.mjs` 将原生用户图片及工具返回的图片统一转换为网页媒体内容，保留 base64 数据和 MIME 类型，实时展示与原生历史恢复采用同一转换。
-- 模型支持能力与用户思考启停分别处理。`providerModelEnvironment` 将明确配置的自适应支持和 effort 档位映射到原生 `CLAUDE_CODE_MODEL_CAPABILITIES` 部分覆盖规则；自适应支持为 false 时由 CLI 选择固定预算思考及其原生预算，自适应支持为 true 时由 CLI 选择 adaptive。未配置字段保持原生判断。旧的 `ANTHROPIC_DEFAULT_*_MODEL_SUPPORTED_CAPABILITIES` 在 firstParty 请求路径被 CLI 忽略，因此采用实际生效的能力覆盖入口。运行时通过原生 `--thinking-display=summarized` 请求可展示的思考正文，省去依赖原生实验性默认展示模式。已有会话每轮同步模型能力、上下文容量及 effort；模型切换清除旧容量覆盖，配置变更按供应商版本重建空闲会话并恢复原生历史。
-- 标准 Messages 供应商的请求转换保留原生思考控制及结构化输出，主请求中的 `adaptive`、`enabled` 和 `disabled` 按原文传递；省略 `thinking` 的原生请求按 Anthropic 的关闭语义显式传递 `{type: "disabled"}`。目标评估的 JSON schema 保持完整。供应商环境保持原生功能开启，避免全局关闭实验功能同时移除结构化输出。
-- 流式 `message_delta.stop_reason` 确定最终正文与计划正文；完整 assistant 消息提前到达时保留过程状态。刷新按原生消息标识恢复已确认的展示类型和阶段，正文仍读取原生内容。API 错误转换为轮次错误，公开提示与诊断详情分别保存。
-- `project-instructions.mjs` 在每次 `UserPromptSubmit` 从根目录到当前目录读取 `AGENTS.override.md` 或 `AGENTS.md`，同目录优先 override，保留路径、作用域和完整正文。每轮完整快照替换此前的 AGENTS 快照，空列表同样提交。读取失败结束当前提交，原生 `CLAUDE.md` 继续由 Claude Code 加载。
-- `hooks.mts` 处理提问、子代理及文件操作。Claude Code 的 `AskUserQuestion` 以题干为回答键，适配器只写入用户作答的题目，全部拒答时提交空回答映射；`git-tool-changes.mjs` 记录工具实际引起的 Git 文件变化。`agent-history.mjs` 根据原生子代理目录、调用标识和消息恢复任务与接收历史，保留已分支对话中子代理的真实来源。
-- SDK 会话启用原生文件 checkpoint。`Query.rewindFiles` 按用户消息恢复完整 checkpoint，并提供只读预览；原生分支从独立的文件历史开始。网页单文件撤销继续采用路径级补丁与当前文件校验，明确选择目标文件并保护用户并发编辑。
-- `goals.mjs` 使用原生 `/goal` 设置目标，由 CLI 的会话级 Stop 提示钩子评估条件并持续执行；通过 `getHooksListing` 与 SDK 导入的原生 `goal_status` 核对活动、完成及阻塞，保留显式设置和清除的 `sentinel`。网页保存目标面板、暂停和预算状态，使用实际 token 事件核算预算。`native-commands.mjs` 将内部清除指令按 UUID 与普通轮次隔离；刷新及分支保持这一隔离。`background-tasks.mjs` 接收原生任务事件、保留任务所有者并调用 SDK 停止后台终端；后台任务结束后的原生唤醒使用独立轮次和消息锚点保存。
-- 目标检查按原生记录 UUID 区分当前执行与旧结果。CLI 已结束轮次、目标钩子仍在且没有后台活动时，将目标显示为阻塞并保留原生检查错误；原生评估超时或返回无效结构时及时结算，等待明确的继续操作。后台任务仍运行时保留活动目标，等待真实原生唤醒；目标适配器使用原生评估结果，不另行创建评估请求。
-- `catalogue.mjs` 从当前执行目录与运行时读取模型、命令、插件、代理及 MCP 工具；模型使用 `list_models`，技能使用 `reloadSkills`。18 项网页通用命令维持统一入口，当前原生目录中的附加命令按名称提供建议与执行；网页已经管理的同名功能继续进入统一用例。`config/read` 将原生 `get_settings.applied` 的模型及思考强度交给前端，原始环境与设置来源保留在服务端。
-- Claude 文件内容在原生 `read_file` 的 10 MB 范围内使用该控制接口，保留 base64 完整内容并核对截断状态。浏览器文件读取先通过同源认证 HEAD 确认实际大小，超过原生硬上限时直接采用已有 HTTPS 文件接口读取全文件，编辑和保存继续使用完整内容。
-- `account.mjs` 区分 Claude 原生账户与外部供应商；原生账户额度从持续 SDK 会话的 `get_usage` 控制响应读取，保留各窗口及额外用量的实际单位。外部供应商显示供应商身份和外部计费状态。`token-usage.mjs` 将原生用量和上下文查询转换为统一的最近用量、累计用量与上下文容量，读取失败保留已取得的事实和错误。
+1. **状态分类**：
+   - `generating`：底层运行时正在执行模型生成或流式输出；
+   - `background`：当前无活跃轮次（原生处于 `idle` 或 `unknown`），但存在关联的后台活跃终端/任务；
+   - `live`：只要 `status` 既非 `idle` 也非 `unknown`，即判定为 `live: true`；
+2. **卸载（Unloaded）会话事实找回机制（Codex 链路）**：
+   - Codex 适配器读取原生已加载会话列表（调用 `thread/backgroundTerminals/list`）；
+   - 后台任务服务通过任务持久化日志（`job-<UUID>.json`）的反查机制：根据文件变更发现记录并提取 `threadId`，向后台服务核实是否存在状态为 `running` 的实际任务；
+   - 确认有运行任务后，即使该会话在原生 app-server 中已被卸载（状态为 `notLoaded`），适配器仍通过 `thread/read { includeTurns: false }` 读取元数据，将其投影为 `status: "background"` 且 `live: true`；
+3. **网页活动快照发布 (`lan/conversations/activity`)**：
+   - 前端定时（页面可见且每轮读取结束后隔 3 秒）调用此接口获取 `{ activities, complete }`；
+   - 快照将底层各后端的活动事实与桥接当前跟踪的 `activeTurns` 进行合并，补齐 `turnId`，供侧栏与顶部切换器驱动展示。
 
-列表与搜索汇总每页后端错误。一个后端读取失败时，保留同一范围内已经显示的该后端对话，其余后端照常更新；侧栏和搜索提供实际错误与重试。搜索查询、归档范围、页面卸载与列表修订共同隔离迟到结果。Codex 适配器在列表请求未指定模型供应商时传入 `modelProviders: []`，分页读取所有供应商的原生记录。打开归档对话走原生只读历史接口，恢复归档后才恢复可发送会话。
+### 3.2 跨会话协作与通信账本 (`store.mjs` & `manager.mjs`)
 
-外部供应商的主模型及 `ANTHROPIC_DEFAULT_OPUS_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_HAIKU_MODEL` 统一由 `providerModelEnvironment` 根据本轮模型生成。初始化与持续会话每轮提交共用这份映射，通过原生会话级设置同步生效后再提交输入；新启动的子代理按当前映射选择模型，已经运行的任务继续归属其原会话与模型。
+管理器通过内置的 SQLite 账本（`<configDir>/conversation-manager/messages.sqlite`）提供安全的会话间通信（`thread_chat`）：
 
-未声明协议的旧自定义供应商沿用 Message API 兼容模式。跨供应商子代理按会话专属模型标识分流，请求在目标连接上恢复其实际模型 ID、协议和凭据。同名模型按供应商隔离，修改默认值保留运行中子代理原路由。子代理思考强度只覆盖所属推理请求，主请求和 token 计数请求沿用自身参数。
+- **数据结构与去重**：`messages` 表以 `(sender_runtime, sender, request)` 为唯一键，防止重复派发；
+- **状态流转与退避重试**：
+  - 投递调度经历 `accepted` $\rightarrow$ `dispatching` $\rightarrow$ `delivered` / `failed`；
+  - 若提交中断或服务重启，残留的 `dispatching` 重置为 `unknown` 并进入回执核对；
+  - 投递退避间隔从 5 秒按倍数增长至 60 秒，并由会话生命周期事件即时唤醒；
+- **原生投递适配**：
+  - Codex：以携带结构化 `toolOutput` 的原生轮次提交并核对历史记录；
+  - Claude Code：以唯一消息 UUID 核对 Worker 队列及 SDK 消息历史，支持在生成中同轮动态注入。
 
-## 验证入口
+---
 
-`npm run test:backends` 使用指定的真实 Claude Code 可执行文件、临时配置与会话、隔离 Messages 服务执行原生历史、目录、项目指令、工具及运行生命周期回归，日志和 CLI 版本保存在 `.cache/backend-acceptance`。`claude-runtime-restart.mjs` 通过真实 systemd 用户服务验证网页代理 SIGKILL、独立 cgroup、相同原生 PID 和后台 shell 保留、重连及忙时停止拒绝；`claude-worker-upgrade.mjs` 验证代码与配置更新代际及空闲替换。`npm run test:backends:live` 使用显式配置的模型服务验证模型调用，环境条件与命令见[开发者指南](../development.md#双后端开发与验收)。
+## 4. 后端专有运行时与协议实现
 
-`claude-native-fork-boundary.mjs` 使用真实 SDK 和临时原生记录验证结构化输出附件完整保留、原生 UUID 来源和逻辑轮次映射。`claude-native-checkpoints.mjs` 通过真实 CLI 的 Read/Write 工具修改两个文件，核对原生 checkpoint 预览、完整恢复及会话历史保留。
+### 4.1 Claude 独立 Worker 架构与热替换
 
-`npm run test:codex:live` 使用独立配置、临时项目及真实 app-server 和模型验证文件写读、原生查询、重启续聊、分支和历史。`claude-installed-worker.mjs` 则实际打包、临时安装并从发行包启动 Claude 执行服务，验证原生文件、技能、配置、工具轮次、历史及停止；其模型响应由隔离服务提供。安装包、真实模型和界面夹具的验证结果各自注明来源。
+- **受限 IPC 通信**：
+  - 网页桥接与 Worker 通过受限 Unix Domain Socket 通信，路径基于 `stateDir` 的绝对路径哈希与用户身份确定，权限严格限制为目录 `0700`、socket `0600`；
+  - 数据传输采用单行上限 128 MiB 的逐行 JSON-RPC 协议；
+- **进程管理与部署模式**：
+  - 支持 systemd 用户服务单元或脱离终端的守护进程启动；
+- **代码修订哈希与热替换 (Worker Revision)**：
+  - 桥接计算 `server/src`、`shared` 下所有 `.mjs`、`.json` 及 `package.json` 的 SHA-256 综合哈希；
+  - 当检测到代码版本或执行配置变化且当前 Worker 完全空闲时，发送 `shutdown` 请求并重启新代次 Worker；
+  - 若 Worker 存在在途请求或活动轮次，原子拒绝替换（返回 `EWORKERBUSY`），确保用户任务不中断。
 
-单元测试覆盖共享产品方法清单、路由与资源隔离、工作区服务、模型参数、用量转换和错误分类。文件查询同时验证原有 Codex 请求直接到达原生后端，以及 Claude 在大目录和真实工作区中的查询结果；结果数量限制与目录遍历范围分别核对。浏览器回归覆盖同一界面的实际操作、断线恢复、失败重试、主题和布局。真实 CLI 配合隔离服务验证原生接口，外部账户授权及余额属于相应服务的真实环境事实，分别记录验证证据。
+### 4.2 Antigravity 秘书后端与委派全链路
 
-## 协议查验依据
+- **双层架构通道**：
+  - 网页桥接经由 Unix IPC 连接独立的 agy Worker；Worker 内部作为 ACP Client 通过子进程标准输入输出与 `agy acp`（Agent Control Protocol）交换逐行 JSON-RPC；
+- **提示词与模式注入**：
+  - 会话创建与续接时，通过 ACP 的 `_meta.antigravity.systemPrompt.append` 字段注入秘书角色定义；
+  - 角色正文选取优先级：当前预设 $\rightarrow$ 用户保存的 `secretary.md` $\rightarrow$ 仓库内置默认 `prompt/secretary/secretary.md`；
+- **权限与审批自动处理**：
+  - ACP 原生的 `session/request_permission` 权限请求优先选择 `allow_once`，次选 `allow_always`；
+  - 执行端的提问与审批通过独立事件流中继至主会话，由用户确认后回传；
+- **委派派单与证据调阅 (`claudex_delegation`)**：
+  - 秘书端通过 MCP 工具 `ask_codex` / `ask_claude` 发起异步委派，任务与回执持久化存入 `delegation/state.json`；
+  - 底层完成后，Worker 在主会话空闲时调用 `session/prompt` 将阶段结论与产物回投；
+  - 秘书端使用 `read_delegation_step` 按 8 位短 ID 查询原生 Rollout 或工具日志，单次超长详情支持分段流式拼接。
 
-2026-11-06 核对 Claude Code 2.1.318、Agent SDK 0.3.318、原生请求记录及官方接口文档。中途 `system` 消息属于具备该能力的 Anthropic 模型的原生协议，标准端点通过顶层 `system` 接收相同系统指令。传输层在首次请求前转换系统消息布局，保留系统指令优先级、正文、工具内容块、思考参数和结构化输出。原生功能配置保持开启，辅助评估请求与普通请求采用相同的标准协议转换。
+---
 
-- [中途系统消息与模型支持范围](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages)
-- [Claude Code 环境变量与实验协议字段](https://code.claude.com/docs/en/env-vars)
-- [Agent SDK 持续流式会话](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode)
+## 5. 架构质量与验收契约
 
-开发先查明实际原生行为、输入输出和状态归属，再实现产品用例。已确认的实现错误直接修正其构造或状态转换，避免用错误字符串匹配、请求补发和隐式降级替代正确实现。验证先核对首次请求及完整执行链，再报告用户可见结果。
+所有多后端特性的维护与演进必须遵循以下技术准则：
+
+1. **单一事实源与防穿透**：所有关于会话是否活跃（live）、处于何种运行阶段的计算，必须严格收拢在通用会话管理器内，严禁前端或业务路由私自拼凑逻辑；
+2. **后台任务与会话生命周期绑定**：无论是 Codex 任务日志反查还是 Claude Worker 任务列表，只要进程存在，会话即处于 `live: true`，并在结束轮次后准确呈现 `background`；
+3. **确定性证据链**：所有异步委派与跨会话协作，均需落盘记录唯一请求标识、发送/接收端点与原生回执，具备断线恢复与幂等重试能力。

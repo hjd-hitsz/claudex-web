@@ -28,7 +28,7 @@ const threads = [
   { threadId: "d", title: "Outside", cwd: "/outside", status: "running" },
 ];
 const adapter = (overrides = {}) => ({
-  listActive: async () => ({ threads, complete: false }),
+  observeThreads: async () => ({ threads, complete: false }),
   readThread: async (id) =>
     threads.find(({ threadId }) => threadId === id) ?? null,
   deliver: async (message) => ({
@@ -83,6 +83,60 @@ async function eventually(check) {
   }
   assert.fail("会话状态未在测试期限内到达");
 }
+
+test("网页与 MCP 由同一会话活动判断区分后台任务和轮次", async (t) => {
+  const context = await fixture(t);
+  const manager = context.create();
+  await manager.start();
+  const terminal = {
+    threadId: "b",
+    title: "后台终端",
+    cwd: directory,
+    status: "idle",
+    background: true,
+  };
+  const codex = bind(
+    manager,
+    profile("codex"),
+    adapter({
+      observeThreads: async () => ({
+        threads: [threads[0], terminal, { ...threads[3], status: "idle" }],
+        complete: true,
+      }),
+    }),
+  );
+  manager.bindBackend({ ...profile("claude"), enabled: false }, () => null);
+  const readActiveTurns = () => ({ a: "turn-a" });
+  const { activities, complete } = await manager.listActivity(readActiveTurns);
+  assert.equal(complete, true);
+  assert.deepEqual(activities, [
+    {
+      threadId: "a",
+      turnId: "turn-a",
+      status: "running",
+      generating: true,
+      background: false,
+      live: true,
+    },
+    {
+      threadId: "b",
+      status: "background",
+      generating: false,
+      background: true,
+      live: true,
+    },
+  ]);
+  const discovered = await codex.list("a");
+  assert.deepEqual(
+    discovered.threads.map(({ title, status }) => [title, status]),
+    [["后台终端", "background"]],
+  );
+  manager.bindBackend({ ...profile("claude"), enabled: true }, () => null);
+  assert.deepEqual(await manager.listActivity(readActiveTurns), {
+    activities,
+    complete: false,
+  });
+});
 
 test("会话发现根据调用方工作区、项目归属和后端实例过滤", async (t) => {
   const context = await fixture(t);
@@ -622,7 +676,7 @@ test(
       await manager.start();
       const threads = ${JSON.stringify(threads)};
       const adapter = {
-        listActive: async () => threads,
+        observeThreads: async () => ({ threads, complete: true }),
         readThread: async (id) => threads.find((thread) => thread.threadId === id),
         async deliver({ id }) {
           process.send({ messageId: id });

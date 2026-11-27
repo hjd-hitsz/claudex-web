@@ -150,6 +150,88 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
     await page.screenshot({ path: join(output, "settings-mobile.png") });
     await close();
     await page.setViewportSize({ width: 1280, height: 900 });
+    const activityRow = page.locator(".running-threads .thread-row").filter({
+      hasText: "后台协议隔离验证",
+    });
+    const switcher = page.getByRole("button", {
+      name: "切换对话，当前为 后台协议隔离验证",
+      exact: true,
+    });
+    async function inspectConversationActivity(running) {
+      if (running)
+        await activityRow.getByRole("img", { name: "进行中" }).waitFor();
+      await switcher.press("ArrowDown");
+      const choice = page
+        .getByRole("group", { name: "当前分组的对话" })
+        .getByRole("button", { name: "后台协议隔离验证", exact: true });
+      await page.waitForFunction(
+        ({ expected }) =>
+          [
+            ...document.querySelectorAll(
+              ".conversation-switcher .header-switcher-options button",
+            ),
+          ].some(
+            (entry) =>
+              entry.title === "后台协议隔离验证" &&
+              entry.getAttribute("aria-description") === expected,
+          ),
+        { expected: running ? "进行中" : "已结束" },
+      );
+      if (running)
+        await choice.locator(".conversation-switcher-status svg").waitFor();
+      else
+        assert.equal(
+          await activityRow.getByRole("img", { name: "进行中" }).count(),
+          0,
+        );
+      await page.screenshot({
+        path: join(
+          output,
+          running
+            ? "conversation-background-desktop.png"
+            : "conversation-ended-desktop.png",
+        ),
+        animations: "disabled",
+      });
+      if (running) {
+        await page.emulateMedia({ colorScheme: "dark" });
+        await page.screenshot({
+          path: join(output, "conversation-background-desktop-dark.png"),
+          animations: "disabled",
+        });
+      }
+      await choice.press("Escape");
+      assert.equal(
+        await switcher.evaluate(
+          (element) => document.activeElement === element,
+        ),
+        true,
+      );
+      if (!running) return;
+      await page.setViewportSize({ width: 390, height: 780 });
+      await waitForSidebarClosed();
+      await button("显示侧栏").click();
+      await activityRow.getByRole("img", { name: "进行中" }).waitFor();
+      await page.waitForFunction(() => {
+        const sidebar = document.querySelector(".sidebar");
+        return sidebar && Math.abs(sidebar.getBoundingClientRect().left) < 1;
+      });
+      await page.screenshot({
+        path: join(output, "conversation-background-mobile-dark.png"),
+        animations: "disabled",
+      });
+      await page.emulateMedia({ colorScheme: "light" });
+      await page.screenshot({
+        path: join(output, "conversation-background-mobile-light.png"),
+        animations: "disabled",
+      });
+      await button("收起侧栏").click();
+      await waitForSidebarClosed();
+      await page.waitForFunction(
+        () => !document.activeElement?.closest(".sidebar"),
+      );
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
     return {
       async inspectTask(command) {
         const group = page
@@ -162,6 +244,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         while (!(await row.isVisible()) && (await group.count()))
           await group.click();
         await row.click();
+        if (!build) await inspectConversationActivity(true);
         await button("插件与连接").click();
         await page
           .locator(".catalog-card")
@@ -228,6 +311,21 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
             bounds.x >= 0 && bounds.x + bounds.width <= viewport.width + 1,
           );
           await task("项目架构检查与测试").click({ trial: true });
+          if (!build) {
+            await page.locator(".thread-list[aria-busy=false]").waitFor({
+              state: "attached",
+            });
+            await switcher.click();
+            const indicator = page
+              .getByRole("group", { name: "当前分组的对话" })
+              .getByRole("button", { name: "后台协议隔离验证", exact: true })
+              .locator(".conversation-switcher-status svg");
+            await indicator.waitFor();
+            const statusBounds = await indicator.boundingBox();
+            assert.ok(statusBounds.x >= 0 && statusBounds.width >= 8);
+            await switcher.press("Escape");
+            await menu.waitFor();
+          }
           layouts.push({ viewport, bounds });
         }
         await settings.close();
@@ -282,10 +380,14 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         });
       },
       async inspectCheckReceipt() {
-        const receipt = page.getByRole("region", { name: "后台终端检查" });
-        await receipt.getByText("检查时仍在运行", { exact: true }).waitFor();
+        const receipt = page
+          .getByRole("button", {
+            name: /项目架构检查与测试，检查时仍在运行.*，查看输出/,
+          })
+          .last();
+        await receipt.waitFor();
         await page.reload();
-        await receipt.getByText("检查时仍在运行", { exact: true }).waitFor();
+        await receipt.waitFor();
         await page.screenshot({ path: join(output, "checkpoint-receipt.png") });
         await page.setViewportSize({ width: 390, height: 780 });
         await waitForSidebarClosed();
@@ -296,7 +398,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         });
         await page.emulateMedia({ colorScheme: "light" });
         await page.setViewportSize({ width: 1280, height: 900 });
-        await receipt.getByRole("button", { name: "查看输出" }).click();
+        await receipt.click();
         await outputPanel.getByText("运行中", { exact: true }).waitFor();
       },
       async inspectCompletion({ emptyReply, before }) {
@@ -307,7 +409,9 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
           .waitFor();
         const wake = page.getByText("后台终端续跑", { exact: true });
         await wake.waitFor();
-        const receipt = page.getByRole("region", { name: "后台任务结果" });
+        const receipt = page.getByRole("button", {
+          name: /项目架构检查与测试，已完成.*退出码 0，查看输出/,
+        });
         if (!emptyReply) {
           const reply = page.getByText("已收到后台结果并继续处理。", {
             exact: true,
@@ -323,7 +427,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
               await reply.elementHandle(),
             ),
           );
-          assert.equal(await receipt.count(), 0);
+          await receipt.waitFor();
         } else if (before) {
           assert.equal(await receipt.count(), 0);
           await button("收起对话详情").click();
@@ -335,15 +439,9 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
           await page.screenshot({ path: join(output, "empty-reply.png") });
           return;
         } else {
-          await receipt
-            .getByText("模型本轮未生成回复正文。", {
-              exact: true,
-            })
-            .waitFor();
+          await receipt.waitFor();
           await page.reload();
-          await receipt
-            .getByText("已完成 · 退出码 0", { exact: true })
-            .waitFor();
+          await receipt.waitFor();
           await page.locator(".composer .ProseMirror").waitFor();
           await page.screenshot({ path: join(output, "empty-reply.png") });
           await page.setViewportSize({ width: 390, height: 780 });
@@ -355,7 +453,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
           });
           await page.emulateMedia({ colorScheme: "light" });
           await page.setViewportSize({ width: 1280, height: 900 });
-          await receipt.getByRole("button", { name: "查看输出" }).click();
+          await receipt.click();
           await panel.getByText(/# pass 2/).waitFor();
         }
         await page
@@ -367,6 +465,7 @@ export async function backgroundTerminalBrowser(url, cookie, output, build) {
         assert.equal(await saved.failure(), null);
         await saved.saveAs(join(output, "actual-task.log"));
         await page.screenshot({ path: join(output, "task-completed.png") });
+        if (!before) await inspectConversationActivity(false);
       },
       close: cleanup,
     };

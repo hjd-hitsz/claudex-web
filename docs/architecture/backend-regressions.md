@@ -33,8 +33,6 @@
 ## 验证入口
 
 - `server/tests/backend-product-contract.test.mjs`：两端实际适配器执行同一套网页操作，覆盖离线偏好、旧目录继承、保存成功通知、验证和写入失败后的重试、目录创建、整理占用及历史读取。传输为模拟 app-server，Claude 仅检查版本，原生模型执行单独验证。
-- `server/tests/codex-close-lifecycle.test.mjs`、`codex-resume-lifecycle.test.mjs` 与 `subscriptions.test.mjs` 覆盖取消订阅响应、其他连接持有、关闭事件与恢复错误的两种顺序、目标隔离、一次恢复上限、并发发送、原请求超时及断线清理。源码依据为 Codex 0.169.0 的 `thread_unsubscribe_response_inner`、`thread_resume_inner` 和 `unload_thread_without_subscribers`，取消订阅响应先于异步关闭完成。`tests/integration/codex-subscription-release.mjs` 使用真实 CLI、适配器与人工历史执行八组立即重新打开，模型轮次数为零。实现见 [thread_processor.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server/src/request_processors/thread_processor.rs) 与 [thread_lifecycle.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server/src/request_processors/thread_lifecycle.rs)。
-- `tests/browser/codex-resume-lifecycle.mjs` 使用生产构建、隔离 HTTPS/WSS 服务与模拟原生关闭错误，验证首次打开的检查状态、自动恢复、连续三次点击重新打开及草稿保留，保存深浅主题与窄屏截图到 `.cache/codex-resume-lifecycle`。先将修复前的 `server/src`、`shared` 和根包文件保存在 `.cache/codex-resume-before`，用 `BROWSER_BEFORE=1` 记录旧桥接首次失败及手动重试；默认使用当前桥接，浏览器通过 `PLAYWRIGHT_MODULE` 与 `CHROME_PATH` 配置。
 - `server/tests/backend-routing.test.mjs`：工作区根据适配器所有者声明路由，浏览器关闭只通过 `releaseClient` 释放所属代理；管理器保持与原生订阅集合隔离。`tests/architecture.test.mjs` 同时核对公共桥接、原生适配器和 HTTP 的依赖边界。
 - `client/tests/backend-connection-recovery.test.js` 与组件输入队列回归：单后端恢复、另一后端状态隔离、草稿保留及队列迟到隔离。
 - `client/tests/thread-order.test.js`：新旧目录、来源判定、明确归属、完整分页、活动排序及迟到事件。
@@ -52,3 +50,10 @@
 - `npm run test:backends`：真实 Claude CLI 的会话、分支、文件 checkpoint、子代理、目标、目录、设置、项目指令、思考、运行生命周期、执行服务恢复及升级。
 
 真实模型服务调用与真实外部账户额度需要对应环境单独验证；模拟 Messages 服务验证原生调用链、参数及生命周期。测试结果按实际执行来源报告。
+
+## Codex 订阅与恢复
+
+取消订阅以原生响应为准，其他连接仍保有各自的订阅。Codex 0.169.0 可能先确认取消订阅，再异步关闭对话。`resume-lifecycle.mts` 仅在原生错误码、完整错误文本和目标对话 ID 均匹配关闭中状态时，等待该对话的 `thread/closed` 后重试一次。事件先到时沿用已收到的关闭证据。恢复沿用原请求期限，超时或断线清理等待，写入在恢复成功后提交。
+
+- `server/tests/codex-close-lifecycle.test.mjs`、`codex-resume-lifecycle.test.mjs` 与 `subscriptions.test.mjs` 覆盖取消订阅响应、其他连接持有、关闭事件与恢复错误的两种顺序、目标隔离、一次恢复上限、并发发送、原请求超时及断线清理。源码依据为 Codex 0.169.0 的 `thread_unsubscribe_response_inner`、`thread_resume_inner` 和 `unload_thread_without_subscribers`，取消订阅响应先于异步关闭完成。`tests/integration/codex-subscription-release.mjs` 使用真实 CLI、适配器与人工历史执行八组立即重新打开，模型轮次数为零。实现见 [thread_processor.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server/src/request_processors/thread_processor.rs) 与 [thread_lifecycle.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server/src/request_processors/thread_lifecycle.rs)。
+- `tests/browser/codex-resume-lifecycle.mjs` 使用生产构建、隔离 HTTPS/WSS 服务与模拟原生关闭错误，验证首次打开的检查状态、自动恢复、连续三次点击重新打开及草稿保留，保存深浅主题与窄屏截图到 `.cache/codex-resume-lifecycle`。先将修复前的 `server/src`、`shared` 和根包文件保存在 `.cache/codex-resume-before`，用 `BROWSER_BEFORE=1` 记录旧桥接首次失败及手动重试；默认使用当前桥接，浏览器通过 `PLAYWRIGHT_MODULE` 与 `CHROME_PATH` 配置。

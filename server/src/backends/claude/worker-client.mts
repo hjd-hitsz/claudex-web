@@ -412,7 +412,7 @@ export function createClaudeWorkerAdapter<Client>({
   return {
     capabilities: claudeCapabilities,
     conversationManager: {
-      listActive: () => request({ kind: "conversationList" }),
+      observeThreads: () => request({ kind: "conversationList" }),
       readThread: (threadId: string) =>
         request({ kind: "conversationRead", threadId }),
       deliver(envelope: ConversationEnvelope): Promise<ConversationDelivery> {

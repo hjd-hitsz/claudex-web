@@ -1,5 +1,4 @@
 import { hasBackendWork } from "../../shared/backend-activity.mjs";
-import { resourceTarget } from "../../shared/backend-identity.mjs";
 import { createServiceMaintenance } from "./service-maintenance.mjs";
 import { createTranslationService } from "./translation-service.mjs";
 import https from "node:https";
@@ -58,23 +57,7 @@ export function createWebApplication({
     if (canSend(client)) sendText(client, JSON.stringify(message));
   }
   function broadcast(message) {
-    if (message.method === "lan/state") conversations.wake();
-    if (
-      [
-        "turn/started",
-        "turn/completed",
-        "thread/status/changed",
-        "serverRequest/resolved",
-        "lan/compaction",
-      ].includes(message.method)
-    ) {
-      const target = resourceTarget(
-        message.params?.threadId,
-        message.backendId,
-      );
-      if (target.nativeId)
-        conversations.wakeThread(target.backendId, target.nativeId);
-    }
+    conversations.onNotification(message);
     let text;
     for (const group of [clients.clients, peers])
       for (const client of group)
@@ -217,8 +200,7 @@ export function createWebApplication({
         return;
       }
       requestsInFlight++;
-      bridge
-        .receive(client, message)
+      receive(client, message)
         .finally(() => {
           requestsInFlight--;
         })
@@ -229,6 +211,14 @@ export function createWebApplication({
           }),
         );
     });
+  }
+  async function receive(client, message) {
+    if (message.method !== "lan/conversations/activity")
+      return bridge.receive(client, message);
+    const result = await conversations.listActivity(
+      () => state().params.activeTurns,
+    );
+    send(client, { id: message.id, result });
   }
   const heartbeat = setInterval(() => {
     for (const client of clients.clients) {

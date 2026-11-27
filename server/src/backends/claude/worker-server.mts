@@ -257,7 +257,7 @@ async function handle(socket: WorkerSocket, line: string) {
     try {
       const conversations = adapter.conversationManager;
       if (call.kind === "conversationList")
-        return reply(socket, call, await conversations.listActive());
+        return reply(socket, call, await conversations.observeThreads());
       if (call.kind === "conversationRead")
         return reply(
           socket,

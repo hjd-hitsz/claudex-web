@@ -4,7 +4,7 @@ import { createDelegationModes } from "./delegation/source-modes.mjs";
 import { delegationModeRequests } from "./delegation/mode-requests.mjs";
 import { createNativeDelegation } from "./delegation/native.mjs";
 import { delegationRequest } from "./delegation/routing.mjs";
-import { listBackendThreads } from "./thread-pages.mjs";
+import { listBackendThreads } from "../conversation-manager/catalog.mjs";
 import { createBackgroundService } from "./codex/background-service.mjs";
 import { bindConversationTools } from "../conversation-manager/backend-binding.mjs";
 import { createThreadFolders } from "../thread-folders.mjs";
@@ -270,8 +270,6 @@ export function createBackendManager({
       ? hideDelegatedThreads(projected)
       : projected;
   }
-  const listThreads = (params) =>
-    listBackendThreads(params, { instances, instance, call });
   async function saveBackend(params, prepare) {
     validateBackend(params, config);
     const old = instances.get(params.id);
@@ -412,7 +410,9 @@ export function createBackendManager({
     if (method === "lan/providers/remove")
       return reply({ providers: await providers.remove(params) });
     if (method === "thread/list" && !params.backendId)
-      return reply(await listThreads(params));
+      return reply(
+        await listBackendThreads(params, { instances, instance, call }),
+      );
     const operation = delegationRequest(delegation, method, params, target);
     if (operation) return reply(await operation);
     const entry = instance(target.backendId);

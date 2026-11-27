@@ -18,6 +18,7 @@ function conversationIdentity(thread) {
 }
 
 function activity(status) {
+  if (["idle", "notLoaded"].includes(status?.type)) return "idle";
   if (status?.type !== "active") return "unknown";
   if (status.activeFlags?.includes("waitingOnApproval"))
     return "waitingForApproval";
@@ -39,6 +40,7 @@ export function createCodexConversationManager({
   transport,
   subscriptions,
   busy,
+  backgroundActivity,
 }) {
   const leases = new Set();
   const reviewingTurns = new Map();
@@ -64,23 +66,22 @@ export function createCodexConversationManager({
     }
   }
 
-  async function listActive() {
-    if (!transport.ready) throw new Error("Codex 后端尚未就绪。");
+  async function observeThreads() {
+    const activitySnapshot = await backgroundActivity();
     const threads = [];
-    let complete = true;
-    let cursor;
-    do {
-      const page = await transport.call("thread/loaded/list", {
-        limit: 50,
-        cursor,
-      });
-      const results = await Promise.allSettled(page.data.map(read));
+    let { complete } = activitySnapshot;
+    const candidates = [
+      ...new Set([...activitySnapshot.loaded, ...activitySnapshot.running]),
+    ];
+    for (let offset = 0; offset < candidates.length; offset += 50) {
+      const batch = candidates.slice(offset, offset + 50);
+      const results = await Promise.allSettled(batch.map(read));
       if (!transport.ready) throw new Error("Codex 后端尚未就绪。");
       for (const [index, result] of results.entries()) {
         if (result.status === "rejected") {
           complete = false;
           threads.push({
-            threadId: page.data[index],
+            threadId: batch[index],
             title: "",
             cwd: "",
             status: "unknown",
@@ -92,16 +93,17 @@ export function createCodexConversationManager({
           !thread ||
           thread.ephemeral ||
           thread.canAcceptDirectInput === false ||
-          ["idle", "notLoaded"].includes(thread.status?.type)
+          thread.archived ||
+          thread.path?.split(/[\\/]/).includes("archived_sessions")
         )
           continue;
         threads.push({
           ...conversationIdentity(thread),
           status: activity(thread.status),
+          background: activitySnapshot.running.has(thread.id),
         });
       }
-      cursor = page.nextCursor;
-    } while (cursor);
+    }
     return { threads, complete };
   }
 
@@ -252,7 +254,7 @@ export function createCodexConversationManager({
   }
 
   return {
-    listActive,
+    observeThreads,
     async readThread(threadId) {
       const thread = await read(threadId);
       return thread ? conversationIdentity(thread) : null;

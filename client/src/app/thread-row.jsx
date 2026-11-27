@@ -24,7 +24,11 @@ import {
   titleOf,
   report,
 } from "../store.js";
-import { isArchivedThread, threadTime } from "../domain/thread-order.js";
+import {
+  isArchivedThread,
+  isThreadRunning,
+  threadTime,
+} from "../domain/thread-order.js";
 import { isCompacting } from "../domain/compaction.js";
 import { ThreadRunningIcon } from "./thread-running-icon.jsx";
 import { useDismissibleMenu } from "../ui/dismissible-menu.js";
@@ -85,7 +89,8 @@ export function ThreadRow({ thread }) {
   const tooltipId = useId();
   const title = titleOf(thread);
   const backendId = resourceTarget(thread.id).backendId;
-  const running = !!s.active[thread.id];
+  const running = isThreadRunning(thread, s);
+  const turnRunning = Boolean(s.active[thread.id]);
   const unread = !!s.unreadCompletions[thread.id];
   const pinned = s.pins.includes(thread.id);
   const status = running
@@ -122,7 +127,7 @@ export function ThreadRow({ thread }) {
   }, [titleVisible]);
   const archived = isArchivedThread(thread);
   const archiveLabel = archived ? "恢复对话" : "归档对话";
-  const time = threadTime(thread, running);
+  const time = threadTime(thread, turnRunning);
   const diff = Date.now() / 1000 - time;
   const date =
     diff < 3600
@@ -176,9 +181,9 @@ export function ThreadRow({ thread }) {
           title={
             archived && thread.updatedAt != null
               ? "最近更新时间"
-              : running && thread.startedAt != null
+              : turnRunning && thread.startedAt != null
                 ? "消息发送时间"
-                : !running && thread.completedAt != null
+                : !turnRunning && thread.completedAt != null
                   ? "最近完成时间"
                   : "创建时间"
           }

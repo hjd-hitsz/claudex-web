@@ -1,6 +1,7 @@
 import { formatConversationMessage } from "../../conversation-manager/message.mjs";
 import { claudeConversationServerName } from "../../conversation-manager/tools.mjs";
 import { nativeProcessesAlive } from "./process-ownership.mjs";
+import { runningBackgroundTask } from "./background-tasks.mjs";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -50,8 +51,7 @@ export function claudeConversationAdapter({
       return "running";
     if (s.queue?.[0]?.status === "queued") return "queued";
     const tasks = Object.values(s.backgroundTasks || {});
-    if (tasks.some((task) => ["running", "pending"].includes(task.status)))
-      return "background";
+    if (tasks.some(runningBackgroundTask)) return "background";
     if (s.queue?.length || tasks.some((task) => task.status === "unknown"))
       return "unknown";
     return null;
@@ -106,13 +106,25 @@ export function claudeConversationAdapter({
   }
 
   return {
-    async listActive() {
+    async observeThreads() {
       assertReady();
       const sessions = (await storage.read()).sessions;
       const threads = Object.values(sessions).flatMap((session) => {
         if (!managed(session)) return [];
         const state = status(session);
-        return state ? [{ ...descriptor(session), status: state }] : [];
+        return state
+          ? [
+              {
+                ...descriptor(session),
+                status: state,
+                generating:
+                  state === "running" && runtime.running.has(session.id),
+                background: Object.values(session.backgroundTasks || {}).some(
+                  runningBackgroundTask,
+                ),
+              },
+            ]
+          : [];
       });
       return {
         threads,

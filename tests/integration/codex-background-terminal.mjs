@@ -1,5 +1,6 @@
 import { backgroundTerminalBrowser } from "../helpers/background-terminal-browser.mjs";
 import { backgroundWorkerClock } from "../helpers/background-worker-clock.mjs";
+import { codexConversationMcpName } from "../../server/src/backends/codex/conversation-tools.mjs";
 import { received } from "../../packages/background-terminal/delivery.mjs";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -662,6 +663,64 @@ try {
     "running",
     "模型结束轮次时任务应仍在运行",
   );
+  await direct.rpc("thread/resume", {
+    threadId: thread.id,
+    excludeTurns: true,
+  });
+  assert.equal(
+    (
+      await direct.rpc("thread/read", {
+        threadId: thread.id,
+        includeTurns: false,
+      })
+    ).thread.status.type,
+    "idle",
+  );
+  const { thread: observer } = await browser.rpc("thread/start", {
+    cwd: workspace,
+    approvalPolicy: "never",
+    ephemeral: true,
+  });
+  async function discover(title) {
+    const result = await direct.rpc("mcpServer/tool/call", {
+      threadId: observer.id,
+      server: codexConversationMcpName,
+      tool: "list_active_threads",
+      arguments: { title },
+    });
+    assert.equal(Boolean(result.isError), false, JSON.stringify(result));
+    return JSON.parse(result.content[0].text);
+  }
+  const activity = async (threadId) => {
+    const { activities, complete } = await browser.rpc(
+      "lan/conversations/activity",
+    );
+    assert.equal(complete, true);
+    return activities.find((entry) => entry.threadId === threadId);
+  };
+  const discovery = await discover("后台协议隔离验证");
+  assert.deepEqual(
+    discovery.threads.map(({ status }) => status),
+    ["background"],
+  );
+  const backgroundActivity = await activity(thread.id);
+  assert.deepEqual(backgroundActivity, {
+    threadId: thread.id,
+    status: "background",
+    generating: false,
+    background: true,
+    live: true,
+  });
+  console.log("PASS 空闲原生会话的后台任务已进入 MCP 活跃查询和网页活动快照");
+  await browser.rpc("thread/unsubscribe", { threadId: thread.id });
+  await direct.rpc("thread/unsubscribe", { threadId: thread.id });
+  await until(async () => {
+    const { data } = await direct.rpc("thread/loaded/list", {});
+    return !data.includes(thread.id);
+  }, "后台任务所属的原生会话必须可卸载");
+  assert.equal((await activity(thread.id)).status, "background");
+  assert.deepEqual(await discover("后台协议隔离验证"), discovery);
+  console.log("PASS 原生会话卸载后，MCP 与网页仍能发现其运行中的后台任务");
   const terminals = browser.rpc;
   assert(
     (
@@ -721,6 +780,7 @@ try {
     nativeTerminalPage.data.map((terminal) => terminal.processId),
     [nativeJob.native.processId],
   );
+  assert.equal((await activity(enabledNative.threadId)).status, "background");
   const cancelledNative = await nativeRun("cancelled");
   await terminals("thread/backgroundTerminals/clean", {
     threadId: cancelledNative.threadId,
@@ -896,6 +956,11 @@ try {
     [emptyReply ? "" : "已收到后台结果并继续处理。"],
   );
   if (liveBrowser) await ui.inspectCompletion({ emptyReply, before });
+  if (liveBrowser) {
+    await until(async () => !(await activity(thread.id)), "退出后活动状态清除");
+    assert.deepEqual((await discover("后台协议隔离验证")).threads, []);
+    console.log("PASS 最后一个后台任务退出后，MCP 与网页活动快照清除会话");
+  }
   const files = await readdir(state);
   const batches = await Promise.all(
     files
@@ -933,6 +998,15 @@ try {
       {
         version,
         inference: "本机 Responses 模拟服务，未调用远程模型",
+        backgroundActivity: {
+          mcp: discovery.threads.map(({ status }) => status),
+          web: {
+            status: backgroundActivity.status,
+            generating: backgroundActivity.generating,
+            background: backgroundActivity.background,
+            live: backgroundActivity.live,
+          },
+        },
         jobRequests,
         checkRequests: [...checkRequests.values()],
         threadUnloadedBeforeCompletion: !liveBrowser,

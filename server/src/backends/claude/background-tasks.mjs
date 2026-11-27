@@ -11,6 +11,8 @@ export const shellTask = (task) =>
   ["local_bash", "shell", "local_shell"].includes(task.task_type);
 const activeTask = (task) =>
   ["running", "pending", "unknown"].includes(task.status);
+export const runningBackgroundTask = (task) =>
+  ["running", "pending"].includes(task.status);
 
 export function createBackgroundTasks({ storage, save, emit }) {
   const owners = new Map();

@@ -203,6 +203,7 @@ export function createConnection({
     account.reset();
     set({
       connected: false,
+      conversationActivity: {},
       usageLoading: false,
       compactions: Object.fromEntries(
         Object.entries(get().compactions).map(([id, entry]) => [
