@@ -1,4 +1,5 @@
 import { page } from "./history.mjs";
+import { createClaudeAgentActivity } from "./agent-activity.mjs";
 import {
   captureNativeProcesses,
   nativeProcessesAlive,
@@ -16,6 +17,7 @@ export const runningBackgroundTask = (task) =>
 
 export function createBackgroundTasks({ storage, save, emit }) {
   const owners = new Map();
+  const recordAgent = createClaudeAgentActivity(save, emit);
   async function event(threadId, message, process) {
     if (message.type !== "system") return;
     const subtype = message.subtype;
@@ -63,38 +65,17 @@ export function createBackgroundTasks({ storage, save, emit }) {
     ) {
       const id = message.task_id;
       owners.set(`${threadId}/${id}`, process);
-      if (subtype === "task_started" && message.task_type === "local_agent") {
-        const agentId = `agent/${threadId}/${id}`;
-        let details;
-        await save(threadId, (s) => {
-          const call = s.agentCalls?.[message.tool_use_id];
-          details = {
-            ...s.agents?.[agentId],
-            ...call,
-            agentId: id,
-            name: call?.name || message.description || message.subagent_type,
-            initialTask: message.prompt || call?.initialTask,
-            toolUseId: message.tool_use_id,
-            parentNativeId: message.session_id,
-          };
-          return { ...s, agents: { ...s.agents, [agentId]: details } };
-        });
-        const turnId = process.lastTurnId;
-        const item = {
-          id: `agent-${id}`,
-          turnId,
-          type: "subAgentActivity",
+      if (subtype === "task_started" && message.task_type === "local_agent")
+        await recordAgent(threadId, {
+          agentId: id,
+          parentNativeId: message.session_id,
+          agentType: message.subagent_type,
+          toolUseId: message.tool_use_id,
+          name: message.description,
+          prompt: message.prompt,
+          turnId: process.lastTurnId,
           kind: "started",
-          agentThreadId: agentId,
-          agentPath: details.name,
-          prompt: details.initialTask,
-        };
-        await save(threadId, (s) => ({
-          ...s,
-          extraItems: { ...s.extraItems, [item.id]: item },
-        }));
-        emit("item/completed", { threadId, turnId, item });
-      }
+        });
       await save(threadId, (s) => ({
         ...s,
         backgroundTasks: {

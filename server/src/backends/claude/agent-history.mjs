@@ -1,5 +1,20 @@
 import { historyTurns } from "./messages.mjs";
 
+export function removeUnboundCompactionAgents(records, agents, nativeIds) {
+  const known = new Set(nativeIds);
+  for (const turn of records) {
+    if (!turn.items.some(({ type }) => type === "contextCompaction")) continue;
+    turn.items = turn.items.filter((item) => {
+      if (item.type !== "subAgentActivity" || item.kind !== "completed")
+        return true;
+      const agent = agents?.[item.agentThreadId];
+      return Boolean(
+        agent?.turnId || agent?.toolUseId || known.has(agent?.agentId),
+      );
+    });
+  }
+}
+
 export async function recoverAgents(parent, records, readSession, ids) {
   const nativeId = parent.nativeSessionId || parent.id;
   const agents = { ...parent.agents };
@@ -33,6 +48,12 @@ export async function recoverAgents(parent, records, readSession, ids) {
       toolUseId: toolId,
     };
     const activity = turn?.items.find((item) => item.agentThreadId === id);
+    if (turn)
+      for (const record of records)
+        if (record !== turn)
+          record.items = record.items.filter(
+            (item) => item.agentThreadId !== id,
+          );
     if (activity) {
       activity.prompt = agents[id].prompt;
       activity.agentPath = agents[id].name;

@@ -13,6 +13,15 @@ function contentBlocks(message) {
     ? [{ type: "text", text: content }]
     : content || [];
 }
+
+function isCompactCommand(message) {
+  return (
+    message.type === "user" &&
+    message.isCompletedLocalCommand &&
+    typeof message.message?.content === "string" &&
+    message.message.content.startsWith("<command-name>/compact</command-name>")
+  );
+}
 export function visibleSessionMessages(messages, internalInputIds = {}) {
   const promptIds = new Set(
     messages
@@ -51,7 +60,22 @@ export function convertMessage(
     items = [];
   const messageId = message.message?.id || message.uuid;
   if (message.type === "user") {
-    const content = blocks
+    const source = isCompactCommand(message)
+      ? [
+          {
+            type: "text",
+            text: [
+              "/compact",
+              /<command-args>([\s\S]*?)<\/command-args>\s*$/
+                .exec(message.message.content)?.[1]
+                ?.trim(),
+            ]
+              .filter(Boolean)
+              .join(" "),
+          },
+        ]
+      : blocks;
+    const content = source
       .filter((b) => ["text", "image"].includes(b.type))
       .map((b) =>
         b.type === "text"
@@ -199,13 +223,55 @@ export function isUserPrompt(message) {
       !message.promptSource &&
       !message.turnOrigin &&
       !message.turnPosition &&
-      !message.origin
+      !message.origin &&
+      !isCompactCommand(message)
     ) &&
     contentBlocks(message).some((block) =>
       ["text", "image"].includes(block.type),
     )
   );
 }
+
+function* orderCompactionMessages(messages) {
+  let boundary;
+  let commandId;
+  for (const message of messages) {
+    const localText =
+      message.isCompletedLocalCommand &&
+      message.type === "user" &&
+      message.message?.content;
+    if (boundary) {
+      if (message.isCompactSummary) continue;
+      if (isCompactCommand(message)) {
+        yield message;
+        yield boundary;
+        boundary = undefined;
+        commandId = message.uuid;
+        continue;
+      }
+      yield boundary;
+      boundary = undefined;
+    }
+    if (
+      commandId &&
+      message.parentUuid === commandId &&
+      typeof localText === "string" &&
+      localText.startsWith("<local-command-stdout>")
+    ) {
+      commandId = message.uuid;
+      continue;
+    }
+    if (
+      message.type === "system" &&
+      message.subtype === "compact_boundary" &&
+      message.compactMetadata?.trigger === "manual"
+    )
+      boundary = message;
+    else yield message;
+  }
+  if (boundary) yield boundary;
+}
+
 export function historyTurns(
   messages,
   savedTurns = {},
@@ -224,7 +290,7 @@ export function historyTurns(
   );
   let turn;
   let notifications = [];
-  for (const message of messages) {
+  for (const message of orderCompactionMessages(messages)) {
     if (
       message.type === "user" &&
       message.origin?.kind === "task-notification"

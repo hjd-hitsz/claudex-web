@@ -1,6 +1,57 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readThreadHistory } from "../src/domain/thread-history.js";
+import { createThreadHistoryLoader } from "../src/application/history-page.js";
+import { resourceId } from "../../shared/backend-identity.mjs";
+
+test("Claude 完整历史移除整理轮次的旧代理卡，保留分页期间的新事件", async () => {
+  const ghost = {
+    id: "old-summary-agent",
+    turnId: "compact",
+    type: "subAgentActivity",
+    kind: "completed",
+  };
+  const currentAgent = { ...ghost, id: "current-agent" };
+  const retainedAgent = { ...ghost, id: "retained-agent" };
+  const marker = { id: "marker", type: "contextCompaction" };
+  const receipt = { id: "answer", type: "agentMessage", text: "续接回答" };
+  let state = {
+    connected: true,
+    current: { id: resourceId("claude", "thread") },
+    items: [ghost, retainedAgent],
+  };
+  const older = Promise.withResolvers();
+  const compacted = { item: marker, turnId: "compact" };
+  const loaded = createThreadHistoryLoader({
+    rpc: async (_method, { cursor }) =>
+      cursor
+        ? older.promise
+        : {
+            data: [{ item: receipt, turnId: "next" }, compacted],
+            nextCursor: "older",
+          },
+    get: () => state,
+    set: (patch) => (state = { ...state, ...patch }),
+    transport: {},
+    getConnectionRevision: () => 1,
+    historyRevision: () => 1,
+    opening: () => 1,
+  });
+  const first = Promise.withResolvers();
+  const reading = loaded(1, { onFirstPage: first.resolve });
+  await first.promise;
+  assert(state.items.includes(ghost));
+  state.items = [...state.items, currentAgent];
+  older.resolve({
+    data: [{ item: retainedAgent, turnId: "compact" }],
+    nextCursor: null,
+  });
+  await reading;
+  assert.deepEqual(
+    state.items.map(({ id }) => id),
+    [retainedAgent.id, marker.id, receipt.id, currentAgent.id],
+  );
+});
 
 test("消息接口不支持时按完整轮次分页恢复消息与轮内顺序", async () => {
   for (const sortDirection of ["asc", "desc"]) {

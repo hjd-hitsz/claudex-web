@@ -92,6 +92,7 @@ export type SessionRecord = {
     string,
     {
       toolUseId: string;
+      turnId?: string;
       initialTask: string;
       name: string;
       agentType?: string;
@@ -104,6 +105,8 @@ export type SessionRecord = {
       name: string;
       agentType: string;
       parentNativeId: string;
+      turnId?: string;
+      toolUseId?: string;
       initialTask?: string;
     }
   >;

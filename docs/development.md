@@ -89,6 +89,8 @@ CLAUDE_EXECUTABLE=/absolute/path/to/claude npm run test:backends
 
 项目指令回归通过真实运行时捕获 Messages 请求，核对祖先和当前目录的 AGENTS 指令完整送达、原生 CLAUDE 指令持续保留，以及更新、删除、空快照和读取失败后的下一轮行为。标准 Messages 传输将所需系统上下文放在顶层 `system`。原生历史回归使用临时 JSONL 和真实 SDK，核对 UUID 分支、编辑、补充消息、子代理接收记录、后台自动唤醒锚点和完整分页；历史正文与已确认的展示元数据分别验证。
 
+构建后运行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/claude-compaction.mjs`。脚本通过真实 Claude CLI 和隔离 Messages 服务提交 `/compact`，再通过模拟用量触发原生自动整理，核对整理状态、连续流式回答、刷新后的时间顺序及真实子代理详情，证据保存在 `.cache/claude-compaction`。SDK 历史回归另用含手动、自动整理标记的临时原生记录核对跨边界的工具结果与分页。
+
 Codex 的真实模型回归显式指定已配置模型和认证的目录，脚本只复制配置及认证到独立的临时 `CODEX_HOME`，项目和对话记录在临时目录中创建：
 
 ```bash

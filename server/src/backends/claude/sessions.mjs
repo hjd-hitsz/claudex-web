@@ -1,4 +1,8 @@
-import { recoverAgents, agentTurns } from "./agent-history.mjs";
+import {
+  recoverAgents,
+  agentTurns,
+  removeUnboundCompactionAgents,
+} from "./agent-history.mjs";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { createHistoryPages } from "../history-pages.mjs";
@@ -88,6 +92,7 @@ export function createClaudeSessions({
           readSession("getSessionMessages", nativeId, {
             dir,
             includeSystemMessages: true,
+            includeCompactedHistory: true,
           }),
           readSession("listSubagents", nativeId, { dir }),
         ])
@@ -116,17 +121,22 @@ export function createClaudeSessions({
       s.inputTurns,
     );
     const byId = new Map(records.map((turn) => [turn.id, turn]));
-    for (const saved of Object.values(s.turns || {}))
-      if (!byId.has(saved.id) && saved.items?.length) {
-        records.push(saved);
-        byId.set(saved.id, saved);
-      }
+    const savedOnly = Object.values(s.turns || {})
+      .filter((turn) => !byId.has(turn.id) && turn.items?.length)
+      .map((turn) => ({ ...turn, items: [...turn.items] }));
+    if (savedOnly.length) {
+      const time = (turn) => turn.startedAt ?? turn.completedAt ?? Infinity;
+      records.push(...savedOnly);
+      records.sort((a, b) => time(a) - time(b));
+      for (const turn of savedOnly) byId.set(turn.id, turn);
+    }
     for (const item of Object.values(s.extraItems || {})) {
       const turn = byId.get(item.turnId);
       if (turn && !turn.items.some((i) => i.id === item.id))
         turn.items.push(item);
     }
     if (s.initialized) {
+      removeUnboundCompactionAgents(records, s.agents, agentIds);
       const agents = await recoverAgents(
         { ...s, running: runtime.running.has(s.id) },
         records,

@@ -51,6 +51,7 @@ export async function messagesServer(
         output_tokens: 20,
         cache_creation_input_tokens: 0,
         cache_read_input_tokens: 0,
+        ...answer.usage,
       },
     };
     if (!input.stream) {

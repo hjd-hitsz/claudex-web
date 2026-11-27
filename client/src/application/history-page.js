@@ -88,13 +88,28 @@ export function createThreadHistoryLoader({
       connection === transport.connection &&
       revision === getConnectionRevision() &&
       get().connected;
-    function apply(history) {
+    function apply(history, complete = false) {
       if (!current()) return;
       const map = new Map(history.map((item) => [item.id, item]));
+      const compactedTurns = new Set(
+        complete && resourceTarget(id).backendId === "claude"
+          ? history
+              .filter(({ type }) => type === "contextCompaction")
+              .map(({ turnId }) => turnId)
+          : [],
+      );
       // 只让读取期间真正更新的记录覆盖历史；首屏快照仍属于本次读取。
-      for (const item of get().items)
-        if (!map.has(item.id) || previous.get(item.id) !== item)
+      for (const item of get().items) {
+        const unconfirmedAgent =
+          item.type === "subAgentActivity" &&
+          item.kind === "completed" &&
+          compactedTurns.has(item.turnId);
+        if (
+          previous.get(item.id) !== item ||
+          (!map.has(item.id) && !unconfirmedAgent)
+        )
           map.set(item.id, item);
+      }
       const items = [...map.values()];
       set({ items });
       for (const item of history)
@@ -120,6 +135,6 @@ export function createThreadHistoryLoader({
       }),
       delegated,
     ]);
-    apply([...loaded, ...delegations]);
+    apply([...loaded, ...delegations], true);
   };
 }

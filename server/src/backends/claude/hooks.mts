@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { snapshotToolWorkspace } from "./git-tool-changes.mjs";
 import { readProjectInstructions } from "./project-instructions.mjs";
+import { createClaudeAgentActivity } from "./agent-activity.mjs";
 import type {
   HookCallback,
   Options,
@@ -17,7 +18,6 @@ import type {
   PendingQuestion,
   SaveSession,
   SessionDependencies,
-  SessionRecord,
 } from "./execution-types.d.mts";
 
 async function contents(path: string) {
@@ -55,15 +55,23 @@ export function createRunHooks({
   onPromptFailure,
 }: HookOptions): NonNullable<Options["hooks"]> {
   const snapshots = new Map<string, Snapshot>();
+  const recordAgent = createClaudeAgentActivity(save, (method, params) =>
+    broadcast({ method, params }),
+  );
   async function record(
-    item: { id: string; type: string } & Record<string, unknown>,
+    item: { id: string; type: string; turnId: string } & Record<
+      string,
+      unknown
+    >,
   ) {
-    const { turnId } = context();
     await save(threadId, (s) => ({
       ...s,
       extraItems: { ...s.extraItems, [item.id]: item },
     }));
-    broadcast({ method: "item/completed", params: { threadId, turnId, item } });
+    broadcast({
+      method: "item/completed",
+      params: { threadId, turnId: item.turnId, item },
+    });
   }
   const before: HookCallback = async (input, _toolId, { signal }) => {
     if (input.hook_event_name !== "PreToolUse") return {};
@@ -79,6 +87,7 @@ export function createRunHooks({
         agentCalls: {
           ...s.agentCalls,
           [input.tool_use_id]: {
+            turnId,
             toolUseId: input.tool_use_id,
             initialTask: agent.prompt,
             name: agent.name || agent.description,
@@ -198,27 +207,12 @@ export function createRunHooks({
       input.hook_event_name !== "SubagentStop"
     )
       return {};
-    const { turnId } = context();
-    const id = `agent/${threadId}/${input.agent_id}`;
-    let details: NonNullable<SessionRecord["agents"]>[string] | undefined;
-    await save(threadId, (s) => {
-      details = {
-        ...s.agents?.[id],
-        agentId: input.agent_id,
-        name: s.agents?.[id]?.name || input.agent_type,
-        agentType: input.agent_type,
-        parentNativeId: input.session_id,
-      };
-      return { ...s, agents: { ...s.agents, [id]: details } };
-    });
-    await record({
-      id: `agent-${input.agent_id}`,
-      turnId,
-      type: "subAgentActivity",
+    await recordAgent(threadId, {
+      agentId: input.agent_id,
+      parentNativeId: input.session_id,
+      agentType: input.agent_type,
+      turnId: context().turnId,
       kind: input.hook_event_name === "SubagentStart" ? "started" : "completed",
-      agentThreadId: id,
-      agentPath: details?.name,
-      prompt: details?.initialTask,
     });
     return {};
   };
