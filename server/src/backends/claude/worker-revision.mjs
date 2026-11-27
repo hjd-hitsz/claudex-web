@@ -14,7 +14,7 @@ async function files(directory) {
         const path = join(directory, entry.name);
         return entry.isDirectory()
           ? files(path)
-          : entry.name.endsWith(".mjs")
+          : /\.(mjs|json)$/.test(entry.name)
             ? [path]
             : [];
       }),

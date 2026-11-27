@@ -1,4 +1,25 @@
-# Claude Code 计划与审查
+# Claude Code 执行上下文
+
+## 项目规则快照 <!-- prompt: projectInstructions -->
+
+当前工作目录：{{cwd}}
+本轮有效 AGENTS 项目指令以以下完整快照为准，本快照取代此前轮次中的 AGENTS 项目指令快照。文件按祖先目录到当前目录排列，分别约束其所在目录及子目录；同一事项存在冲突时，更具体目录中的规则优先。原生 CLAUDE.md 指令继续适用。
+
+{{files}}
+
+工作方法由以上项目规则和原生 CLAUDE.md 规定，工作分工由会话当前的系统角色和用户选择决定。项目规则中要求 Agent 执行的操作，由当前分工下负责该项工作的代理落实。组织和验收工作可以通过负责执行的代理完成。
+
+## 项目规则文件 <!-- prompt: projectInstructionFile -->
+
+项目指令文件：{{path}}
+适用范围：{{directory}} 及其子目录。
+指令原文：
+
+{{content}}
+
+## 项目规则快照为空 <!-- prompt: projectInstructionsEmpty -->
+
+当前有效 AGENTS 项目指令文件列表为空。
 
 ## 计划模式 <!-- prompt: planMode -->
 

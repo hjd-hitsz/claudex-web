@@ -25,7 +25,7 @@ const fields = new Set([
 
 export function acceptDelegation(
   data,
-  { parent, turn, target, input, snapshot },
+  { parent, turn, target, input, snapshot, callId },
 ) {
   if (
     !input ||
@@ -45,12 +45,16 @@ export function acceptDelegation(
   )
     throw new Error("委派要求、请求标识或任务范围无效");
   const key = JSON.stringify([parent.id, input.request_id]);
-  const previous = data.receipts[key];
+  const callKey =
+    callId &&
+    JSON.stringify([parent.id, parent.sourceRuntime, turn.id, callId]);
+  const previous = (callKey && data.receipts[callKey]) || data.receipts[key];
   if (previous) {
     if (previous.target !== target || !isDeepStrictEqual(previous.input, input))
       throw new Error("请求标识已用于另一项委派");
     if (data.tasks[previous.taskId]?.sourceRuntime !== parent.sourceRuntime)
       throw new Error("委派发起后端实例已更换");
+    if (callKey) data.receipts[callKey] = previous;
     return { task_id: previous.taskId, status: "accepted" };
   }
   let task = findDelegationTask(
@@ -74,7 +78,7 @@ export function acceptDelegation(
       if (notice.taskId === task.id && notice.status === "queued")
         notice.status = "superseded";
   } else {
-    if (!snapshot) throw new Error("请在输入区选择已启用的执行端");
+    if (!snapshot) throw new Error("请启用委派接收端");
     task = {
       id: randomUUID(),
       parentId: parent.id,
@@ -103,6 +107,7 @@ export function acceptDelegation(
   task.status = "accepted";
   task.request = null;
   data.receipts[key] = { taskId: task.id, input, target };
+  if (callKey) data.receipts[callKey] = data.receipts[key];
   return { task_id: task.id, status: "accepted" };
 }
 

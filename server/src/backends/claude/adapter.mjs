@@ -23,6 +23,8 @@ export function createClaudeAdapter({
   providers,
   workspace: sharedWorkspace,
   readSubagentSettings,
+  readSecretaryRole,
+  readLegacyDelegationMode,
   callConversationTool,
 }) {
   const storage = createStorage(
@@ -43,6 +45,8 @@ export function createClaudeAdapter({
     compactions,
     questions,
     readSubagentSettings,
+    readSecretaryRole,
+    readLegacyDelegationMode,
     callConversationTool,
   });
   const catalogue = createClaudeCatalogue({
@@ -110,6 +114,7 @@ export function createClaudeAdapter({
     compactions,
     notify,
     assertReady,
+    readLegacyDelegationMode,
     readTokenUsage: async (session) =>
       configuredTokenUsage(
         session,

@@ -82,9 +82,14 @@ export function createConversationGateway(configDir, getKey, invoke) {
         chunks.push(chunk);
       }
       const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      const { threadId, name, args, callId } = payload;
+      const { threadId, turnId, name, args, callId } = payload;
       json(response, 200, {
-        result: await invoke(runtimeId, { threadId, callId }, name, args),
+        result: await invoke(
+          runtimeId,
+          { threadId, turnId, callId },
+          name,
+          args,
+        ),
       });
     } catch (error) {
       json(response, 400, { error: error.message });

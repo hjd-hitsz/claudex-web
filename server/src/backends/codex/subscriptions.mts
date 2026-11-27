@@ -1,5 +1,12 @@
 import type { CodexClient, createUpstream } from "./upstream.mjs";
-import type { CallResult } from "./native-protocol.d.mts";
+import type {
+  CallResult,
+  CodexSessionSettings,
+  NativeCollaboration,
+  NativeParams,
+  ResumeParams,
+} from "./native-protocol.d.mts";
+import { codexSecretaryTurn } from "./secretary-mode.mjs";
 
 type ResumeOptions = { cwd?: string | null; inheritPermissions?: boolean };
 
@@ -17,6 +24,11 @@ type SubscriptionDependencies = {
   activeTurns: { has(threadId: string): boolean };
   activeThreads: Set<string>;
   backgroundHandoffPending?: (threadId: string) => boolean;
+  readSecretaryRole?: (threadId: string) => Promise<string | undefined>;
+  resumeNative?: (
+    params: ResumeParams,
+    role?: string,
+  ) => Promise<CallResult<"thread/resume">>;
 };
 
 export function createSubscriptions({
@@ -25,6 +37,8 @@ export function createSubscriptions({
   activeTurns,
   activeThreads,
   backgroundHandoffPending = () => false,
+  readSecretaryRole,
+  resumeNative = (params) => transport.call("thread/resume", params),
 }: SubscriptionDependencies) {
   const subscriptions = new Map<string, Set<CodexClient>>(),
     releasing = new Map<string, Promise<CallResult<"thread/unsubscribe">>>(),
@@ -32,6 +46,52 @@ export function createSubscriptions({
     retained = new Map<string, Set<symbol>>();
   const unwrittenThreads = new Set<string>();
   const activeGoals = new Set<string>();
+  const roles = new Map<string, string | undefined>();
+  const settings = new Map<string, CodexSessionSettings>();
+  const closing = new Map<string, (error?: Error) => void>();
+  function recordSettings(threadId: string, session: CodexSessionSettings) {
+    const { model, reasoningEffort, collaborationMode } = session;
+    settings.set(threadId, { model, reasoningEffort, collaborationMode });
+  }
+  function closedThread(threadId: string) {
+    roles.delete(threadId);
+    settings.delete(threadId);
+    closing.get(threadId)?.();
+  }
+  async function releaseForRoleChange(threadId: string) {
+    if (
+      unwrittenThreads.has(threadId) ||
+      compactions.busy(threadId) ||
+      activeTurns.has(threadId) ||
+      activeThreads.has(threadId) ||
+      backgroundHandoffPending(threadId)
+    )
+      throw new Error("请等待 Codex 会话空闲后切换委派模式。");
+    const completed = Promise.withResolvers<void>();
+    const timeout = setTimeout(
+      () =>
+        completed.reject(
+          new Error("Codex 会话仍由原生客户端持有，当前无法切换委派模式。"),
+        ),
+      8000,
+    );
+    const settle = (error?: Error) =>
+      error ? completed.reject(error) : completed.resolve();
+    closing.set(threadId, settle);
+    try {
+      const release = transport
+        .call("thread/unsubscribe", { threadId }, { trackThread: false })
+        .then(({ status }) => {
+          subscriptions.delete(threadId);
+          if (status === "notLoaded") closedThread(threadId);
+        });
+      await Promise.all([release, completed.promise]);
+      subscriptions.delete(threadId);
+    } finally {
+      clearTimeout(timeout);
+      if (closing.get(threadId) === settle) closing.delete(threadId);
+    }
+  }
   function updateGoal(threadId: string, goal: { status?: string } | null) {
     if (goal?.status === "active") activeGoals.add(threadId);
     else activeGoals.delete(threadId);
@@ -40,22 +100,39 @@ export function createSubscriptions({
     threadId: string,
     { cwd, inheritPermissions = false }: ResumeOptions = {},
   ) {
-    if (subscriptions.has(threadId)) return;
+    if (!readSecretaryRole && subscriptions.has(threadId)) return;
     if (!resuming.has(threadId)) {
-      const resume = transport
-        .call("thread/resume", {
-          threadId,
-          ...(cwd && { cwd }),
-          excludeTurns: true,
-          ...(!inheritPermissions && codexFullAccess),
-          config: { thread_unload_delay_secs: 0 },
-        })
-        .then(({ thread }) => {
+      const resume = Promise.resolve()
+        .then(async () => {
+          const role = await readSecretaryRole?.(threadId);
+          if (subscriptions.has(threadId) || roles.has(threadId)) {
+            if (Boolean(roles.get(threadId)) !== Boolean(role))
+              await releaseForRoleChange(threadId);
+            else if (subscriptions.has(threadId)) {
+              roles.set(threadId, role);
+              return;
+            }
+          }
+          const session = await resumeNative(
+            {
+              threadId,
+              ...(cwd && { cwd }),
+              excludeTurns: true,
+              ...(!inheritPermissions && codexFullAccess),
+              config: { thread_unload_delay_secs: 0 },
+            },
+            role,
+          );
+          const { thread } = session;
           if (!subscriptions.has(thread.id))
             subscriptions.set(thread.id, new Set());
+          roles.set(thread.id, role);
+          recordSettings(thread.id, session);
           if (thread.status?.type === "active") activeThreads.add(thread.id);
         })
-        .finally(() => resuming.delete(threadId));
+        .finally(() => {
+          if (resuming.get(threadId) === resume) resuming.delete(threadId);
+        });
       resuming.set(threadId, resume);
     }
     await resuming.get(threadId);
@@ -110,6 +187,22 @@ export function createSubscriptions({
     unwrittenThreads,
     updateGoal,
     resumeForWrite,
+    closedThread,
+    recordRole(threadId: string, session: CodexSessionSettings, role?: string) {
+      if (!subscriptions.has(threadId)) roles.set(threadId, role);
+      recordSettings(threadId, session);
+    },
+    secretaryTurn(threadId: string, params: NativeParams) {
+      const session = settings.get(threadId);
+      if (!readSecretaryRole || !session) return params;
+      const next = codexSecretaryTurn(params, session, roles.get(threadId));
+      if (next.collaborationMode)
+        settings.set(threadId, {
+          ...session,
+          collaborationMode: next.collaborationMode as NativeCollaboration,
+        });
+      return next;
+    },
     releaseUnusedThreads,
     retainThread(threadId: string) {
       const leases = retained.get(threadId) ?? new Set<symbol>();
@@ -134,6 +227,11 @@ export function createSubscriptions({
       retained.clear();
       unwrittenThreads.clear();
       activeGoals.clear();
+      roles.clear();
+      settings.clear();
+      for (const settle of closing.values())
+        settle(new Error("Codex 后端连接已断开。"));
+      closing.clear();
     },
   };
 }

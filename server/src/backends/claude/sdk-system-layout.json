@@ -1,0 +1,6 @@
+{
+  "identityBlock": "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+  "billingPrefix": "x-anthropic-billing-header:",
+  "environmentHeading": "# Environment",
+  "agentTypesHeading": "Available agent types for the Agent tool:"
+}

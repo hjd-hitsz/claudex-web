@@ -11,7 +11,9 @@ import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { openSettingsPage } from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const output = join(root, ".cache/delegation-refinement/browser");
+const output =
+  process.env.BROWSER_OUTPUT_DIR ||
+  join(root, ".cache/optional-secretary/browser");
 const customDefault = builtIn.trimEnd() + "\n\n请在交付时附上核对过的材料。\n";
 await mkdir(output, { recursive: true });
 const profile = await mkdtemp(join(tmpdir(), "claudex-delegation-browser-"));
@@ -196,7 +198,7 @@ try {
     .getByText("旧版未分类与 Markdown", {
       exact: true,
     });
-  async function send(expected, text) {
+  async function send(text) {
     await composer.fill(text);
     await page.locator(".composer .send-button").click();
     await page.waitForFunction(
@@ -215,35 +217,53 @@ try {
         ).params,
       text,
     );
-    assert.equal(params.delegationMode, expected);
+    assert.equal(Object.hasOwn(params, "delegationMode"), false);
     return params;
   }
   assert.equal(await switchMode.locator("svg.lucide-forward").count(), 1);
   assert.equal(await switchMode.getAttribute("aria-pressed"), "false");
+  await screenshot("01-codex-delegation-off");
+  await send("Codex 普通助手验收");
   await switchMode.focus();
   await page.keyboard.press("Enter");
-  assert.equal(await switchMode.getAttribute("aria-pressed"), "true");
+  await switchMode.and(page.locator("[aria-pressed=true]")).waitFor();
   await screenshot("02-codex-composer");
-  await send(true, "Codex 双向委派验收");
+  await send("Codex 双向委派验收");
   await claudeThread.click();
-  await page.locator('.composer button[title="委派模式 · Codex"]').waitFor();
+  await page
+    .locator('.composer button[title="委派模式已关闭 · Codex"]')
+    .waitFor();
   assert.equal(await switchMode.getAttribute("aria-pressed"), "false");
   await switchMode.click();
-  assert.equal(await switchMode.getAttribute("aria-pressed"), "true");
+  await switchMode.and(page.locator("[aria-pressed=true]")).waitFor();
   await screenshot("03-claude-composer");
-  await send(true, "Claude 双向委派验收");
+  await send("Claude 双向委派验收");
+  await page.evaluate(() => localStorage.setItem("cx-delegation-modes", "{}"));
   await codexThread.click();
   await page
     .locator(
-      '.composer button[title="委派模式 · Claude Code"][aria-pressed=true]',
+      '.composer button[title="委派模式已开启 · Claude Code"][aria-pressed=true]',
     )
     .waitFor();
   await switchMode.click();
-  await send(undefined, "关闭委派模式验收");
+  await switchMode.and(page.locator("[aria-pressed=false]")).waitFor();
+  await send("关闭委派模式验收");
+  assert(
+    await page.evaluate(() =>
+      window.fixtureRequests.some(
+        ({ method, params }) =>
+          method === "lan/delegation/mode/set" &&
+          params.delegationMode === false,
+      ),
+    ),
+  );
+  await screenshot("03-codex-restored-standard");
 
   await claudeThread.click();
   await page.getByRole("button", { name: "在当前目录新建对话" }).click();
-  await page.locator('.composer button[title="委派模式 · Codex"]').waitFor();
+  await page
+    .locator('.composer button[title="委派模式已关闭 · Codex"]')
+    .waitFor();
   assert.equal(await switchMode.getAttribute("aria-pressed"), "false");
   await switchMode.click();
   await page.locator('.composer input[type="file"]').setInputFiles({
@@ -257,8 +277,16 @@ try {
   await page
     .getByRole("button", { name: "预览 fixture.png", exact: true })
     .waitFor();
-  const first = await send(true, "新建 Claude 对话首轮带图委派");
+  const first = await send("新建 Claude 对话首轮带图委派");
   assert.equal(first.threadId, "backend:claude:new-delegation");
+  assert(
+    await page.evaluate(() =>
+      window.fixtureRequests.some(
+        ({ method, params }) =>
+          method === "thread/start" && params.delegationMode === true,
+      ),
+    ),
+  );
   assert(
     first.input.some(
       ({ type, url }) => type === "image" && url.startsWith("data:image/png;"),
@@ -366,7 +394,7 @@ try {
     JSON.stringify(results, null, 2) + "\n",
   );
   console.log(
-    "PASS 默认正文编辑和保存、复制新建、三端预设绑定、删除回退与刷新；双端新图标与发送",
+    "PASS 默认正文编辑和保存、复制新建、三端预设绑定、删除回退与刷新；委派开关默认关闭、焦点与双端开关切换、首轮带图提交",
   );
   console.log(
     "PASS 桌面、窄屏、深浅主题及 80–200% 的 20 组 Chromium 缩放及 320 像素视口 200% 下的默认提示词焦点",

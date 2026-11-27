@@ -44,6 +44,7 @@ export type ForwardedRequest = ResumeState & {
   includeStreaming: boolean;
   nameText?: string;
   model?: string;
+  secretaryRole?: string;
 };
 
 type UpstreamOptions = {
@@ -61,7 +62,11 @@ type UpstreamOptions = {
   ) => Promise<NativeParams>;
 };
 
-type CallOptions = { trackThread?: boolean; timeoutMessage?: string };
+type CallOptions = {
+  trackThread?: boolean;
+  timeoutMessage?: string;
+  prepared?: boolean;
+};
 
 export function createUpstream({
   config,
@@ -113,7 +118,7 @@ export function createUpstream({
     params: NativeParams,
     options?: CallOptions,
   ): Promise<unknown> {
-    return prepareParams
+    return prepareParams && !options?.prepared
       ? prepareParams(method, params).then((prepared) =>
           request(method, prepared, options),
         )

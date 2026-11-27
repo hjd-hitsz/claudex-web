@@ -1,35 +1,17 @@
-import { readPromptSections, renderPrompt } from "../../prompts.mjs";
-import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
   resourceId,
   resourceTarget,
 } from "../../../../shared/backend-identity.mjs";
 import { runtimeIdentity } from "../../conversation-manager/address.mjs";
-import {
-  claudeDelegationToolName,
-  delegationToolName,
-  delegationStepToolName,
-} from "../../conversation-manager/tools.mjs";
+import { delegationStepToolName } from "../../conversation-manager/tools.mjs";
 import { createStorage } from "../storage.mjs";
-import {
-  acceptDelegation,
-  currentResultNotice,
-  executing,
-} from "./delegation-store.mjs";
+import { acceptDelegation, currentResultNotice } from "./delegation-store.mjs";
 import { noticeResult } from "./call-chain.mjs";
 import { findDelegationTask, traceId } from "./trace-ids.mjs";
 import { executorLabel } from "./executors.mjs";
 import { createDelegationRuntime } from "./runtime.mjs";
-import {
-  buildDelegationSelection,
-  delegationBackends,
-  resolveSourcePrompt,
-} from "./settings.mjs";
-
-const workflow = readPromptSections("delegation/workflow.md");
-const dispatch = workflow("nativeDispatch");
-const followUp = workflow("nativeFollowUp");
+import { buildDelegationSelection, delegationBackends } from "./settings.mjs";
 
 const peerBackend = (id) => (id === "codex" ? "claude" : "codex");
 const idleSnapshot = { questions: [], pending: {} };
@@ -40,6 +22,7 @@ export function createNativeDelegation({
   emit,
   changed,
   backendEntry,
+  modes,
 }) {
   const storage = createStorage(
     join(config.configDir, "delegation", "state.json"),
@@ -53,14 +36,13 @@ export function createNativeDelegation({
     ...storage,
     async change(change) {
       let result;
-      await storage.update((data) => {
-        result = change(data);
+      await storage.update(async (data) => {
+        result = await change(data);
         return data;
       });
       return result;
     },
   };
-  const grants = new Map();
   const delivery = new Set();
   let snapshot = idleSnapshot;
   let revision = 0;
@@ -84,144 +66,69 @@ export function createNativeDelegation({
     changed();
   }
 
-  async function prepare(entry, params) {
-    const source = entry.backend;
-    const target = peerBackend(source.id);
-    const executor = backendEntry(target);
-    const settings = backendEntry("agy").backend;
-    if (!executor?.backend.enabled || !settings.delegates[target]?.enabled)
-      throw new Error("请为目标后端开启接收委派");
-    const codex = source.id === "codex" ? source : executor.backend;
+  async function submit(source, actor, request) {
+    const id = resourceId(source.id, actor.threadId);
+    const entry = backendEntry(source.id);
+    const sourceRuntime = runtimeIdentity(source);
+    const connected = () =>
+      !stopped &&
+      entry === backendEntry(source.id) &&
+      !entry?.changing &&
+      entry?.adapter?.ready;
+    const { turnId } = actor;
+    // Native MCP can reach the bridge before Codex publishes turn/started.
     if (
+      !connected() ||
+      typeof turnId !== "string" ||
+      !turnId ||
+      (source.id === "codex" &&
+        (typeof actor.callId !== "string" || !actor.callId))
+    )
+      throw new Error("委派请求须来自当前执行中的原生轮次");
+    const target = peerBackend(source.id);
+    const executor = backendEntry(target)?.backend;
+    const codex = source.id === "codex" ? source : executor;
+    if (
+      !codex ||
       !["localhost", "127.0.0.1", "[::1]"].includes(new URL(codex.url).hostname)
     )
       throw new Error("双向委派需要共享本机工作区的 Codex app-server");
-    const id = resourceId(source.id, params.threadId);
-    if (
-      grants.has(id) ||
-      entry.adapter.state().params.activeTurns?.[params.threadId]
-    )
-      throw new Error("请等待当前轮次结束后提交新的委派");
-    const parent = await entry.adapter.conversationManager?.readThread(
-      params.threadId,
+    const parent = await entry.adapter.conversationManager.readThread(
+      actor.threadId,
     );
     if (!parent?.cwd) throw new Error("找不到委派发起会话的工作目录");
-    const { tasks } = await store.read();
-    const sourcePrompt = await resolveSourcePrompt(settings, source.id);
-    if (grants.has(id)) throw new Error("委派轮次正在提交");
-    const grant = {
-      token: randomUUID(),
-      input: params.input,
-      selection: buildDelegationSelection(settings, target),
-      sourceRuntime: runtimeIdentity(source),
-      cwd: parent.cwd,
-      sourceName: source.name,
-      target,
-      id,
-    };
-    const active = Object.values(tasks).filter(
-      (task) =>
-        task.parentId === id &&
-        task.sourceRuntime === grant.sourceRuntime &&
-        (executing.has(task.status) || task.status === "unknown"),
-    );
-    const instructions = [
-      renderPrompt(dispatch, {
-        backend: executor.backend.name,
-        tool:
-          source.id === "claude"
-            ? claudeDelegationToolName
-            : delegationToolName,
-        token: grant.token,
-      }),
-      sourcePrompt,
-      ...active.map(({ id }) => renderPrompt(followUp, { id: traceId(id) })),
-    ].join("\n");
-    grants.set(id, grant);
-    return {
-      grant,
-      params:
-        source.id === "codex"
-          ? {
-              ...params,
-              additionalContext: {
-                ...params.additionalContext,
-                claudex_delegation: {
-                  kind: "application",
-                  value: instructions,
-                },
-              },
-            }
-          : { ...params, delegationContext: instructions },
-    };
-  }
-
-  function observe(entry, event) {
-    if (
-      !["turn/started", "turn/completed", "thread/closed"].includes(
-        event.method,
-      )
-    )
-      return;
-    const { threadId, turn } = event.params;
-    const id = resourceId(entry.backend.id, threadId);
-    const grant = grants.get(id);
-    if (!grant) return;
-    if (event.method === "turn/started") {
-      if (!grant.turnId) grant.turnId = turn.id;
-      else if (grant.turnId !== turn.id) grants.delete(id);
-    } else if (event.method === "thread/closed" || grant.turnId === turn?.id) {
-      grants.delete(id);
-    }
-  }
-
-  function settle(grant, response) {
-    if (!grant || grants.get(grant.id) !== grant) return;
-    if (response.error) grants.delete(grant.id);
-    else grant.turnId ??= response.result?.turn?.id;
-  }
-
-  async function submit(source, actor, input) {
-    const id = resourceId(source.id, actor.threadId);
-    const grant = grants.get(id);
-    if (
-      !grant ||
-      input?.token !== grant.token ||
-      grant.sourceRuntime !== runtimeIdentity(source)
-    )
-      throw new Error("请在当前会话的输入框开启委派模式后提交");
-    const entry = backendEntry(source.id);
-    const active = () =>
-      entry.adapter.state().params.activeTurns?.[actor.threadId];
-    const turnId = grant.turnId ?? active();
-    if (!turnId || active() !== turnId)
-      throw new Error("委派请求须来自当前执行中的轮次");
-    const { token, ...request } = input;
-    const { response, task, obsolete } = await store.change((data) => {
-      if (grants.get(id) !== grant || active() !== turnId)
-        throw new Error("委派发起轮次已结束");
+    const { response, task, obsolete } = await store.change(async (data) => {
+      if (!connected()) throw new Error("委派发起后端连接已变更");
+      const authorized =
+        source.id === "claude"
+          ? parent.delegationTurnId === turnId
+          : await modes.enabled(source, actor.threadId);
+      if (!authorized) throw new Error("请先为当前对话开启委派模式。");
       const previous = findDelegationTask(
         data.tasks,
-        { id, runtimeId: grant.sourceRuntime },
+        { id, runtimeId: sourceRuntime },
         request.task_id,
       );
       const step = previous?.steps.at(-1);
       const pending = previous?.request;
       const settings = backendEntry("agy").backend;
       const targetEnabled =
-        backendEntry(grant.target)?.backend.enabled &&
-        settings.delegates[grant.target]?.enabled;
+        backendEntry(target)?.backend.enabled &&
+        settings.delegates[target]?.enabled;
       const response = acceptDelegation(data, {
         parent: {
           id,
-          cwd: grant.cwd,
-          sourceName: grant.sourceName,
-          sourceRuntime: grant.sourceRuntime,
+          cwd: parent.cwd,
+          sourceName: source.name,
+          sourceRuntime,
         },
-        turn: { id: turnId, original: grant.input },
-        target: grant.target,
+        turn: { id: turnId },
+        target,
+        callId: actor.callId,
         input: request,
-        snapshot: targetEnabled ? grant.selection : null,
+        snapshot: targetEnabled
+          ? buildDelegationSelection(settings, target)
+          : null,
       });
       const task = data.tasks[response.task_id];
       return {
@@ -300,10 +207,6 @@ export function createNativeDelegation({
   }
 
   return {
-    prepare,
-    observe,
-    settle,
-    submit,
     invoke: (source, name, actor, input) =>
       name === delegationStepToolName
         ? runtime.readStep(
@@ -341,7 +244,6 @@ export function createNativeDelegation({
     },
     close() {
       stopped = true;
-      grants.clear();
       runtime.close();
     },
   };

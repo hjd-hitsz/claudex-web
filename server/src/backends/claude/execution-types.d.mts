@@ -45,6 +45,7 @@ export type SessionRecord = {
   deleted?: boolean;
   nativeSessionId?: string;
   initialized?: boolean;
+  delegationMode?: boolean;
   providerId?: string;
   model?: string;
   modelTokens?: number;
@@ -110,7 +111,7 @@ export type SessionRecord = {
 
 export type SaveSession = (
   id: string,
-  update: (session: SessionRecord) => SessionRecord,
+  update: (session: SessionRecord) => SessionRecord | Promise<SessionRecord>,
 ) => Promise<unknown>;
 
 export type ExecutionTurn = {
@@ -136,7 +137,7 @@ export type QueuedExecution = {
   review?: boolean;
   compact?: boolean;
   delegation?: "research" | "implementation";
-  delegationContext?: string;
+  delegationMode?: boolean;
 };
 
 export type InputPart = { type: string; text?: string; url?: string };
@@ -151,10 +152,7 @@ export type QueuedInput = QueuedExecution & {
 
 export type ActiveExecution = {
   turn: ExecutionTurn;
-  queued: Pick<
-    QueuedInput,
-    "review" | "compact" | "peer" | "delegation" | "delegationContext"
-  >;
+  queued: Pick<QueuedInput, "review" | "compact" | "peer" | "delegation">;
   query?: Query | null;
   interrupted?: boolean;
   goalId?: string;
@@ -163,7 +161,6 @@ export type ActiveExecution = {
   peerInputIds?: Set<string>;
   completedInputs?: Set<string>;
   promptError?: unknown;
-  delegationAccepted?: boolean;
   status?: {
     turnId: string;
     kind: "retrying";
@@ -215,6 +212,7 @@ export type SessionDependencies = {
     ): Promise<ExecutionProvider | null | undefined>;
   };
   subagentProvider?: SubagentProvider | null;
+  secretaryRole?: string;
   save: SaveSession;
   emit: (method: string, params: Record<string, unknown>) => void;
   broadcast: (message: {
@@ -296,6 +294,8 @@ export type RuntimeDependencies = Pick<
     ): Promise<unknown>;
   };
   compactions: ReturnType<typeof createCompactions>;
+  readSecretaryRole?: () => Promise<string>;
+  readLegacyDelegationMode?: (threadId: string) => Promise<boolean>;
   readSubagentSettings?: () => Promise<{
     subagentModel: string;
     subagentEffort: string;
@@ -312,7 +312,6 @@ export type TurnRequest = Partial<
     | "review"
     | "goalId"
     | "delegation"
-    | "delegationContext"
   >
 > & {
   input: readonly InputPart[];

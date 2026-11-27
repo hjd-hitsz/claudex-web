@@ -6,7 +6,11 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { nativeProviderHeaders } from "./native-provider.mjs";
 
-export async function createProviderTransport(provider, subagent) {
+export async function createProviderTransport(
+  provider,
+  subagent,
+  secretaryRole,
+) {
   const token = randomUUID();
   const targets = new Map();
   let subagentModel;
@@ -49,8 +53,11 @@ export async function createProviderTransport(provider, subagent) {
               effort: target.effort,
             };
         }
-        if (selected && (selected.protocol || "messages") === "messages")
-          input = messagesRequest(input);
+        if (selected)
+          input = messagesRequest(input, {
+            standard: (selected.protocol || "messages") === "messages",
+            secretaryRole: target ? undefined : secretaryRole,
+          });
         body = JSON.stringify(input);
       }
       const headers = { ...request.headers };

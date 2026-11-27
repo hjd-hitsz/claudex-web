@@ -10,7 +10,6 @@ import {
   visibleBackendThreads,
 } from "../domain/backend-visibility.js";
 export function createAppState() {
-  const delegationModes = saved("cx-delegation-modes", {});
   const goalModes = saved("cx-goal-modes", {});
   const modes = saved("cx-thread-modes", {});
   const terminalVisibility = new Map();
@@ -156,7 +155,7 @@ export function createAppState() {
         ...patch,
         mode: patch.mode ?? modes[id] ?? "default",
         delegationMode:
-          patch.delegationMode ?? Boolean(id && delegationModes[id]),
+          patch.delegationMode ?? patch.current?.delegationMode === true,
         goalMode:
           patch.goalMode ??
           goalModes[id || "new-" + state.backendId] ??
@@ -169,16 +168,6 @@ export function createAppState() {
       !(Object.hasOwn(patch, "current") ? patch.current : state.current)
     )
       patch = { ...patch, delegationMode: false };
-    if (Object.hasOwn(patch, "delegationMode")) {
-      const id = Object.hasOwn(patch, "current")
-        ? patch.current?.id
-        : previousThreadId;
-      if (id) {
-        if (patch.delegationMode) delegationModes[id] = true;
-        else delete delegationModes[id];
-        persist("cx-delegation-modes", delegationModes);
-      }
-    }
     if (Object.hasOwn(patch, "mode")) {
       const id = Object.hasOwn(patch, "current")
         ? patch.current?.id

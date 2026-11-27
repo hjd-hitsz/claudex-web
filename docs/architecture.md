@@ -62,7 +62,7 @@ flowchart LR
   - [对话与历史](architecture/behavior.md#对话项目与历史)、[输入与草稿](architecture/behavior.md#输入草稿与执行)、[计划](architecture/behavior.md#计划模式)及[目标](architecture/behavior.md#目标交互)。
   - [工作区、文件与终端](architecture/behavior.md#工作区文件与终端)、[子代理与渲染](architecture/behavior.md#子代理与共享渲染)、[账户与界面](architecture/behavior.md#账户登录与外观)。
 - **原生后端**：[双后端产品契约与实施](architecture/backends.md)，包含适配器职责、执行生命周期与协议差异；[回归审查](architecture/backend-regressions.md)保留兼容基线与验证依据。
-  - [Antigravity 委派](architecture/backends.md#antigravity-委派)维护秘书会话、后台任务和原生审批的契约。
+  - [秘书会话与委派](architecture/backends.md#antigravity-委派)维护秘书会话、后台任务和原生审批的契约。
   - [通用会话管理器](architecture/backends.md#通用会话管理器)维护活跃会话发现、会话间通信与投递恢复契约。
   - [命令覆盖](cli-command-coverage.md)维护快捷命令及原生扩展；[Codex 后台终端](background-tasks.md)维护独立任务扩展；[翻译引擎](../packages/translation-engine/README.md)维护独立翻译子项目。
 - **开发与交付**：[开发者指南](development.md)提供本地环境、测试入口和源码服务操作。

@@ -19,7 +19,7 @@ export type ConversationDelivery = {
 };
 
 export type ConversationTool = (
-  context: { threadId: string },
+  context: { threadId: string; turnId?: string },
   name: string,
   args: object,
 ) => Promise<unknown>;

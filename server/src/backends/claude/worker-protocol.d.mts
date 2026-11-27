@@ -109,7 +109,7 @@ export type WorkerPacket =
   | {
       kind: "conversationTool";
       id: string;
-      context: { threadId: string };
+      context: { threadId: string; turnId?: string };
       name: string;
       args: object;
     }

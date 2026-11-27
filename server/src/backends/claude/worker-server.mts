@@ -5,6 +5,8 @@ import { join, resolve, dirname } from "node:path";
 import { writePrivateFile } from "../../private-file.mjs";
 import { createClaudeAdapter } from "./adapter.mjs";
 import { createBackendConfiguration } from "../configuration.mjs";
+import { resolveNativeSecretaryRole } from "../delegation/settings.mjs";
+import { createDelegationModes } from "../delegation/source-modes.mjs";
 import { createProviders } from "../providers.mjs";
 import { workerRevision } from "./worker-revision.mjs";
 import { readWorkerLines } from "./worker-lines.mjs";
@@ -140,10 +142,18 @@ async function initialize(value: WorkerOptions) {
     Object.assign(process.env, value.runtimeEnv || {});
     await writePrivateFile(optionsPath, JSON.stringify(options));
     const configuration = createBackendConfiguration(value.config);
+    const modes = createDelegationModes(value.config.configDir);
     const providers = createProviders(configuration);
     adapter = createClaudeAdapter({
       ...value,
       providers,
+      readLegacyDelegationMode: (threadId: string) =>
+        modes.enabled(value.backend, threadId),
+      readSecretaryRole: async () =>
+        resolveNativeSecretaryRole(
+          await configuration.readDelegationSettings(),
+          "claude",
+        ),
       readSubagentSettings: () => configuration.readSubagentSettings("claude"),
       callConversationTool: conversationTools.call,
       send: (

@@ -140,7 +140,7 @@ export function createMessages({
     let thread;
     try {
       if (replace && get().current?.id !== replace.threadId) return false;
-      thread = await navigation.ensureThread();
+      thread = await navigation.ensureThread(delegationMode && !implementation);
       if (
         implementation &&
         (epoch !== navigation.opening ||
@@ -184,7 +184,6 @@ export function createMessages({
         ...(submission.backendId === "agy" && {
           delegateTo: selectedDelegate(submission),
         }),
-        ...(delegationMode && !implementation && { delegationMode: true }),
         input,
         model: submission.model || undefined,
         providerId: submission.providerId,

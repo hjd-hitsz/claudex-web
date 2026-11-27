@@ -18,10 +18,10 @@ import { interruptQueuedInput } from "./native-control.mjs";
 import { convertMessage } from "./messages.mjs";
 import { inputMessage, userPrompt } from "./prompt.mjs";
 import { createExecutionSession } from "./execution-session.mjs";
-import { nativeSubagentProvider } from "./native-provider.mjs";
+import { executionPermissionMode } from "./delegation-permission.mjs";
 import { createBackgroundTasks } from "./background-tasks.mjs";
 import { createGoals } from "./goals.mjs";
-import { modelOptions } from "./model-options.mjs";
+import { modelOptions, resolveSubagentProvider } from "./model-options.mjs";
 import { recoverClaudeSessions } from "./recovery.mjs";
 import { assertConversationOperation } from "../../bridge/conversation-policy.mjs";
 import { subagentSettings } from "../../../../shared/subagent-settings.mjs";
@@ -38,6 +38,7 @@ type Run = Awaited<ReturnType<typeof createExecutionSession>> & {
   nativeSessionId: string;
   effort: QueuedInput["effort"];
   serviceTier: QueuedInput["serviceTier"];
+  secretaryRole?: string;
   review: QueuedInput["review"];
 };
 
@@ -50,6 +51,8 @@ export function createClaudeRuntime({
   questions,
   observeMessage,
   callConversationTool,
+  readSecretaryRole,
+  readLegacyDelegationMode = async () => false,
   readSubagentSettings = async () => subagentSettings(backend),
 }: RuntimeDependencies) {
   const running = new Map<string, ActiveExecution>();
@@ -61,9 +64,9 @@ export function createClaudeRuntime({
   const emit: SessionDependencies["emit"] = (method, params) =>
     broadcast({ method, params });
   const save: SessionDependencies["save"] = async (id, change) => {
-    await storage.update((data) => ({
+    await storage.update(async (data) => ({
       ...data,
-      sessions: { ...data.sessions, [id]: change(data.sessions[id]) },
+      sessions: { ...data.sessions, [id]: await change(data.sessions[id]) },
     }));
   };
   const tasks = createBackgroundTasks({ storage, save, emit });
@@ -90,7 +93,7 @@ export function createClaudeRuntime({
     const input = compact ? [{ type: "text", text: "/compact" }] : params.input;
     inputMessage(input);
     const turn = queuedInput(params, input, compact, peer);
-    await save(threadId, (session) => {
+    await save(threadId, async (session) => {
       if (peer) assertPeerQueue(session, turn.id, occupied(threadId));
       if (peer && session.peerInputs?.[turn.id]) return session;
       if (!session) throw new Error("对话不存在");
@@ -102,8 +105,12 @@ export function createClaudeRuntime({
           pending: session.queue?.length,
         },
       );
+      const mode =
+        session.delegationMode ?? (await readLegacyDelegationMode(threadId));
+      turn.delegationMode = mode && !turn.delegation && !turn.review;
       return {
         ...session,
+        delegationMode: mode,
         ...peerInputState(session, turn),
         ...(params.cwd &&
           params.cwd !== session.cwd && {
@@ -230,21 +237,21 @@ export function createClaudeRuntime({
         queued.providerId ?? session.providerId,
       );
       const settings = await readSubagentSettings();
+      const secretary =
+        !queued.delegation &&
+        !queued.review &&
+        (queued.delegationMode ??
+          session.delegationMode ??
+          (await readLegacyDelegationMode(threadId)));
+      const secretaryRole = secretary ? await readSecretaryRole?.() : undefined;
+      if (secretary && !secretaryRole)
+        throw new Error("Claude 委派模式缺少已加载的秘书角色。");
       const executionBackend = { ...backend, ...settings };
-      const subagentProvider =
-        settings.subagentProviderId === "@native"
-          ? provider || settings.subagentEffort
-            ? nativeSubagentProvider(backend)
-            : null
-          : settings.subagentProviderId
-            ? await providers.get(backend.id, settings.subagentProviderId)
-            : null;
-      if (
-        subagentProvider &&
-        !subagentProvider.native &&
-        !subagentProvider.models.includes(settings.subagentModel)
-      )
-        throw new Error("子代理模型已从供应商移除，请重新配置");
+      const subagentProvider = await resolveSubagentProvider(
+        executionBackend,
+        providers,
+        provider,
+      );
       const options = modelOptions(
         provider,
         queued.model || session.model || provider?.models[0],
@@ -255,7 +262,8 @@ export function createClaudeRuntime({
         (process && process.cwd !== session.cwd) ||
         process?.nativeSessionId !== (session.nativeSessionId || threadId) ||
         process?.providerKey !== JSON.stringify(provider) ||
-        process?.review !== queued.review
+        process?.review !== queued.review ||
+        process?.secretaryRole !== secretaryRole
       ) {
         if (
           process &&
@@ -263,7 +271,7 @@ export function createClaudeRuntime({
             ["running", "pending"].includes(task.status),
           )
         )
-          throw new Error("请先停止后台任务，再切换供应商或审查模式");
+          throw new Error("请先停止后台任务，再切换供应商、审查模式或秘书角色");
         process?.close();
         queries.delete(threadId);
         process = undefined;
@@ -281,6 +289,7 @@ export function createClaudeRuntime({
           questions,
           observeMessage,
           callConversationTool,
+          secretaryRole,
           goals,
           tasks,
           current: () => running.get(threadId),
@@ -293,17 +302,12 @@ export function createClaudeRuntime({
           effort: queued.effort,
           serviceTier: queued.serviceTier,
           review: queued.review,
+          secretaryRole,
         });
         queries.set(threadId, process);
       } else {
         await process.configureSubagent(executionBackend, subagentProvider);
-        await process.query.setPermissionMode(
-          queued.mode === "plan" || queued.review
-            ? "plan"
-            : queued.delegation
-              ? "default"
-              : "bypassPermissions",
-        );
+        await process.query.setPermissionMode(executionPermissionMode(queued));
         const model = queued.model || session.model;
         if (model && process.model !== model) {
           await process.query.setModel(model);

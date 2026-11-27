@@ -1,4 +1,7 @@
 import { createBackendRequests } from "./manager-requests.mjs";
+import { resolveNativeSecretaryRole } from "./delegation/settings.mjs";
+import { createDelegationModes } from "./delegation/source-modes.mjs";
+import { delegationModeRequests } from "./delegation/mode-requests.mjs";
 import { createNativeDelegation } from "./delegation/native.mjs";
 import { delegationRequest } from "./delegation/routing.mjs";
 import { listBackendThreads } from "./thread-pages.mjs";
@@ -69,18 +72,23 @@ export function createBackendManager({
   let initialized = false,
     closed = false;
   let changing = Promise.resolve();
+  const delegationModes = createDelegationModes(config.configDir);
+  const modeRequests = delegationModeRequests(
+    delegationModes,
+    Boolean(conversations),
+  );
   const delegation = createNativeDelegation({
     config,
     version,
     emit: broadcast,
     changed: emitState,
     backendEntry: (id) => instances.get(id),
+    modes: delegationModes,
   });
   const { proxy, call } = createBackendRequests({
     send,
     tokenUsage,
     projectResult,
-    settle: delegation.settle,
   });
   const usageReconciliation = createTokenUsageReconciliation({
     store: tokenUsage,
@@ -180,6 +188,20 @@ export function createBackendManager({
           entry.backend.backgroundTerminalEnabled && background.available,
         version,
         providers,
+        ...(deps?.conversationToolEndpoint &&
+          backend.id === "codex" && {
+            readSecretaryRole: async (threadId, selected) => {
+              const enabled =
+                selected ??
+                (threadId &&
+                  (await delegationModes.enabled(backend, threadId)));
+              if (enabled)
+                return resolveNativeSecretaryRole(
+                  instances.get("agy").backend,
+                  backend.id,
+                );
+            },
+          }),
         readSubagentSettings: () =>
           configuration.readSubagentSettings(backend.id),
         send: (client, message) => client.deliver(message),
@@ -190,7 +212,6 @@ export function createBackendManager({
             usageReconciliation.start(entry);
             return emitState();
           }
-          delegation.observe(entry, message);
           const notification = mapNotification(message, backend.id);
           tokenUsage.observe(notification);
           broadcast(notification);
@@ -224,9 +245,22 @@ export function createBackendManager({
     method,
     usageRevision,
     forkUsage,
+    selectedMode,
   ) {
     const projected = await tokenUsage.result(
-      folders.result(mapResult(result, entry.backend.id, method), method),
+      folders.result(
+        mapResult(
+          await modeRequests.project(
+            entry.backend,
+            method,
+            result,
+            selectedMode,
+          ),
+          entry.backend.id,
+          method,
+        ),
+        method,
+      ),
       method,
       usageRevision,
       forkUsage,
@@ -392,21 +426,18 @@ export function createBackendManager({
       });
     const native =
       method && nativeParams(folders.params(method, params), entry.backend.id);
-    const { delegationMode, ...forwarded } = native || {};
-    if (
-      delegationMode === true &&
-      (method !== "turn/start" || !conversations || target.backendId === "agy")
-    )
-      throw new Error("当前请求无法开启委派模式。");
-    const prepared =
-      delegationMode === true
-        ? await delegation.prepare(entry, forwarded)
-        : null;
+    if (method === "lan/delegation/mode/set")
+      return reply(await modeRequests.set(entry, native, call));
+    const { forwarded, selectedMode } = modeRequests.forward(
+      entry.backend,
+      method,
+      native,
+    );
     recipient.methods.set(message.id, {
-      grant: prepared?.grant,
       method,
       threadId: params.threadId,
       usageRevision: tokenUsage.revision(params.threadId),
+      selectedMode,
       ...(method === "thread/fork" && {
         forkUsage: await tokenUsage.forkSource(params),
       }),
@@ -415,11 +446,10 @@ export function createBackendManager({
       await entry.adapter.receive(recipient, {
         ...message,
         ...(!method && { id: target.nativeId }),
-        ...(method && { params: prepared?.params || forwarded }),
+        ...(method && { params: forwarded }),
       });
     } catch (error) {
       recipient.methods.delete(message.id);
-      delegation.settle(prepared?.grant, { error });
       throw error;
     }
   }

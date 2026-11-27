@@ -166,9 +166,9 @@ Claude Code 的对话、配置和原生账户状态继续保存在本机 CLI 原
 
 安装官方 Antigravity CLI，使桥接服务可从运行环境发现 `agy`。在「设置 → 后端 → Antigravity」启用后端、选择显示的原生模型并按需设置代理。执行服务连接本机 `agy acp`，CLI 使用自己的认证。代理只作用于 Antigravity 进程，Codex 和 Claude Code 继续使用各自的网络配置。
 
-在「设置 → 委派」配置 Codex 和 Claude Code 的接收开关、模型与思考强度，再为各发起端选择提示词。Codex 和 Claude Code 双向委派共用本机工作区，各自在输入区开启「委派模式」后向另一端派单。Antigravity 在输入区选择接收端，两路都启用时默认显示 Codex，点击图标在两端切换。独立 agy 服务在 `backends/agy` 保存会话映射、委派任务和回执，Codex 与 Claude Code 发起的任务保存在配置目录的 `delegation`。systemd 部署为 agy 使用独立用户单元，普通进程部署使用独立后台进程。侧栏账户组件显示 Antigravity CLI 提供的额度。
+在「设置 → 委派」配置 Codex 和 Claude Code 的接收开关、模型与思考强度，再为各发起端选择提示词。Codex 和 Claude Code 默认使用原生助手。需要秘书时，在当前对话的输入区开启「委派模式」。秘书可以直接回复，或按需向已开启接收的另一端派单。双向委派共用本机工作区。Antigravity 在输入区选择接收端，两路都启用时默认显示 Codex，点击图标在两端切换。独立 agy 服务在 `backends/agy` 保存会话映射、委派任务和回执，Codex 与 Claude Code 发起的任务保存在配置目录的 `delegation`。systemd 部署为 agy 使用独立用户单元，普通进程部署使用独立后台进程。侧栏账户组件显示 Antigravity CLI 提供的额度。
 
-在「设置 → 委派 → 提示词预设」编辑默认提示词或添加具名预设。默认提示词适用于未选择具名预设的发起端，也可在 Antigravity 停用时编辑。自定义默认正文以 `0600` 权限保存在配置目录的 `backends/agy/secretary.md`。载入内置模板并保存后清除该覆盖文件。新设定从下一轮生效。Antigravity 的工具白名单由随版本提供的 `secretary-agent.md` 管理。
+在「设置 → 委派 → 提示词预设」编辑默认提示词或添加具名预设。默认提示词适用于未选择具名预设的发起端，也可在 Antigravity 停用时编辑。自定义默认正文以 `0600` 权限保存在配置目录的 `backends/agy/secretary.md`。载入内置模板并保存后清除该覆盖文件。三个发起端在后续秘书轮次应用已保存的角色。Antigravity 的原生代理定义维护于 `prompt/secretary/secretary.md`。
 
 ## 配置
 

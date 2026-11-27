@@ -25,7 +25,11 @@ import { readCodexTokenUsage } from "./token-usage.mjs";
 import { createStreamingMessages } from "./streaming-messages.mjs";
 import type { readConfig } from "../../config.mjs";
 import type { createBackgroundService } from "./background-service.mjs";
-import type { NativeParams, RpcMessage } from "./native-protocol.d.mts";
+import type {
+  CodexSessionSettings,
+  NativeParams,
+  RpcMessage,
+} from "./native-protocol.d.mts";
 import type { CodexClient } from "./upstream.mjs";
 
 const conversationUserRequests = new Set([
@@ -55,6 +59,10 @@ type CodexAdapterOptions = {
   backgroundEnabled?: () => boolean;
   readSubagentSettings?: () => Promise<SubagentSettings>;
   conversationToolEndpoint?: Parameters<typeof codexConversationToolParams>[2];
+  readSecretaryRole?: (
+    threadId?: string,
+    selected?: boolean,
+  ) => Promise<string | undefined>;
 };
 
 export function createCodexAdapter({
@@ -67,6 +75,7 @@ export function createCodexAdapter({
   backgroundEnabled = () => false,
   readSubagentSettings = async () => backend,
   conversationToolEndpoint,
+  readSecretaryRole,
 }: CodexAdapterOptions) {
   config = { ...config, upstreamUrl: backend.url, codexHome: backend.dataDir };
   const questions = new Map<string, RpcMessage>();
@@ -89,7 +98,16 @@ export function createCodexAdapter({
     config,
     version,
     send,
-    prepareParams: sessionParams,
+    prepareParams: async (method, params) =>
+      sessionParams(
+        method,
+        method === "turn/start" && params.threadId
+          ? subscriptions.secretaryTurn(params.threadId, params)
+          : params,
+        threadMethods.has(method)
+          ? await readSecretaryRole?.(params.threadId)
+          : undefined,
+      ),
     onReady() {
       broadcast(state());
       for (const [threadId, entry] of compactions.entries)
@@ -97,6 +115,8 @@ export function createCodexAdapter({
           checkCompaction(threadId).catch(() => {});
     },
     onEvent(message) {
+      if (message.method === "thread/closed" && message.params?.threadId)
+        subscriptions.closedThread(message.params.threadId);
       conversationManager.onEvent(message);
       handoff.event(message);
       const discardedStreamingMessageIds = streamingMessages.event(message);
@@ -109,7 +129,17 @@ export function createCodexAdapter({
           : message,
       );
     },
-    onResponse: (request, message) => events.onResponse(request, message),
+    onResponse(request, message) {
+      const result = message.result as
+        (CodexSessionSettings & { thread?: { id: string } }) | undefined;
+      if (result?.thread && threadMethods.has(request.method))
+        subscriptions.recordRole(
+          result.thread.id,
+          result,
+          request.secretaryRole,
+        );
+      events.onResponse(request, message);
+    },
     onSettled: () => subscriptions.releaseUnusedThreads(),
     onDisconnect() {
       conversationManager.disconnected();
@@ -129,10 +159,12 @@ export function createCodexAdapter({
   async function sessionParams(
     method: string,
     params: NativeParams,
+    role?: string,
   ): Promise<NativeParams> {
     const enabled = Boolean(background && backgroundEnabled());
-    if (!threadMethods.has(method))
+    if (!threadMethods.has(method)) {
       return enabled ? backgroundTurnParams(method, params) : params;
+    }
     return subagentModelParams(
       method,
       backgroundParams(
@@ -141,6 +173,7 @@ export function createCodexAdapter({
           method,
           referenceToolParams(method, params, config),
           conversationToolEndpoint,
+          Boolean(role),
         ),
         enabled ? await background?.ensure() : null,
         config.upstreamUrl,
@@ -164,6 +197,16 @@ export function createCodexAdapter({
     activeTurns,
     activeThreads,
     backgroundHandoffPending: handoff.pending,
+    readSecretaryRole,
+    resumeNative: async (params, role) =>
+      transport.call(
+        "thread/resume",
+        {
+          ...(await sessionParams("thread/resume", params, role)),
+          threadId: params.threadId,
+        },
+        { prepared: true },
+      ),
   });
   const checkCompaction = createCompactionRecovery({
     transport,
@@ -270,12 +313,24 @@ export function createCodexAdapter({
     state,
     async receive(client: CodexClient, message: RpcMessage) {
       if (!message.method) return receive(client, message);
-      const { providerId, ...params } = message.params || {};
+      const { providerId, delegationMode, ...params } = message.params || {};
       if (providerId) throw new Error("Codex 使用现有账户与模型配置");
-      return receive(client, {
-        ...message,
-        params: await sessionParams(message.method, params),
-      });
+      const role = threadMethods.has(message.method)
+        ? await readSecretaryRole?.(
+            message.method === "thread/resume" ? params.threadId : undefined,
+            message.method === "thread/start"
+              ? delegationMode === true
+              : undefined,
+          )
+        : undefined;
+      return receive(
+        client,
+        {
+          ...message,
+          params: await sessionParams(message.method, params, role),
+        },
+        role,
+      );
     },
     connect: transport.connect,
     releaseUnusedThreads: subscriptions.releaseUnusedThreads,

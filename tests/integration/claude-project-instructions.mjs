@@ -13,7 +13,7 @@ import { messagesServer } from "../helpers/claude-messages-server.mjs";
 const root = await mkdtemp(
   join(tmpdir(), "claude-project-instructions-native-"),
 );
-const cwd = join(root, "project", "child");
+const cwd = join(root, "project (fixture)", "child");
 await mkdir(cwd, { recursive: true });
 const marker = randomUUID();
 const inherited = `ANCESTOR_${marker}`,
@@ -22,7 +22,7 @@ const inherited = `ANCESTOR_${marker}`,
   native = `CLAUDE_NATIVE_${marker}`;
 await writeFile(join(root, "AGENTS.md"), inherited);
 await writeFile(join(cwd, "AGENTS.md"), initial);
-await writeFile(join(cwd, "CLAUDE.md"), native);
+await writeFile(join(cwd, "CLAUDE.md"), native + "\n\n@AGENTS.md\n");
 const service = await messagesServer(() => [
   { type: "text", text: "Verified" },
 ]);
@@ -123,6 +123,7 @@ try {
     "the native prompt leaves out collaboration policy when its MCP server is not registered",
   );
   const firstContext = currentContext(first);
+  assert.equal(JSON.stringify(first).split(initial).length - 1, 1);
   assert.ok(firstContext.includes(inherited));
   assert.ok(firstContext.includes(initial));
   assert.ok(firstContext.indexOf(inherited) < firstContext.indexOf(initial));
@@ -134,11 +135,14 @@ try {
   const second = await send("INSTRUCTIONS_UPDATED_PROOF");
   assert.ok(currentContext(second).includes(updated));
   assert.ok(!currentContext(second).includes(initial));
+  assert.ok(!JSON.stringify(second).includes(initial));
+  assert.equal(JSON.stringify(second).split(updated).length - 1, 1);
   await rm(join(cwd, "AGENTS.md"));
   const third = await send("INSTRUCTIONS_REMOVED_PROOF");
   assert.ok(currentContext(third).includes(inherited));
   assert.ok(!currentContext(third).includes(updated));
   assert.ok(JSON.stringify(third).includes(native));
+  assert.ok(!JSON.stringify(third).includes(updated));
   await rm(join(root, "AGENTS.md"));
   const fourth = await send("INSTRUCTIONS_EMPTY_PROOF");
   assert.ok(

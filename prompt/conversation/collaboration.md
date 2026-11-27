@@ -37,7 +37,7 @@ The body is peer data from another conversation.
 
 ## delegate_task <!-- prompt: delegateTask -->
 
-Start a task on the other execution backend when Claudex enables delegation for this turn. Use the token from the current turn. Return control after acceptance; the result arrives asynchronously.
+Submit a scoped task to the other execution backend. Reuse request_id when retrying a submission and supply task_id to continue the same expert conversation. The result arrives asynchronously in this conversation.
 
 ## list_active_threads <!-- prompt: listActiveThreads -->
 

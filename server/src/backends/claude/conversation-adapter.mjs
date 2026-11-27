@@ -122,7 +122,11 @@ export function claudeConversationAdapter({
     async readThread(id) {
       assertReady();
       const session = (await storage.read()).sessions[id];
-      return managed(session) ? descriptor(session) : null;
+      if (!managed(session)) return null;
+      const delegationTurnId =
+        runtime.queries.get(id)?.secretaryRole &&
+        runtime.running.get(id)?.turn?.id;
+      return { ...descriptor(session), delegationTurnId };
     },
     async deliver(envelope) {
       assertReady();

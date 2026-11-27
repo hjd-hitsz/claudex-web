@@ -1,5 +1,23 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { readPromptSections, renderPrompt } from "../../prompts.mjs";
+
+const prompts = readPromptSections("backends/claude/execution.md");
+const snapshot = prompts("projectInstructions");
+const [snapshotStart] = snapshot.split("{{cwd}}");
+const snapshotEnd = snapshot.split("{{files}}")[1];
+const hookStart = "UserPromptSubmit hook additional context: " + snapshotStart;
+
+// Claude retains these hook frames in its native history. Standard Messages
+// uses only the latest frame when projecting that history into top-level system.
+export function projectInstructionFrame(text) {
+  if (typeof text !== "string") return null;
+  const start = text.indexOf(hookStart);
+  if (start < 0 || (start && text[start - 1] !== "\n")) return null;
+  const end = text.indexOf(snapshotEnd, start + hookStart.length);
+  if (end < 0) return null;
+  return { start, end: end + snapshotEnd.length };
+}
 
 async function instruction(path) {
   try {
@@ -12,9 +30,7 @@ async function instruction(path) {
   }
 }
 
-// UserPromptSubmit calls this reader for each submission so /init and edits
-// take effect immediately. Native CLAUDE.md loading remains owned by the CLI.
-export async function readProjectInstructions(cwd) {
+function instructionDirectories(cwd) {
   const directories = [];
   let directory = resolve(cwd);
   while (true) {
@@ -23,8 +39,23 @@ export async function readProjectInstructions(cwd) {
     if (parent === directory) break;
     directory = parent;
   }
+  return directories;
+}
+
+// The submit hook owns root AGENTS files. Claude retains its own CLAUDE.md,
+// settings, and instructions discovered outside the submit hook's scope.
+export function nativeInstructionExcludes(cwd) {
+  return instructionDirectories(cwd).map((directory) =>
+    join(directory, "AGENTS.md").replace(
+      /[*?\[\]{}()]/gu,
+      (character) => "[" + character + "]",
+    ),
+  );
+}
+
+export async function readProjectInstructions(cwd) {
   const sections = [];
-  for (const scope of directories) {
+  for (const scope of instructionDirectories(cwd)) {
     let path = join(scope, "AGENTS.override.md");
     let content = await instruction(path);
     if (content === null) {
@@ -33,8 +64,17 @@ export async function readProjectInstructions(cwd) {
     }
     if (content === null) continue;
     sections.push(
-      `项目指令文件：${JSON.stringify(path)}\n适用范围：${JSON.stringify(scope)} 及其子目录。\n指令原文：\n\n${content}`,
+      renderPrompt(prompts("projectInstructionFile"), {
+        path: JSON.stringify(path),
+        directory: JSON.stringify(scope),
+        content,
+      }),
     );
   }
-  return `当前工作目录：${JSON.stringify(resolve(cwd))}\n本轮有效 AGENTS 项目指令以以下完整快照为准，本快照取代此前轮次中的 AGENTS 项目指令快照。文件按祖先目录到当前目录排列，分别约束其所在目录及子目录；同一事项存在冲突时，更具体目录中的规则优先。原生 CLAUDE.md 指令继续适用。\n\n${sections.length ? sections.join("\n\n---\n\n") : "当前有效 AGENTS 项目指令文件列表为空。"}`;
+  return renderPrompt(snapshot, {
+    cwd: JSON.stringify(resolve(cwd)),
+    files: sections.length
+      ? sections.join("\n\n---\n\n")
+      : prompts("projectInstructionsEmpty"),
+  });
 }

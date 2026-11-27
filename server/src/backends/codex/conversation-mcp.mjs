@@ -20,6 +20,7 @@ async function invoke({ name, arguments: args, _meta: metadata }) {
     throw new Error("会话工具需要所属 Codex 对话。");
   return callConversationGateway(endpoint, {
     threadId: metadata.threadId,
+    turnId: metadata["x-codex-turn-metadata"]?.turn_id,
     callId: metadata.callId,
     name,
     args: args ?? {},

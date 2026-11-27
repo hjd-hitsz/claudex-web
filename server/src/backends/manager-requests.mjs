@@ -1,11 +1,6 @@
 import { resourceId } from "../../../shared/backend-identity.mjs";
 
-export function createBackendRequests({
-  send,
-  tokenUsage,
-  projectResult,
-  settle,
-}) {
+export function createBackendRequests({ send, tokenUsage, projectResult }) {
   let sequence = 0;
   function proxy(entry, client) {
     if (!entry.proxies.has(client)) {
@@ -16,28 +11,33 @@ export function createBackendRequests({
         },
         methods,
         async deliver(message) {
-          const { method, threadId, usageRevision, forkUsage, grant } =
+          const { method, threadId, usageRevision, forkUsage, selectedMode } =
             methods.get(message.id) || {};
           methods.delete(message.id);
-          settle(grant, message);
           if (!message.error && method === "thread/delete")
             tokenUsage.remove(threadId);
           if (!message.error && method === "thread/archive")
             tokenUsage.archive(threadId);
           if (!message.error && method === "thread/unarchive")
             tokenUsage.archive(threadId, false);
-          send(client, {
-            ...message,
-            ...(message.result && {
-              result: await projectResult(
+          try {
+            const result =
+              message.result &&
+              (await projectResult(
                 entry,
                 message.result,
                 method,
                 usageRevision,
                 forkUsage,
-              ),
-            }),
-          });
+                selectedMode,
+              ));
+            send(client, { ...message, ...(message.result && { result }) });
+          } catch (error) {
+            send(client, {
+              id: message.id,
+              error: { code: -32000, message: error.message },
+            });
+          }
         },
       });
     }

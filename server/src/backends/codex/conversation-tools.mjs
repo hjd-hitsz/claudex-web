@@ -7,7 +7,12 @@ import { threadMethods } from "./methods.mjs";
 
 export const codexConversationMcpName = "claudex_conversations";
 
-export function codexConversationToolParams(method, params, endpoint) {
+export function codexConversationToolParams(
+  method,
+  params,
+  endpoint,
+  secretary = false,
+) {
   if (!endpoint || !threadMethods.has(method)) return params;
   return {
     ...params,
@@ -20,7 +25,8 @@ export function codexConversationToolParams(method, params, endpoint) {
         ],
         env: { CLAUDEX_CONVERSATION_ENDPOINT: JSON.stringify(endpoint) },
         enabled: true,
-        // The bridge checks the active mode token for submissions and task ownership for reads.
+        disabled_tools: secretary ? [] : [delegationToolName],
+        // The bridge validates the native caller and task ownership.
         tools: {
           [delegationToolName]: { approval_mode: "approve" },
           [delegationStepToolName]: { approval_mode: "approve" },

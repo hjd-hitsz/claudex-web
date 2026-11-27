@@ -2,8 +2,10 @@ import { readPromptSections } from "../../prompts.mjs";
 import {
   createPermissionCheck,
   delegationToolOptions,
+  executionPermissionMode,
 } from "./delegation-permission.mjs";
 import { spawn } from "node:child_process";
+import { nativeInstructionExcludes } from "./project-instructions.mjs";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKAssistantMessage } from "@anthropic-ai/claude-agent-sdk";
 import type {
@@ -18,23 +20,20 @@ import { modelOptions } from "./model-options.mjs";
 import { captureNativeProcesses } from "./process-ownership.mjs";
 import { createNativeCommands } from "./native-commands.mjs";
 import {
-  claudeConversationTools,
+  claudeConversationOptions,
+  confirmClaudeDelegationTool,
   conversationToolGuard,
-  claudeDispatchGuard,
 } from "./conversation-tools.mjs";
 import { recordPeerAcceptance } from "./conversation-input.mjs";
 import { warmFileSuggestions } from "./native-control.mjs";
 import {
+  providerRuntimeEnvironment,
   providerSettingsEnvironment,
   subagentModelEnvironment,
 } from "./provider-environment.mjs";
 import { networkProxyEnvironment } from "../network-proxy.mjs";
 import { subagentSettings } from "../../../../shared/subagent-settings.mjs";
-import {
-  createProviderTransport,
-  providerRuntimeEnvironment,
-} from "./provider-transport.mjs";
-
+import { createProviderTransport } from "./provider-transport.mjs";
 const executionPrompt = readPromptSections("backends/claude/execution.md");
 const planMode = executionPrompt("planMode");
 const reviewMode = executionPrompt("reviewMode");
@@ -50,6 +49,7 @@ export async function createExecutionSession({
   questions,
   observeMessage,
   callConversationTool,
+  secretaryRole,
   goals,
   tasks,
   current: getCurrent,
@@ -84,6 +84,7 @@ export async function createExecutionSession({
             model: backend.subagentModel,
             effort: backend.subagentEffort,
           },
+          secretaryRole,
         )
       : null;
   const input = createInputStream();
@@ -156,12 +157,7 @@ export async function createExecutionSession({
         ? { resume: session.nativeSessionId || threadId }
         : { sessionId: session.nativeSessionId || threadId }),
       model,
-      permissionMode:
-        queued.mode === "plan" || queued.review
-          ? "plan"
-          : queued.delegation
-            ? "default"
-            : "bypassPermissions",
+      permissionMode: executionPermissionMode(queued),
       planModeInstructions: queued.review ? reviewMode : planMode,
       ...delegationToolOptions(queued.delegation),
       ...(queued.review && {
@@ -170,6 +166,7 @@ export async function createExecutionSession({
       ...options,
       settings: {
         ...options.settings,
+        claudeMdExcludes: nativeInstructionExcludes(session.cwd),
         env: {
           ...networkProxyEnvironment(backend.proxy),
           ...subagentModelEnvironment(backend, proxy),
@@ -181,14 +178,12 @@ export async function createExecutionSession({
       perTaskStopAffordance: true,
       forwardSubagentText: true,
       persistSession: true,
-      ...(callConversationTool && {
-        mcpServers: claudeConversationTools(
-          threadId,
-          callConversationTool,
-          current,
-        ),
-      }),
-      systemPrompt: { type: "preset", preset: "claude_code" },
+      ...claudeConversationOptions(
+        threadId,
+        current,
+        callConversationTool,
+        secretaryRole,
+      ),
       settingSources: ["user", "project", "local"],
       canUseTool: createPermissionCheck({
         current,
@@ -203,9 +198,8 @@ export async function createExecutionSession({
         broadcast,
         questions,
         goalBeforeTool: () => goals.beforeTool(threadId),
-        delegationContext: () => current()?.queued.delegationContext,
         conversationToolGuard: callConversationTool
-          ? [conversationToolGuard(), claudeDispatchGuard(current)]
+          ? [conversationToolGuard()]
           : [],
         onPromptFailure: (error) => {
           const active = current();
@@ -270,6 +264,11 @@ export async function createExecutionSession({
       throw error;
     }
   }
+  if (secretaryRole)
+    await confirmClaudeDelegationTool(process.query).catch((error) => {
+      process.close();
+      throw error;
+    });
   const prewarm = process.query
     .supportedCommands()
     .then(() => warmFileSuggestions(process.query))

@@ -252,6 +252,7 @@ export function createThreadNavigation({
       effort: get().effort,
       serviceTier: get().serviceTier,
       mode: get().mode,
+      delegationMode: get().delegationMode,
     };
     const checking = {
       threadId: id,
@@ -283,6 +284,9 @@ export function createThreadNavigation({
       };
       set({
         threadAccess: { threadId: id, status: "ready" },
+        ...(get().delegationMode === selection.delegationMode && {
+          delegationMode: settings.thread?.delegationMode === true,
+        }),
         ...(settings.thread?.tokenUsage &&
           get().tokenUsage[id] === usageSnapshot.value && {
             tokenUsage: {
@@ -415,7 +419,7 @@ export function createThreadNavigation({
     );
     return noticeKeys.filter((id) => present.has(id) || finished.includes(id));
   }
-  async function ensureThread() {
+  async function ensureThread(delegationMode = get().delegationMode) {
     if (get().current) return get().current;
     const epoch = opening;
     const { projectless, model, serviceTier, providerId } = get();
@@ -437,6 +441,8 @@ export function createThreadNavigation({
       cwd,
       model: model || undefined,
       providerId,
+      ...(delegationMode &&
+        get().backendId !== "agy" && { delegationMode: true }),
       serviceTier: resolveServiceTier(
         serviceTier,
         get().models.find((m) => m.model === model),
@@ -451,7 +457,7 @@ export function createThreadNavigation({
     set({
       current: r.thread,
       mode: get().mode,
-      delegationMode: get().delegationMode,
+      delegationMode: r.thread.delegationMode === true,
     });
     localStorage.setItem("cx-current", r.thread.id);
     return r.thread;

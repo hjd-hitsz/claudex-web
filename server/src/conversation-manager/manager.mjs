@@ -278,7 +278,11 @@ export function createConversationManager({
     const actor = { runtimeId, threadId: context.threadId };
     if (name === delegationToolName || name === delegationStepToolName) {
       if (!entry.delegation) throw new Error("当前后端未接入委派模式");
-      return entry.delegation(name, actor, args);
+      return entry.delegation(
+        name,
+        { ...actor, turnId: context.turnId, callId: context.callId },
+        args,
+      );
     }
     if (name === "list_active_threads") {
       const caller = await adapter.readThread(actor.threadId);

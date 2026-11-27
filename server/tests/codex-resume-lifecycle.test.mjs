@@ -183,6 +183,7 @@ test("等待关闭沿用网页请求期限，超时后迟到关闭事件保持�
     activeTurns: new Map(),
     activeThreads: new Set(),
     releasing: new Map(),
+    resuming: new Map(),
     offline: new Map(),
     online: new Map(),
     releaseUnusedThreads() {},

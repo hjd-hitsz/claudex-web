@@ -1,4 +1,11 @@
 import { readAgyRole } from "../agy/role-settings.mjs";
+import { readPromptSections, renderPrompt } from "../../prompts.mjs";
+import {
+  claudeDelegationToolName,
+  delegationToolName,
+} from "../../conversation-manager/tools.mjs";
+
+const workflow = readPromptSections("delegation/workflow.md");
 
 export const delegationBackends = ["codex", "claude"];
 const sourceBackends = [...delegationBackends, "agy"];
@@ -83,6 +90,16 @@ export async function resolveSourcePrompt(settings, source) {
   const promptId = settings.delegationSourcePrompts?.[source];
   const preset = settings.delegationPrompts?.find(({ id }) => id === promptId);
   return preset?.content ?? (await readAgyRole(settings.stateDir)).content;
+}
+
+export async function resolveNativeSecretaryRole(settings, source) {
+  return [
+    renderPrompt(workflow("nativeSecretary"), {
+      backend: source === "claude" ? "Codex" : "Claude Code",
+      tool: source === "claude" ? claudeDelegationToolName : delegationToolName,
+    }),
+    await resolveSourcePrompt(settings, source),
+  ].join("\n\n");
 }
 
 export function buildDelegationSelection(settings, target) {

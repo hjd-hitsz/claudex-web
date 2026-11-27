@@ -6,6 +6,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resourceTarget } from "../../shared/backend-identity.mjs";
+import { createDelegationModes } from "../../server/src/backends/delegation/source-modes.mjs";
+import { resolveNativeSecretaryRole } from "../../server/src/backends/delegation/settings.mjs";
 import { setTimeout as delay } from "node:timers/promises";
 import { createBackendConfiguration } from "../../server/src/backends/configuration.mjs";
 import { createBackendManager } from "../../server/src/backends/manager.mjs";
@@ -15,32 +18,51 @@ import { shutdownBrowserClaudeWorker } from "../helpers/claude-worker-cleanup.mj
 
 const root = await mkdtemp(join(tmpdir(), "claudex-native-delegation-"));
 const cwd = join(root, "workspace");
+await mkdir(cwd);
+await writeFile(join(cwd, "fixture.txt"), "Local file fixture\n");
+await writeFile(join(cwd, "CLAUDE.md"), "# CLAUDE_PROJECT_RULE_PROOF\n");
+const directProjectRule = "PROJECT_IMPLEMENTATION_OWNER_PROOF";
+const projectScope = "工作分工由会话当前的系统角色和用户选择决定";
+await writeFile(
+  join(cwd, "AGENTS.md"),
+  `# ${directProjectRule}\n\nImplement engineering requests directly and run their checks.\n`,
+);
 const codexHome = join(root, "codex");
 const claudeHome = join(root, "claude");
 const bin = join(root, "bin");
-await Promise.all([cwd, codexHome, claudeHome, bin].map((path) => mkdir(path)));
+await Promise.all([codexHome, claudeHome, bin].map((path) => mkdir(path)));
 await writeFile(join(bin, "systemctl"), "#!/bin/sh\nexit 1\n", { mode: 0o700 });
 const environment = { ...process.env };
 process.env.PATH = bin + ":" + process.env.PATH;
 process.env.XDG_RUNTIME_DIR = root;
 delete process.env.ANTHROPIC_AUTH_TOKEN;
 process.env.ANTHROPIC_API_KEY = "fixture";
-const tokenPattern = /token \\?"([a-f0-9-]{36})/;
 const toolName = "mcp__claudex_conversation__delegate_task";
 const stepTool = "read_delegation_step";
 const claudeStepTool = "mcp__claudex_conversation__" + stepTool;
 const codexModel = "gpt-5.4";
-const claudeModel = "claude-sonnet-4-6";
+const claudeModel = "gsq-rco-27b";
+const claudeProtocol = process.argv.includes("--anthropic")
+  ? "anthropic"
+  : "messages";
 const codexPrompt = "CODEX_PRESET_PROOF";
+const longCodexRole =
+  "Codex secretary instructions. ".repeat(110) + codexPrompt;
 const claudePrompt = "CLAUDE_PRESET_PROOF";
+const longClaudeRole =
+  "Claude secretary instructions. ".repeat(110) + claudePrompt;
 const proof = { codex: {}, claude: {} };
+let expectedClaudeRole;
 const source = { codex: "CODEX_SOURCE_PROOF", claude: "CLAUDE_SOURCE_PROOF" };
-const requestArguments = (token, origin) => ({
-  token,
+const requestArguments = (origin) => ({
   request: "Return the fixture evidence for " + origin,
   request_id: "native-" + origin,
   scope: "implementation",
 });
+const directPrompt = "SECRETARY_DIRECT_PROOF";
+const localPrompt = "SECRETARY_LOCAL_TOOL_PROOF";
+const standardPrompt = "STANDARD_ASSISTANT_PROOF";
+const offPrompt = "DISABLED_SECRETARY_PROOF";
 function lookupInput(messages) {
   const text = messages
     .flatMap(({ content, output }) => {
@@ -69,11 +91,34 @@ const codex = createServer(async (request, response) => {
         entry,
       ],
   );
+  const instructions = JSON.stringify([
+    body.instructions,
+    body.input.filter(({ role }) => role === "developer"),
+  ]);
+  const collaboration = body.input
+    .filter(
+      ({ role, content }) =>
+        role === "developer" &&
+        JSON.stringify(content).includes("<collaboration_mode>"),
+    )
+    .at(-1);
   let answer = "CODEX_ACCEPTED_PROOF";
   let call;
   if (body.text?.format?.type === "json_schema")
     answer = '{"title":"Delegation proof"}';
-  else if (prompt.includes("Claudex 委派执行结果")) {
+  else if (
+    prompt.includes(offPrompt) ||
+    (prompt.includes(standardPrompt) && !prompt.includes(directPrompt))
+  ) {
+    proof.codex[prompt.includes(offPrompt) ? "off" : "standard"] =
+      !tools.some(({ name }) => name === "delegate_task") &&
+      (prompt.includes(offPrompt)
+        ? JSON.stringify(collaboration).includes(
+            "You are now in Default mode",
+          ) && !JSON.stringify(collaboration).includes(codexPrompt)
+        : !instructions.includes(codexPrompt));
+    answer = "CODEX_STANDARD_ANSWER";
+  } else if (prompt.includes("Claudex 委派执行结果")) {
     proof.codex.result = prompt.includes("CLAUDE_EXECUTOR_PROOF");
     const returned = body.input.find(
       ({ type, call_id }) =>
@@ -105,21 +150,36 @@ const codex = createServer(async (request, response) => {
         prompt.includes(codexPrompt) || prompt.includes(claudePrompt),
     };
     answer = "CODEX_EXECUTOR_PROOF";
-  } else if (prompt.includes(source.codex)) {
+  } else if (prompt.includes(directPrompt) && !prompt.includes(source.codex)) {
+    proof.codex.direct =
+      JSON.stringify(collaboration).includes(longCodexRole) &&
+      tools.some(({ name }) => name === "delegate_task") &&
+      tools.some(({ name }) => name === "exec_command") &&
+      !body.input.some(
+        ({ role, content }) =>
+          role === "user" && JSON.stringify(content).includes(codexPrompt),
+      );
+    answer = "CODEX_DIRECT_ANSWER";
+  } else if (
+    prompt.includes(source.codex) &&
+    !prompt.includes("delegate-retry-codex")
+  ) {
     const tool = tools.find(({ name }) => name === "delegate_task");
-    const token = tokenPattern.exec(prompt)?.[1];
-    if (!prompt.includes("native-codex") && tool && token) {
-      proof.codex.source =
-        prompt.includes(codexPrompt) && !prompt.includes(claudePrompt);
-      call = {
-        type: "function_call",
-        name: tool.name,
-        namespace: tool.namespace,
-        call_id: "delegate-fixture-" + index,
-        arguments: JSON.stringify(requestArguments(token, "codex")),
-      };
-    }
+    assert(tool);
+    assert.equal("token" in tool.parameters.properties, false);
+    proof.codex.source =
+      instructions.includes(longCodexRole) &&
+      !instructions.includes(claudePrompt);
+    const retried = prompt.includes("delegate-first-codex");
+    call = {
+      type: "function_call",
+      name: tool.name,
+      namespace: tool.namespace,
+      call_id: retried ? "delegate-retry-codex" : "delegate-first-codex",
+      arguments: JSON.stringify(requestArguments("codex")),
+    };
   }
+
   const item = call || {
     id: "message-" + index,
     type: "message",
@@ -151,8 +211,20 @@ await once(codex, "listening");
 
 const claude = await messagesServer((body) => {
   const prompt = JSON.stringify(body.messages);
-  const context = JSON.stringify(body);
+  const instructions = JSON.stringify(body.system);
   const tool = body.tools?.find(({ name }) => name === toolName);
+  if (
+    prompt.includes(offPrompt) ||
+    (prompt.includes(standardPrompt) && !prompt.includes(directPrompt))
+  ) {
+    if (body.tools?.length)
+      proof.claude[prompt.includes(offPrompt) ? "off" : "standard"] =
+        !instructions.includes(claudePrompt) &&
+        instructions.includes("You are an agent working with the user") &&
+        !tool &&
+        body.tools.some(({ name }) => name === "Bash");
+    return [{ type: "text", text: "CLAUDE_STANDARD_ANSWER" }];
+  }
   if (prompt.includes("Claudex 委派执行结果")) {
     if (!body.tools?.length)
       return [{ type: "text", text: "Delegation proof" }];
@@ -195,13 +267,80 @@ const claude = await messagesServer((body) => {
     };
     return [{ type: "text", text: "CLAUDE_EXECUTOR_PROOF" }];
   }
-  const token = tokenPattern.exec(context)?.[1];
+  if (prompt.lastIndexOf(localPrompt) > prompt.lastIndexOf(directPrompt)) {
+    if (!body.tools?.length)
+      return [{ type: "text", text: "Delegation proof" }];
+    if (!prompt.includes("toolu_local_bash")) {
+      return [
+        {
+          type: "tool_use",
+          id: "toolu_local_bash",
+          name: "Bash",
+          input: { command: "touch secretary-shell-canary" },
+        },
+        {
+          type: "tool_use",
+          id: "toolu_local_write",
+          name: "Write",
+          input: {
+            file_path: join(cwd, "secretary-write-canary"),
+            content: "fixture",
+          },
+        },
+      ];
+    }
+    const contents = body.messages.flatMap(({ content }) =>
+      Array.isArray(content) ? content : [],
+    );
+    proof.claude.localExecution = [
+      "toolu_local_bash",
+      "toolu_local_write",
+    ].every((id) =>
+      contents.some(
+        ({ type, tool_use_id, is_error }) =>
+          type === "tool_result" && tool_use_id === id && !is_error,
+      ),
+    );
+    return [{ type: "text", text: "CLAUDE_LOCAL_ANSWER" }];
+  }
+  if (prompt.includes(directPrompt) && !prompt.includes(source.claude)) {
+    if (body.tools?.length) {
+      const latestProjectSnapshot = body.system?.findLast(({ text }) =>
+        text.includes("本轮有效 AGENTS 项目指令"),
+      )?.text;
+      proof.claude.direct =
+        instructions.includes(longClaudeRole) &&
+        !instructions.includes("You are an agent working with the user") &&
+        !prompt.includes(claudePrompt) &&
+        prompt.includes("CLAUDE_PROJECT_RULE_PROOF") &&
+        latestProjectSnapshot?.includes(directProjectRule) &&
+        latestProjectSnapshot.indexOf(projectScope) >
+          latestProjectSnapshot.indexOf(directProjectRule);
+      proof.claude.firstRequestTool = Boolean(tool && !tool.defer_loading);
+      proof.claude.secretarySystem =
+        body.system.length === 1 &&
+        body.system[0].text.startsWith(expectedClaudeRole) &&
+        !body.system[0].text.includes(
+          "Available agent types for the Agent tool:",
+        ) &&
+        !body.system[0].text.includes(
+          "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+        );
+      proof.claude.nativeToolCatalog = ["Bash", "Write", "Edit", "Agent"].every(
+        (name) => body.tools.some((entry) => entry.name === name),
+      );
+    }
+    return [{ type: "text", text: "CLAUDE_DIRECT_ANSWER" }];
+  }
   if (
     prompt.includes(source.claude) &&
-    !prompt.includes("native-claude") &&
-    token
+    !prompt.includes("toolu_delegate_retry")
   ) {
-    if (body.tools?.length && !prompt.includes("toolu_local_read_fixture")) {
+    if (!body.tools?.length)
+      return [{ type: "text", text: "Delegation proof" }];
+    assert(tool);
+    assert.equal("token" in tool.input_schema.properties, false);
+    if (!prompt.includes("toolu_local_read_fixture")) {
       return [
         {
           type: "tool_use",
@@ -211,27 +350,27 @@ const claude = await messagesServer((body) => {
         },
       ];
     }
-    proof.claude.localToolDenied = body.messages
+    proof.claude.localToolAllowed = body.messages
       .flatMap(({ content }) => (Array.isArray(content) ? content : []))
       .some(
-        ({ type, tool_use_id, is_error }) =>
+        ({ type, tool_use_id, is_error, content }) =>
           type === "tool_result" &&
           tool_use_id === "toolu_local_read_fixture" &&
-          is_error,
+          !is_error &&
+          JSON.stringify(content).includes("Local file fixture"),
       );
-    proof.claude.firstRequestTool = Boolean(
-      tool &&
-      !tool.defer_loading &&
-      JSON.stringify([body.system, body.messages]).includes(toolName),
-    );
     proof.claude.source =
-      context.includes(claudePrompt) && !context.includes(codexPrompt);
+      instructions.includes(longClaudeRole) &&
+      !instructions.includes(codexPrompt) &&
+      !prompt.includes(claudePrompt);
     return [
       {
         type: "tool_use",
-        id: "toolu_delegate_fixture",
+        id: prompt.includes("toolu_delegate_first")
+          ? "toolu_delegate_retry"
+          : "toolu_delegate_first",
         name: toolName,
-        input: requestArguments(token, "claude"),
+        input: requestArguments("claude"),
       },
     ];
   }
@@ -324,14 +463,15 @@ async function rpc(method, params = {}) {
   }
 }
 const prompts = [
-  { id: "codex-proof", name: "Codex 执行", content: codexPrompt },
-  { id: "claude-proof", name: "Claude 执行", content: claudePrompt },
+  { id: "codex-proof", name: "Codex 执行", content: longCodexRole },
+  { id: "claude-proof", name: "Claude 执行", content: longClaudeRole },
 ];
 const delegates = {
   codex: { model: codexModel, effort: "low", enabled: true },
   claude: { model: claudeModel, effort: "medium", enabled: true },
 };
 const threads = {};
+const optedIn = new Map();
 try {
   await start();
   const providerId = "delegation-messages-fixture";
@@ -342,7 +482,15 @@ try {
     baseUrl: claude.url,
     apiKey: "fixture",
     models: [claudeModel],
-    protocol: "messages",
+    modelCapabilities: {
+      [claudeModel]: {
+        contextWindow: 196608,
+        supportedEffortLevels: ["medium"],
+        supportsFastMode: false,
+        supportsAdaptiveThinking: false,
+      },
+    },
+    protocol: claudeProtocol,
   });
   await rpc("lan/backends/save", {
     id: "agy",
@@ -351,35 +499,38 @@ try {
     delegationPrompts: prompts,
     delegationSourcePrompts: { codex: prompts[0].id, claude: prompts[1].id },
   });
+  expectedClaudeRole = await resolveNativeSecretaryRole(
+    await configuration.readDelegationSettings(),
+    "claude",
+  );
   assert.deepEqual(
     (await configuration.read()).backends.find(({ id }) => id === "agy")
       .delegationPrompts,
     prompts,
   );
 
-  const { thread: blocked } = await rpc("thread/start", {
-    backendId: "codex",
-    cwd,
-    model: codexModel,
-  });
-  await rpc("lan/backends/save", {
-    id: "agy",
-    type: "agy",
-    delegates: {
-      ...delegates,
-      claude: { ...delegates.claude, enabled: false },
-    },
-  });
-  await assert.rejects(
-    rpc("turn/start", {
-      threadId: blocked.id,
-      delegationMode: true,
-      input: [{ type: "text", text: "关闭接收时拒绝新委派" }],
-    }),
-    /开启接收委派/,
-  );
-  await rpc("lan/backends/save", { id: "agy", type: "agy", delegates });
-
+  async function directTurn(origin, params, marker, delegationMode) {
+    const { turn } = await rpc("turn/start", {
+      ...params,
+      ...(delegationMode !== undefined && { delegationMode }),
+      input: [{ type: "text", text: marker }],
+    });
+    const completion = await until(
+      () =>
+        events.find(
+          ({ method, params: event }) =>
+            method === "turn/completed" &&
+            event.threadId === params.threadId &&
+            event.turn?.id === turn.id,
+        ),
+      origin + " 直接回答轮次正常结束",
+    );
+    assert.equal(
+      completion.params.turn.status,
+      "completed",
+      JSON.stringify(completion.params.turn.error),
+    );
+  }
   for (const [origin, model] of [
     ["codex", codexModel],
     ["claude", claudeModel],
@@ -392,11 +543,41 @@ try {
       ...provider,
     });
     threads[origin] = thread.id;
+    const params = {
+      threadId: thread.id,
+      model,
+      ...provider,
+      collaborationMode: {
+        mode: "default",
+        settings: { model, reasoning_effort: null },
+      },
+    };
+    await directTurn(origin, params, standardPrompt);
+    assert.equal(proof[origin].standard, true);
+    await rpc("lan/delegation/mode/set", {
+      threadId: thread.id,
+      delegationMode: true,
+    });
+    await directTurn(origin, params, directPrompt, false);
+    assert.equal(proof[origin].direct, true);
+    assert.deepEqual(
+      (await rpc("lan/delegation/tasks", { threadId: thread.id })).items,
+      [],
+    );
+    assert.equal(
+      (
+        await rpc("thread/resume", {
+          threadId: thread.id,
+          ...provider,
+        })
+      ).thread.delegationMode,
+      true,
+    );
+
     await rpc("turn/start", {
       threadId: thread.id,
       model,
       ...provider,
-      delegationMode: true,
       input: [{ type: "text", text: source[origin] }],
     });
     await until(() => proof[origin].result, origin + " 收到委派执行结果");
@@ -436,6 +617,60 @@ try {
       ),
     );
     assert.equal(detail.id, agent.agentThreadId);
+    await until(
+      () => !manager.state().params.activeTurns[thread.id],
+      origin + " 回投轮次结束",
+    );
+    await rpc("lan/delegation/mode/set", {
+      threadId: thread.id,
+      delegationMode: false,
+    });
+    await directTurn(origin, params, offPrompt, true);
+    assert.equal(proof[origin].off, true);
+
+    const { thread: fresh, delegationMode } = await rpc("thread/start", {
+      backendId: origin,
+      cwd,
+      model,
+      ...provider,
+      delegationMode: true,
+    });
+    assert.equal(delegationMode, true);
+    assert.equal(fresh.delegationMode, true);
+    const { nativeId } = resourceTarget(fresh.id, origin);
+    const backend = (await configuration.read()).backends.find(
+      ({ id }) => id === origin,
+    );
+    assert.equal(
+      await createDelegationModes(root).enabled(backend, nativeId),
+      true,
+    );
+    if (origin === "claude") {
+      const index = JSON.parse(
+        await readFile(
+          join(backend.stateDir, "claudex-web-index.json"),
+          "utf8",
+        ),
+      );
+      assert.equal(index.sessions[nativeId].delegationMode, true);
+      assert.equal(index.sessions[nativeId].initialized, false);
+    }
+    const freshParams = { ...params, threadId: fresh.id };
+    proof[origin].direct = undefined;
+    await directTurn(origin, freshParams, directPrompt);
+    assert.equal(proof[origin].direct, true);
+    if (origin === "claude") {
+      const index = JSON.parse(
+        await readFile(
+          join(backend.stateDir, "claudex-web-index.json"),
+          "utf8",
+        ),
+      );
+      assert(
+        index.sessions[nativeId].agentsAvailable.includes("claudex-secretary"),
+      );
+    }
+    optedIn.set(origin, freshParams);
   }
   await until(async () => {
     const state = JSON.parse(
@@ -460,10 +695,36 @@ try {
   assert.equal(proof.codex.source, true);
   assert.equal(proof.claude.source, true);
   assert.equal(proof.claude.firstRequestTool, true);
-  assert.equal(proof.claude.localToolDenied, true);
+  assert.equal(proof.claude.secretarySystem, true);
+  assert.equal(proof.claude.nativeToolCatalog, true);
+  await directTurn("claude", optedIn.get("claude"), localPrompt, true);
+  assert.equal(proof.claude.localExecution, true);
+  assert.equal(await readFile(join(cwd, "secretary-shell-canary"), "utf8"), "");
+  assert.equal(
+    await readFile(join(cwd, "secretary-write-canary"), "utf8"),
+    "fixture",
+  );
+  assert.equal(proof.claude.localToolAllowed, true);
+  const persisted = JSON.parse(
+    await readFile(join(root, "delegation", "state.json"), "utf8"),
+  );
+  assert.equal(Object.values(persisted.tasks).length, 2);
+  assert(
+    Object.values(persisted.tasks).every(({ steps }) => steps.length === 1),
+  );
+  assert.equal(Object.keys(persisted.receipts).length, 4);
   await manager.close();
   await conversations.close();
   await start();
+  for (const [origin, params] of optedIn) {
+    proof[origin].direct = undefined;
+    assert.equal(
+      (await rpc("thread/resume", params)).thread.delegationMode,
+      true,
+    );
+    await directTurn(origin, params, directPrompt);
+    assert.equal(proof[origin].direct, true);
+  }
   for (const threadId of Object.values(threads)) {
     const { items } = await rpc("lan/delegation/tasks", { threadId });
     assert.equal(items[0].agentStatus, "completed");
@@ -478,20 +739,29 @@ try {
     "Codex → Claude Code 和 Claude Code → Codex 原生 MCP 双向委派及步骤查询通过",
   );
   console.log(
-    "发起端各自提示词、执行端模型与强度、结果回投、原生历史与桥接重启恢复通过",
+    "原生模型请求中的秘书角色、项目说明与常规工具通过核对，Claude Bash 和 Write 均可执行",
+  );
+  console.log(
+    "同一会话默认关闭、开启、关闭及新会话首轮开启均已核对原生提示词与工具目录。无派单回答、请求去重和桥接恢复通过",
   );
 } catch (error) {
   console.error({
     proof,
+    workerLog: await readFile(
+      join(root, "backends/claude/worker.log"),
+      "utf8",
+    ).catch(() => ""),
     errors,
     recent: events.slice(-25).map(({ method, params }) => ({
       method,
       status: params?.turn?.status,
       error: params?.turn?.error,
-      tool: params?.item?.type === "mcpToolCall" && {
-        result: params.item.result,
-        error: params.item.error,
-      },
+      tool:
+        params?.item?.type === "mcpToolCall" &&
+        JSON.stringify({
+          result: params.item.result,
+          error: params.item.error,
+        }),
     })),
   });
   throw error;

@@ -32,14 +32,6 @@ export function completeTurn(
   error?: unknown,
 ) {
   const { turn } = active;
-  if (
-    !error &&
-    result?.subtype === "success" &&
-    !result.is_error &&
-    active.queued.delegationContext &&
-    !active.delegationAccepted
-  )
-    error = new Error("Claude Code 本轮没有取得派单回执，请重试委派。");
   turn.status = active.interrupted
     ? "interrupted"
     : error || result?.is_error || (result && result.subtype !== "success")

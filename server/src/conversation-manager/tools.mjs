@@ -38,9 +38,8 @@ export const conversationTools = [
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["token", "request", "request_id"],
+      required: ["request", "request_id"],
       properties: {
-        token: text,
         request: { ...text, maxLength: 100000 },
         taskSummary: {
           ...text,

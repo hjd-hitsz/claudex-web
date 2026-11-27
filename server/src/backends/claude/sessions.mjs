@@ -19,6 +19,7 @@ export function createClaudeSessions({
   compactions,
   notify,
   assertReady,
+  readLegacyDelegationMode = async () => false,
   readTokenUsage = async (session) => session.tokenUsage,
 }) {
   runtime.mutating ||= new Set();
@@ -161,7 +162,11 @@ export function createClaudeSessions({
     notify,
   });
 
-  const methods = new Set([...conversationMethods, "lan/agents/messages"]);
+  const methods = new Set([
+    ...conversationMethods,
+    "lan/agents/messages",
+    "lan/delegation/mode/set",
+  ]);
   async function perform(method, p) {
     if (method === "lan/agents/messages")
       return {
@@ -230,6 +235,7 @@ export function createClaudeSessions({
         createdAt: now,
         updatedAt: now,
         initialized: false,
+        delegationMode: p.delegationMode === true,
         turns: {},
         queue: [],
       };
@@ -237,14 +243,32 @@ export function createClaudeSessions({
       return { thread: thread(s), model: s.model, cwd: s.cwd };
     }
     if (method === "thread/unsubscribe") return { status: "unsubscribed" };
+    if (method === "lan/delegation/mode/set") {
+      if (typeof p.delegationMode !== "boolean")
+        throw new Error("委派模式需要开关状态。");
+      await storage.update((data) => {
+        const current = data.sessions[p.threadId];
+        if (!current || current.deleted) throw new Error("对话不存在");
+        data.sessions[p.threadId] = {
+          ...current,
+          delegationMode: p.delegationMode,
+        };
+        return data;
+      });
+      return { delegationMode: p.delegationMode };
+    }
     if (["thread/read", "thread/resume"].includes(method)) {
       const s = await session(p.threadId);
+      const delegationMode =
+        s.delegationMode ?? (await readLegacyDelegationMode(s.id));
       return {
         thread: {
           ...thread(s),
+          delegationMode,
           tokenUsage: await readTokenUsage(s),
           ...(p.includeTurns && { turns: await turns(s.id) }),
         },
+        delegationMode,
         cwd: s.cwd,
         model: s.model,
         reasoningEffort: s.effort || "",
@@ -278,6 +302,8 @@ export function createClaudeSessions({
         const copy = {
           ...s,
           id: sessionId,
+          delegationMode:
+            s.delegationMode ?? (await readLegacyDelegationMode(s.id)),
           ...fork,
           nativeAliases: [sessionId],
           forkedFromId: s.id,

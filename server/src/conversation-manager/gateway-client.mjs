@@ -2,10 +2,10 @@ import { request } from "node:http";
 
 export function callConversationGateway(
   { socketPath, runtimeId, token },
-  { threadId, name, args, callId },
+  { threadId, turnId, name, args, callId },
 ) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ threadId, name, args, callId });
+    const body = JSON.stringify({ threadId, turnId, name, args, callId });
     const connection = request(
       {
         socketPath,

@@ -13,8 +13,10 @@ type RequestDependencies = Pick<
   ReturnType<typeof createSubscriptions>,
   | "subscriptions"
   | "releasing"
+  | "resuming"
   | "resumeForWrite"
   | "retainThread"
+  | "secretaryTurn"
   | "releaseUnusedThreads"
 > & {
   transport: ReturnType<typeof createUpstream>;
@@ -49,8 +51,10 @@ export function createRequestHandler({
   undoing,
   subscriptions,
   releasing,
+  resuming,
   resumeForWrite,
   retainThread,
+  secretaryTurn,
   releaseUnusedThreads,
   backgroundCall,
   waitForBackgroundHandoff,
@@ -93,9 +97,16 @@ export function createRequestHandler({
   return async function handleRequest(
     client: CodexClient,
     message: RpcMessage,
+    secretaryRole?: string,
   ) {
     if (await dispatchLocal(offline, client, message)) return;
     const threadId = message.params?.threadId;
+    if (
+      threadId &&
+      message.method === "thread/resume" &&
+      resuming.has(threadId)
+    )
+      await resuming.get(threadId);
     if (threadId && releasing.has(threadId)) await releasing.get(threadId);
     if (!transport.ready)
       return sendError(client, message, "正在连接 Codex，请稍后重试。");
@@ -191,7 +202,7 @@ export function createRequestHandler({
         return;
       }
       const id = transport.nextId();
-      const forwarded = JSON.stringify({ ...message, id });
+      let forwarded = JSON.stringify({ ...message, id });
       if (Buffer.byteLength(forwarded) > MAX_RPC_MESSAGE_BYTES)
         return sendError(
           client,
@@ -233,6 +244,7 @@ export function createRequestHandler({
         method: message.method,
         threadId,
         includeStreaming,
+        secretaryRole,
         ...(message.method === "thread/resume" &&
           hasResumeTarget(message.params) && {
             resumeParams: message.params,
@@ -255,6 +267,11 @@ export function createRequestHandler({
               ? { inheritPermissions: true }
               : { cwd: message.params?.cwd },
           );
+          if (message.method === "turn/start" && message.params) {
+            const params = secretaryTurn(threadId, message.params);
+            if (params !== message.params)
+              forwarded = JSON.stringify({ ...message, params, id });
+          }
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           if (message.method === "thread/compact/start")
@@ -268,6 +285,17 @@ export function createRequestHandler({
           releaseUnusedThreads();
           return;
         }
+      }
+      if (Buffer.byteLength(forwarded) > MAX_RPC_MESSAGE_BYTES) {
+        clearTimeout(timer ?? undefined);
+        transport.pending.delete(id);
+        releaseUnusedThreads();
+        return sendError(
+          client,
+          message,
+          "单次消息过大（最多 64 MiB），请减少附件后重试。",
+          -32600,
+        );
       }
       transport.sendText(forwarded);
     } else if (message.id !== undefined && questions.has(String(message.id))) {

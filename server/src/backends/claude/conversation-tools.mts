@@ -1,6 +1,10 @@
 import { readPromptSections } from "../../prompts.mjs";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
-import type { HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
+import type {
+  HookCallbackMatcher,
+  Options,
+  Query,
+} from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { conversationCollaborationInstructions } from "../../conversation-manager/instructions.mjs";
 import {
@@ -8,37 +12,9 @@ import {
   conversationTools,
   delegationToolName,
   delegationStepToolName,
-  claudeDelegationToolName,
 } from "../../conversation-manager/tools.mjs";
 import type { ConversationTool } from "./conversation-protocol.d.mts";
 import type { ActiveExecution } from "./execution-types.d.mts";
-
-export function claudeDispatchGuard(
-  current: () => ActiveExecution | null | undefined,
-): HookCallbackMatcher {
-  return {
-    onFailure: "block",
-    hooks: [
-      async (input) => {
-        if (
-          input.hook_event_name !== "PreToolUse" ||
-          !current()?.queued.delegationContext ||
-          input.tool_name === claudeDelegationToolName
-        )
-          return {};
-        return {
-          hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            permissionDecision: "deny",
-            permissionDecisionReason: readPromptSections(
-              "delegation/workflow.md",
-            )("claudeDispatchGuard"),
-          },
-        };
-      },
-    ],
-  };
-}
 
 const schemas = conversationTools.map((definition) => ({
   ...definition,
@@ -50,46 +26,54 @@ const schemas = conversationTools.map((definition) => ({
     ) as z.ZodObject
   ).shape,
 }));
+const secretaryAgent = "claudex-secretary";
 
-export function claudeConversationTools(
+function claudeConversationTools(
   threadId: string,
   call: ConversationTool,
   current: () => ActiveExecution | null | undefined,
+  acceptDelegation: boolean,
 ) {
-  const tools = schemas.map((definition) =>
-    tool(
-      definition.name,
-      definition.description,
-      definition.schema,
-      async (args) => {
-        try {
-          const active = current();
-          const outcome = await call({ threadId }, definition.name, args);
-          if (
-            definition.name === delegationToolName &&
-            active?.queued.delegationContext
-          )
-            active.delegationAccepted = true;
-          return { content: [{ type: "text", text: JSON.stringify(outcome) }] };
-        } catch (error) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: error instanceof Error ? error.message : String(error),
-              },
-            ],
-          };
-        }
-      },
-      {
-        alwaysLoad: [delegationToolName, delegationStepToolName].includes(
-          definition.name,
-        ),
-      },
-    ),
-  );
+  const tools = schemas
+    .filter(({ name }) => acceptDelegation || name !== delegationToolName)
+    .map((definition) =>
+      tool(
+        definition.name,
+        definition.description,
+        definition.schema,
+        async (args) => {
+          try {
+            const delegating = definition.name === delegationToolName;
+            const active = delegating ? current() : undefined;
+            if (delegating && !active)
+              throw new Error("委派请求须来自当前执行中的轮次");
+            const outcome = await call(
+              { threadId, ...(active && { turnId: active.turn.id }) },
+              definition.name,
+              args,
+            );
+            return {
+              content: [{ type: "text", text: JSON.stringify(outcome) }],
+            };
+          } catch (error) {
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: error instanceof Error ? error.message : String(error),
+                },
+              ],
+            };
+          }
+        },
+        {
+          alwaysLoad: [delegationToolName, delegationStepToolName].includes(
+            definition.name,
+          ),
+        },
+      ),
+    );
   return {
     [claudeConversationServerName]: createSdkMcpServer({
       name: claudeConversationServerName,
@@ -99,6 +83,45 @@ export function claudeConversationTools(
       tools,
     }),
   };
+}
+
+export function claudeConversationOptions(
+  threadId: string,
+  current: () => ActiveExecution | null | undefined,
+  call: ConversationTool | undefined,
+  role: string | undefined,
+): Pick<Options, "agent" | "agents" | "systemPrompt" | "mcpServers"> {
+  if (role && !call) throw new Error("Claude 委派工具服务尚未连接。");
+  return {
+    systemPrompt: { type: "preset", preset: "claude_code", snapshot: false },
+    ...(role && {
+      agent: secretaryAgent,
+      agents: {
+        [secretaryAgent]: { description: secretaryAgent, prompt: role },
+      },
+    }),
+    ...(call && {
+      mcpServers: claudeConversationTools(
+        threadId,
+        call,
+        current,
+        Boolean(role),
+      ),
+    }),
+  };
+}
+
+export async function confirmClaudeDelegationTool(query: Query) {
+  const servers = await query.mcpServerStatus();
+  const server = servers.find(
+    ({ name, source }) =>
+      name === claudeConversationServerName && source === "sdk",
+  );
+  if (
+    server?.status !== "connected" ||
+    !server.tools?.some(({ name }) => name === delegationToolName)
+  )
+    throw new Error("Claude 原生会话尚未加载派单工具。");
 }
 
 export function conversationToolGuard(): HookCallbackMatcher {

@@ -1,8 +1,26 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type {
+  ExecutionBackend,
   ExecutionProvider,
   QueuedExecution,
+  SessionDependencies,
 } from "./execution-types.d.mts";
+import { nativeSubagentProvider } from "./native-provider.mjs";
+
+export async function resolveSubagentProvider(
+  backend: ExecutionBackend,
+  providers: SessionDependencies["providers"],
+  provider: ExecutionProvider | null | undefined,
+) {
+  const { subagentProviderId, subagentModel, subagentEffort } = backend;
+  if (subagentProviderId === "@native")
+    return provider || subagentEffort ? nativeSubagentProvider(backend) : null;
+  if (!subagentProviderId) return null;
+  const selected = await providers.get(backend.id, subagentProviderId);
+  if (selected && !selected.models.includes(subagentModel || ""))
+    throw new Error("子代理模型已从供应商移除，请重新配置");
+  return selected;
+}
 
 export function modelOptions(
   provider: ExecutionProvider | null | undefined,

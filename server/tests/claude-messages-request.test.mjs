@@ -6,6 +6,7 @@ import {
   providerModelEnvironment,
 } from "../src/backends/claude/provider-environment.mjs";
 import { modelOptions } from "../src/backends/claude/model-options.mjs";
+import { readPromptSections, renderPrompt } from "../src/prompts.mjs";
 
 test("模型支持元数据交给原生能力规则，保持思考启停独立", () => {
   assert.equal(
@@ -68,6 +69,93 @@ test("标准 Messages 保留原生思考控制、空工具与评估 schema", () 
       thinking,
       "原生显式控制完整传递",
     );
+});
+
+test("配置供应商的秘书请求合并系统正文并保留最新项目规则", () => {
+  const secretaryRole = "Secretary role from the session";
+  const identity =
+    "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+  const agentTypes = "Available agent types for the Agent tool:";
+  const environment = [
+    "# Environment",
+    "Workspace context",
+    "",
+    agentTypes,
+    "- claude: default",
+    "- claudex-secretary: named agent",
+    "",
+    "Enabled skill list",
+  ].join("\n");
+  const frame = readPromptSections("backends/claude/execution.md")(
+    "projectInstructions",
+  );
+  const snapshot = (files) =>
+    "UserPromptSubmit hook additional context: " +
+    renderPrompt(frame, { cwd: '"/fixture"', files });
+  const user = { role: "user", content: agentTypes };
+  const cacheControl = { type: "ephemeral" };
+  const body = {
+    system: [
+      { type: "text", text: "x-anthropic-billing-header: fixture" },
+      { type: "text", text: identity },
+      { type: "text", text: secretaryRole },
+    ],
+    messages: [
+      user,
+      { role: "system", content: environment + "\n\n" + snapshot("older") },
+      {
+        role: "system",
+        content: [
+          {
+            type: "text",
+            text: snapshot("current"),
+            cache_control: cacheControl,
+          },
+        ],
+      },
+    ],
+    tools: [{ name: "Bash" }],
+  };
+  for (const standard of [true, false]) {
+    const result = messagesRequest(body, { standard, secretaryRole });
+    assert.deepEqual(result.messages, [user]);
+    assert.deepEqual(result.tools, body.tools);
+    assert.equal(result.system.length, 1);
+    assert.equal(result.system[0].cache_control, cacheControl);
+    const text = result.system[0].text;
+    assert.equal(text.split("\n")[0], secretaryRole);
+    assert(
+      text.includes("Workspace context") && text.includes("Enabled skill list"),
+    );
+    assert(text.includes(snapshot("current")));
+    for (const removed of [
+      identity,
+      agentTypes,
+      "x-anthropic-billing-header:",
+      snapshot("older"),
+    ])
+      assert(!text.includes(removed));
+    assert.equal(result.thinking?.type, standard ? "disabled" : undefined);
+  }
+  assert.equal(messagesRequest(body, { standard: false }), body);
+  assert.equal(messagesRequest(body).system[1].text, identity);
+  assert.equal(
+    messagesRequest(body, { secretaryRole: "Different role", standard: false }),
+    body,
+  );
+
+  const projectUsesHeading = snapshot(agentTypes + "\n- user-defined rule");
+  const ownRules = {
+    ...body,
+    messages: [
+      { role: "system", content: "# Environment\n\n" + projectUsesHeading },
+    ],
+  };
+  assert(
+    messagesRequest(ownRules, { secretaryRole }).system[0].text.includes(
+      projectUsesHeading,
+    ),
+  );
 });
 
 test("供应商环境保留结构化输出所需的原生功能并按实际选择传递 effort", () => {

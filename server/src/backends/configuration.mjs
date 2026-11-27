@@ -165,6 +165,13 @@ export function createBackendConfiguration(config) {
     ...storage,
     read,
     save,
+    async readDelegationSettings() {
+      const { backends } = await storage.read();
+      return validateAgyBackend(
+        backends.find(({ id }) => id === "agy") || {},
+        config,
+      );
+    },
     async readSubagentSettings(id) {
       return subagentSettings(
         (await storage.read()).backends.find((b) => b.id === id) || {},

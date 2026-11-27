@@ -2,13 +2,18 @@ import { readPromptSections } from "../../prompts.mjs";
 import { randomUUID } from "node:crypto";
 import type {
   CanUseTool,
+  Options,
+  PermissionMode,
   PermissionResult,
 } from "@anthropic-ai/claude-agent-sdk";
 import type {
   ActiveExecution,
   PendingQuestion,
+  QueuedExecution,
   SessionDependencies,
 } from "./execution-types.d.mts";
+
+const localExecutionTools = ["Bash", "Write", "Edit", "NotebookEdit", "Agent"];
 
 function delegatedPermission({
   threadId,
@@ -63,12 +68,24 @@ function delegatedPermission({
   });
 }
 
-export function delegationToolOptions(scope?: "research" | "implementation") {
+export function executionPermissionMode(
+  queued: QueuedExecution,
+): PermissionMode {
+  if (queued.mode === "plan" || queued.review) return "plan";
+  return queued.delegation ? "default" : "bypassPermissions";
+}
+
+export function delegationToolOptions(
+  scope?: "research" | "implementation",
+): Pick<
+  Options,
+  "allowDangerouslySkipPermissions" | "tools" | "disallowedTools"
+> {
   return {
     allowDangerouslySkipPermissions: !scope,
     ...(scope === "research" && {
       tools: ["Read", "Glob", "Grep", "AskUserQuestion"],
-      disallowedTools: ["Bash", "Write", "Edit", "NotebookEdit", "Agent"],
+      disallowedTools: localExecutionTools,
     }),
   };
 }

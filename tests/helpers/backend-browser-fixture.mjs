@@ -108,6 +108,7 @@ export function backendFixture(data) {
       ready: false,
       ...JSON.parse(sessionStorage.delegationSettings || "{}"),
     });
+  const delegationModes = new Map();
   let providers =
     data.providers ||
     (data.providerModelNames
@@ -333,7 +334,14 @@ export function backendFixture(data) {
         };
       if (m.method.startsWith("lan/projectModels/")) result = { projects: {} };
       if (["thread/read", "thread/resume"].includes(m.method))
-        result = { thread, cwd: thread.cwd, model: thread.model || "gpt" };
+        result = {
+          thread: {
+            ...thread,
+            delegationMode: delegationModes.get(p.threadId) === true,
+          },
+          cwd: thread.cwd,
+          model: thread.model || "gpt",
+        };
       if (m.method === "thread/items/list")
         result = {
           data: (messages[p.threadId] || []).toReversed().map((item) => ({
@@ -342,6 +350,10 @@ export function backendFixture(data) {
           })),
         };
       if (m.method === "lan/delegation/tasks") result = { items: [] };
+      if (m.method === "lan/delegation/mode/set") {
+        delegationModes.set(p.threadId, p.delegationMode);
+        result = { delegationMode: p.delegationMode };
+      }
       if (m.method === "lan/projectless/prepare" && data.nativeDelegation)
         result = {
           cwd: "/web/workspaces/delegation-fixture",
@@ -353,6 +365,7 @@ export function backendFixture(data) {
             id: "backend:claude:new-delegation",
             backendId: "claude",
             cwd: p.cwd,
+            delegationMode: p.delegationMode === true,
           },
         };
       if (m.method === "turn/start" && data.nativeDelegation)

@@ -37,7 +37,10 @@ import {
 import { IconButton } from "../../ui/primitives.jsx";
 import { useComposerShortcuts } from "../commands/shortcuts.jsx";
 import { submitComposer } from "../commands/composer-commands.js";
-import { DelegationToggle } from "./delegation-toggle.jsx";
+import {
+  DelegationToggle,
+  setComposerDelegation,
+} from "./delegation-toggle.jsx";
 import { DelegationTarget } from "./delegation-target.jsx";
 import { ServiceTierToggle } from "./service-tier-toggle.jsx";
 import { ReasoningEffortControl } from "./reasoning-effort.jsx";
@@ -345,7 +348,7 @@ export function Composer({ inputRef }) {
                   aria-pressed={s.mode === "plan"}
                   active={s.mode === "plan"}
                   onClick={() =>
-                    set({
+                    setComposerDelegation({
                       mode: s.mode === "plan" ? "default" : "plan",
                       goalMode: false,
                       delegationMode: false,

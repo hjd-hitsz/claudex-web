@@ -39,11 +39,26 @@ export type ResumeParams = NativeParams & {
   excludeTurns?: boolean;
 };
 
+export type NativeCollaboration = {
+  mode?: string;
+  settings?: {
+    model?: string;
+    reasoning_effort?: string | null;
+    developer_instructions?: string | null;
+  };
+};
+
+export type CodexSessionSettings = {
+  model?: string;
+  reasoningEffort?: string | null;
+  collaborationMode?: NativeCollaboration | null;
+};
+
 // 订阅调度只消费原生响应的标识与加载状态，其余字段仍随原生消息传递。
 type ManagedMethods = {
   "thread/resume": {
     params: ResumeParams;
-    result: {
+    result: CodexSessionSettings & {
       thread: {
         id: string;
         status?: { type: "notLoaded" | "idle" | "systemError" | "active" };

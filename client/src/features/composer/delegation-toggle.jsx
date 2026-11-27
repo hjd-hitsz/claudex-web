@@ -1,11 +1,32 @@
 import React from "react";
 import { Forward } from "lucide-react";
-import { set, useStoreSelector } from "../../store.js";
+import { get, report, rpc, set, useStoreSelector } from "../../store.js";
 import {
   acceptsDelegation,
   nativeDelegationTarget,
 } from "../../domain/delegation.js";
 import { IconButton } from "../../ui/primitives.jsx";
+
+export async function setComposerDelegation(patch) {
+  const { current, delegationMode } = get();
+  const threadId = current?.id;
+  if (threadId && delegationMode !== patch.delegationMode) {
+    set({ busy: true });
+    try {
+      await rpc("lan/delegation/mode/set", {
+        threadId,
+        delegationMode: patch.delegationMode,
+      });
+    } catch (error) {
+      report(error);
+      return;
+    } finally {
+      set({ busy: false });
+    }
+    if (get().current?.id !== threadId) return;
+  }
+  set(patch);
+}
 
 export function DelegationToggle() {
   const target = useStoreSelector(nativeDelegationTarget);
@@ -19,7 +40,7 @@ export function DelegationToggle() {
   if (!target) return null;
   const available = target.enabled && receiving;
   const title = available
-    ? "委派模式 · " + target.name
+    ? `委派模式已${active ? "开启" : "关闭"} · ${target.name}`
     : "启用 " + target.name + " 的接收委派后可用";
   return (
     <IconButton
@@ -27,15 +48,14 @@ export function DelegationToggle() {
       type="button"
       title={title}
       aria-label="委派模式"
-      aria-pressed={active && available}
-      active={active && available}
-      disabled={busy || !available}
+      aria-pressed={active}
+      active={active}
+      disabled={busy || (!available && !active)}
       onClick={() =>
-        set(
-          active
-            ? { delegationMode: false }
-            : { delegationMode: true, mode: "default", goalMode: false },
-        )
+        setComposerDelegation({
+          delegationMode: !active,
+          ...(!active && { mode: "default", goalMode: false }),
+        })
       }
     />
   );
