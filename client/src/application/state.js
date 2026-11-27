@@ -3,7 +3,9 @@ import {
   workspaceTerminalIds,
 } from "../../../shared/terminal-workspace.mjs";
 import { saved, persist } from "../infrastructure/storage.js";
+import { readNewDraft } from "../infrastructure/backend-storage.js";
 import { isCompacting } from "../domain/compaction.js";
+import { canUseNativeDelegation } from "../domain/delegation.js";
 import { sortThreads } from "../domain/thread-order.js";
 import {
   backendEnabled,
@@ -63,7 +65,7 @@ export function createAppState() {
     projectlessDirectories: {},
     pins: saved("cx-pins", []),
     theme: "system",
-    draft: "",
+    draft: readNewDraft(),
     attachments: [],
     skills: [],
     account: null,
@@ -163,9 +165,12 @@ export function createAppState() {
       };
     }
     if (
-      patch.backendId &&
-      patch.backendId !== state.backendId &&
-      !(Object.hasOwn(patch, "current") ? patch.current : state.current)
+      (patch.delegationMode ?? state.delegationMode) &&
+      (patch.backendId ||
+        patch.backends ||
+        patch.nativeDelegation !== undefined) &&
+      !(Object.hasOwn(patch, "current") ? patch.current : state.current) &&
+      !canUseNativeDelegation({ ...state, ...patch })
     )
       patch = { ...patch, delegationMode: false };
     if (Object.hasOwn(patch, "mode")) {

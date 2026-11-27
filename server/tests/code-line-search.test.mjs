@@ -6,19 +6,30 @@ import { join } from "node:path";
 import test from "node:test";
 import { createCodeLineSearch } from "../src/workspace/code-line-search.mjs";
 
-test("整行匹配仅返回至多三个真实候选文件", async (t) => {
-  if (spawnSync("rg", ["--version"]).error?.code === "ENOENT")
-    return t.skip("需要 ripgrep");
-  const cwd = await mkdtemp(join(tmpdir(), "claudex-code-lines-"));
+async function createSearchFixture(t, prefix, ignoredFiles = []) {
+  const cwd = await mkdtemp(join(tmpdir(), prefix));
   const search = createCodeLineSearch();
   t.after(async () => {
     search.close();
     await rm(cwd, { recursive: true, force: true });
   });
+  // 先纳入夹具的源文件以覆盖祖先目录的 .gitignore，再应用用例的忽略规则。
+  await writeFile(
+    join(cwd, ".gitignore"),
+    ["!/*.py", ...ignoredFiles, ""].join("\n"),
+  );
+  return { cwd, search };
+}
+
+test("整行匹配仅返回至多三个真实候选文件", async (t) => {
+  if (spawnSync("rg", ["--version"]).error?.code === "ENOENT")
+    return t.skip("需要 ripgrep");
+  const { cwd, search } = await createSearchFixture(t, "claudex-code-lines-", [
+    "ignored.py",
+  ]);
   const line = "    result = inputs[0] + 1";
   const put = (file, text) => writeFile(join(cwd, file), text);
   const query = () => search.search({ cwd, line });
-  await put(".gitignore", "ignored.py\n");
   await put("ignored.py", line);
   await put("partial.py", "prefix " + line);
   await put("one.py", "header\r\n" + line + "\r\n" + line);
@@ -40,12 +51,7 @@ test("整行匹配仅返回至多三个真实候选文件", async (t) => {
 test("多行候选验证完整相邻的行并返回片段起始行", async (t) => {
   if (spawnSync("rg", ["--version"]).error?.code === "ENOENT")
     return t.skip("需要 ripgrep");
-  const cwd = await mkdtemp(join(tmpdir(), "claudex-code-snippet-"));
-  const search = createCodeLineSearch();
-  t.after(async () => {
-    search.close();
-    await rm(cwd, { recursive: true, force: true });
-  });
+  const { cwd, search } = await createSearchFixture(t, "claudex-code-snippet-");
   const lines = [
     "class Costs:",
     "    def __init__(self):",
@@ -75,12 +81,10 @@ test("多行候选验证完整相邻的行并返回片段起始行", async (t) =
 test("多行选区匹配首行后缀及末行前缀，内部各行连续且完整", async (t) => {
   if (spawnSync("rg", ["--version"]).error?.code === "ENOENT")
     return t.skip("需要 ripgrep");
-  const cwd = await mkdtemp(join(tmpdir(), "claudex-code-selection-"));
-  const search = createCodeLineSearch();
-  t.after(async () => {
-    search.close();
-    await rm(cwd, { recursive: true, force: true });
-  });
+  const { cwd, search } = await createSearchFixture(
+    t,
+    "claudex-code-selection-",
+  );
   const lines = [
     "    def calculate_total_from_selection(",
     "        读数,",

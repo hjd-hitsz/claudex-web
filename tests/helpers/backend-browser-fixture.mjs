@@ -106,6 +106,7 @@ export function backendFixture(data) {
       name: "Antigravity",
       enabled: false,
       ready: false,
+      ...data.backendSettings?.agy,
       ...JSON.parse(sessionStorage.delegationSettings || "{}"),
     });
   const delegationModes = new Map();
@@ -174,6 +175,8 @@ export function backendFixture(data) {
       if (!m.method) return;
       const thread = threads.find((t) => t.id === p.threadId);
       let result = { data: [] };
+      if (m.method === "lan/workspace/codeLine")
+        result = { matches: data.codeLineMatches?.[p.line] || [] };
       if (m.method === "lan/backends/list") result = { backends };
       if (
         data.delegationDefaultPrompt &&

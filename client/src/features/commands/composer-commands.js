@@ -287,9 +287,7 @@ async function executeCommand(text) {
   // /init 首次创建对话后，草稿已迁移到实际 ID。
   else if (command.id === "init" && store.get().draft === text)
     store.setDraft("");
-  const draftKey = s.current
-    ? "cx-draft-" + s.current.id
-    : newDraftKey(s.backendId);
+  const draftKey = s.current ? "cx-draft-" + s.current.id : newDraftKey;
   if (
     store.get().current?.id !== s.current?.id &&
     localStorage.getItem(draftKey) === text

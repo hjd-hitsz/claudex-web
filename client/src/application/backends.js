@@ -1,4 +1,3 @@
-import { newDraftKey } from "../infrastructure/backend-storage.js";
 import { persist, saved } from "../infrastructure/storage.js";
 import { compatibleEffort } from "../domain/model-preferences.js";
 import { backendEnabled } from "../domain/backend-visibility.js";
@@ -25,7 +24,6 @@ export function createBackends({
   onSelectionChanged = () => {},
 }) {
   let revision = 0;
-  const attachments = new Map();
   let agyCatalogue;
 
   function readAgyCatalogue(cwd) {
@@ -143,10 +141,6 @@ export function createBackends({
       threadSelection?.providerId ?? saved("cx-provider-" + id, "");
     const sameAccount = previous === id && initialProvider === get().providerId;
     const modelRevision = models.revision;
-    if (!get().current) {
-      localStorage.setItem(newDraftKey(previous), get().draft);
-      attachments.set(previous, get().attachments);
-    }
     const cachedModels =
       sameAccount && !choice
         ? get().models
@@ -183,10 +177,6 @@ export function createBackends({
         agyDelegateTo: undefined,
         panel: null,
         panelFile: null,
-      }),
-      ...(!get().current && {
-        draft: localStorage.getItem(newDraftKey(id)) || "",
-        attachments: attachments.get(id) || [],
       }),
       providers: sameAccount ? get().providers : [],
       providerId: initialProvider,

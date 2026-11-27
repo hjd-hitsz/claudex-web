@@ -216,6 +216,7 @@ export function createApplication() {
     navigation.newChat(undefined, {
       reuseDirectory: true,
       applyModelSelection: false,
+      backendId: id,
     });
     await backends.activateBackend(id);
   }

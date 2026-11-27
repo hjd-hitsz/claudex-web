@@ -102,9 +102,7 @@ export function createMessages({
   function setDraft(draft) {
     set({ draft });
     localStorage.setItem(
-      get().current
-        ? "cx-draft-" + get().current.id
-        : newDraftKey(get().backendId),
+      get().current ? "cx-draft-" + get().current.id : newDraftKey,
       draft,
     );
   }

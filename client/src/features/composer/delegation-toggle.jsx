@@ -2,7 +2,7 @@ import React from "react";
 import { Forward } from "lucide-react";
 import { get, report, rpc, set, useStoreSelector } from "../../store.js";
 import {
-  acceptsDelegation,
+  canUseNativeDelegation,
   nativeDelegationTarget,
 } from "../../domain/delegation.js";
 import { IconButton } from "../../ui/primitives.jsx";
@@ -34,14 +34,14 @@ export function DelegationToggle() {
   const busy = useStoreSelector(
     (state) => state.busy || Boolean(state.active[state.current?.id]),
   );
-  const receiving = useStoreSelector((state) =>
-    acceptsDelegation(state, target?.id),
-  );
+  const available = useStoreSelector(canUseNativeDelegation);
   if (!target) return null;
-  const available = target.enabled && receiving;
-  const title = available
-    ? `委派模式已${active ? "开启" : "关闭"} · ${target.name}`
-    : "启用 " + target.name + " 的接收委派后可用";
+  const title =
+    target.enabled && target.ready === false
+      ? `${target.name} 尚未连接`
+      : available
+        ? `委派模式已${active ? "开启" : "关闭"} · ${target.name}`
+        : "启用 " + target.name + " 的接收委派后可用";
   return (
     <IconButton
       icon={Forward}

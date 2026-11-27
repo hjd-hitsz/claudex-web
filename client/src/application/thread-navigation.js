@@ -1,7 +1,11 @@
 import { backgroundNoticeKeys } from "../domain/background-results.js";
-import { newDraftKey } from "../infrastructure/backend-storage.js";
+import {
+  newDraftKey,
+  readNewDraft,
+} from "../infrastructure/backend-storage.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { backendEnabled } from "../domain/backend-visibility.js";
+import { canUseNativeDelegation } from "../domain/delegation.js";
 import { compatibleEffort } from "../domain/model-preferences.js";
 import { resolveServiceTier } from "../domain/service-tier.js";
 import {
@@ -42,7 +46,11 @@ export function createThreadNavigation({
   }
   function newChat(
     cwd = get().projectless ? "" : get().cwd,
-    { reuseDirectory = false, applyModelSelection = true } = {},
+    {
+      reuseDirectory = false,
+      applyModelSelection = true,
+      backendId = get().backendId,
+    } = {},
   ) {
     const sameProject = (get().projectless ? "" : get().cwd) === (cwd || "");
     const selection =
@@ -67,8 +75,8 @@ export function createThreadNavigation({
     localStorage.removeItem("cx-current");
     set({
       current: null,
-      agyDelegateTo: undefined,
-      delegationMode: false,
+      delegationMode:
+        get().delegationMode && canUseNativeDelegation({ ...get(), backendId }),
       mode: "default",
       items: [],
       cwd: cwd || projectlessCwd || get().defaultCwd,
@@ -79,7 +87,7 @@ export function createThreadNavigation({
           ? selection
           : models.projectModelSelection(cwd, !cwd, models.defaults)
         : { model: "", effort: "", serviceTier: null }),
-      draft: localStorage.getItem(newDraftKey(get().backendId)) || "",
+      draft: readNewDraft(),
       attachments: getAttachmentDraft(null).attachments,
       error: "",
       loading: false,
@@ -442,7 +450,9 @@ export function createThreadNavigation({
       model: model || undefined,
       providerId,
       ...(delegationMode &&
-        get().backendId !== "agy" && { delegationMode: true }),
+        canUseNativeDelegation(get()) && {
+          delegationMode: true,
+        }),
       serviceTier: resolveServiceTier(
         serviceTier,
         get().models.find((m) => m.model === model),
@@ -452,7 +462,7 @@ export function createThreadNavigation({
     if (epoch !== opening)
       throw new Error("对话已切换，请在当前对话重新发送消息。");
     localStorage.setItem("cx-draft-" + r.thread.id, get().draft);
-    localStorage.removeItem(newDraftKey(get().backendId));
+    localStorage.removeItem(newDraftKey);
     assignNewThread(r.thread.id);
     set({
       current: r.thread,

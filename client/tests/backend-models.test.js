@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createBackends } from "../src/application/backends.js";
 
-test("模型选择只在当前后端路由，切换后端分别保留草稿和附件", async (t) => {
-  const saved = new Map();
+test("模型选择只在当前后端路由，切换后端共享正文与附件草稿", async (t) => {
+  const saved = new Map([["cx-draft-new", "保留这段输入"]]);
   const original = globalThis.localStorage;
   globalThis.localStorage = {
     getItem: (key) => saved.get(key) ?? null,
@@ -76,9 +76,13 @@ test("模型选择只在当前后端路由，切换后端分别保留草稿和�
   assert.equal(state.backendId, "claude");
   assert.equal(state.providerId, "two");
   assert.equal(state.model, "same-model");
-  assert.equal(state.draft, "");
-  assert.equal(state.attachments.length, 0);
+  assert.equal(state.draft, "保留这段输入");
+  assert.deepEqual(state.attachments, [attachment]);
   assert.equal(saved.get("cx-draft-new"), "保留这段输入");
+  await controller.activateBackend("codex");
+  assert.equal(state.attachments[0], attachment);
+  assert.equal(state.draft, "保留这段输入");
+  await controller.activateBackend("claude");
   set({ current: { id: "backend:claude:session" } });
   await controller.selectModelChoice(
     state.modelChoices.find((choice) => choice.backendId === "codex"),
@@ -195,7 +199,7 @@ test("跨后端恢复同步采用会话模型快照，迟到目录读取保持�
   assert.equal(state.backendId, "claude");
   assert.equal(state.providerId, "chosen");
   assert.equal(state.model, "same");
-  assert.equal(state.draft, "");
+  assert.equal(state.draft, "立即发送");
   const firstRequest = {
     backendId: state.backendId,
     providerId: state.providerId,

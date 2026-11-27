@@ -1,5 +1,5 @@
 import { terminalSelectionKey } from "../../../shared/terminal-workspace.mjs";
-import { newDraftKey } from "../infrastructure/backend-storage.js";
+import { readNewDraft } from "../infrastructure/backend-storage.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import { isCompacting, mergeCompactions } from "../domain/compaction.js";
 import { persist } from "../infrastructure/storage.js";
@@ -313,9 +313,7 @@ export function createConnection({
         else if (!get().current) {
           await metadata;
           if (!current() || epoch !== navigation.opening || get().busy) return;
-          set({
-            draft: localStorage.getItem(newDraftKey(get().backendId)) || "",
-          });
+          set({ draft: readNewDraft() });
         }
       }
       if (!current()) return;

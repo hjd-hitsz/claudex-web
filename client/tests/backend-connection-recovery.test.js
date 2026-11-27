@@ -4,7 +4,12 @@ import { createConnection } from "../src/application/connection.js";
 
 test("单个后端恢复触发所属对话后台恢复，其余后端的状态变化保持隔离", async (t) => {
   const original = globalThis.localStorage;
-  globalThis.localStorage = { getItem: () => null, setItem() {} };
+  const storage = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: (key) => storage.delete(key),
+  };
   t.after(() => {
     globalThis.localStorage = original;
   });
@@ -94,4 +99,11 @@ test("单个后端恢复触发所属对话后台恢复，其余后端的状态�
   snapshot(false, true);
   assert.deepEqual(calls, ["reset"]);
   assert.equal(state.connected, true);
+  calls.length = 0;
+  set({ current: null, draft: "" });
+  storage.set("cx-draft-new", "未发送的共享输入");
+  snapshot(true, true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(calls, ["codex", "list"]);
+  assert.equal(state.draft, "未发送的共享输入");
 });

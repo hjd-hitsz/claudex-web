@@ -37,3 +37,12 @@ export function nativeDelegationTarget(state) {
   const peer = state.backendId === "codex" ? "claude" : "codex";
   return state.backends.find(({ id }) => id === peer);
 }
+
+export function canUseNativeDelegation(state) {
+  const target = nativeDelegationTarget(state);
+  return Boolean(
+    target?.enabled &&
+    target.ready !== false &&
+    acceptsDelegation(state, target.id),
+  );
+}

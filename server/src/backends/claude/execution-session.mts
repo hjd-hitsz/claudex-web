@@ -34,6 +34,7 @@ import {
 import { networkProxyEnvironment } from "../network-proxy.mjs";
 import { subagentSettings } from "../../../../shared/subagent-settings.mjs";
 import { createProviderTransport } from "./provider-transport.mjs";
+import { claudeQuerySettings } from "./query-settings.mjs";
 const executionPrompt = readPromptSections("backends/claude/execution.md");
 const planMode = executionPrompt("planMode");
 const reviewMode = executionPrompt("reviewMode");
@@ -164,14 +165,14 @@ export async function createExecutionSession({
         disallowedTools: ["Write", "Edit", "NotebookEdit"],
       }),
       ...options,
-      settings: {
+      settings: claudeQuerySettings({
         ...options.settings,
         claudeMdExcludes: nativeInstructionExcludes(session.cwd),
         env: {
           ...networkProxyEnvironment(backend.proxy),
           ...subagentModelEnvironment(backend, proxy),
         },
-      },
+      }),
       extraArgs: { "thinking-display": "summarized" },
       includePartialMessages: true,
       enableFileCheckpointing: true,

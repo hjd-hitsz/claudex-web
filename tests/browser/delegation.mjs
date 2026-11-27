@@ -8,7 +8,11 @@ import { createStaticHandler } from "../../server/src/http/static.mjs";
 import { defaultSecretaryRole as builtIn } from "../../server/src/backends/agy/secretary-prompts.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
-import { openSettingsPage } from "../helpers/settings-navigation.mjs";
+import { verifySharedComposerDraft } from "../helpers/shared-composer-draft.mjs";
+import {
+  openSettingsPage,
+  switchComposerBackend,
+} from "../helpers/settings-navigation.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output =
@@ -44,6 +48,10 @@ try {
     main: true,
     retainStorageOnReload: true,
     nativeDelegation: true,
+    backendSettings: { agy: { enabled: true, ready: true } },
+    codeLineMatches: {
+      "return total + 1": [{ path: "/demo/project/source.py", line: 7 }],
+    },
     delegationDefaultPrompt: builtIn,
     markdown: "请在测试工作区核对版本配置。",
     claudeItems: [],
@@ -260,12 +268,49 @@ try {
   await screenshot("03-codex-restored-standard");
 
   await claudeThread.click();
-  await page.getByRole("button", { name: "在当前目录新建对话" }).click();
-  await page
-    .locator('.composer button[title="委派模式已关闭 · Codex"]')
-    .waitFor();
+  const newChat = page.getByRole("button", { name: "在当前目录新建对话" });
+  const enabledMode = switchMode.and(page.locator("[aria-pressed=true]"));
+  await enabledMode.waitFor();
+  await newChat.click();
+  await enabledMode.waitFor();
+  const draft = "请保留跨后端的这段新对话草稿。";
+  await composer.fill(draft);
+  await switchComposerBackend(page, "Codex");
+  await enabledMode.waitFor();
+  assert.equal(await composer.innerText(), draft);
+  await screenshot("04-codex-shared-draft-and-delegation");
+  await switchComposerBackend(page, "Claude Code");
+  await enabledMode.waitFor();
+  assert.equal(await composer.innerText(), draft);
+  await screenshot("05-claude-shared-draft-and-delegation");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await switchComposerBackend(page, "Antigravity");
+  assert.equal(await switchMode.count(), 0);
+  assert.equal(await composer.innerText(), draft);
+  await page.getByRole("button", { name: "本轮委派：Codex" }).click();
+  const claudeExecutor = page.getByRole("button", {
+    name: "本轮委派：Claude Code",
+  });
+  await claudeExecutor.waitFor();
+  await newChat.click();
+  await claudeExecutor.waitFor();
+  assert.equal(await switchMode.count(), 0);
+  await screenshot("06-agy-dark-mobile-executor");
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.setViewportSize(desktop);
+  await switchComposerBackend(page, "Claude Code");
   assert.equal(await switchMode.getAttribute("aria-pressed"), "false");
-  await switchMode.click();
+  await composer.fill("/new");
+  await page.locator(".composer .send-button").click();
+  await page.waitForFunction(() => !localStorage.getItem("cx-draft-new"));
+  assert.equal(await composer.textContent(), "");
+
+  await claudeThread.click();
+  await enabledMode.waitFor();
+  await newChat.click();
+  await enabledMode.waitFor();
   await page.locator('.composer input[type="file"]').setInputFiles({
     name: "fixture.png",
     mimeType: "image/png",
@@ -292,7 +337,21 @@ try {
       ({ type, url }) => type === "image" && url.startsWith("data:image/png;"),
     ),
   );
+  await page.waitForFunction(() =>
+    ["cx-draft-new", "cx-draft-backend:claude:new-delegation"].every(
+      (key) => localStorage.getItem(key) === null,
+    ),
+  );
   await screenshot("04-claude-first-image-delegation");
+  await codexThread.click();
+  await verifySharedComposerDraft({
+    page,
+    composer,
+    newChat,
+    screenshot,
+    profile,
+    desktop,
+  });
   await codexThread.click();
 
   const zoomPage = await context.newPage();
