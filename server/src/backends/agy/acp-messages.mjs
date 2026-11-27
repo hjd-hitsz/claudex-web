@@ -19,6 +19,8 @@ export function visibleAcpMessage(text, final = true) {
 
 export function visibleAgyItems(items) {
   return items.flatMap((item) => {
+    if (item.type === "reasoning" && !item.expandableSummary)
+      return [{ ...item, expandableSummary: true }];
     if (item.type !== "agentMessage" || !item.text) return [item];
     const text = visibleAcpMessage(item.text);
     return text ? [text === item.text ? item : { ...item, text }] : [];

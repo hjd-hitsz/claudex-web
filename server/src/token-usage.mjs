@@ -184,6 +184,16 @@ export function createTokenUsageStore(directory) {
     revisions: () =>
       new Map([...entries].map(([id, state]) => [id, state.revision])),
     observe({ method, params }) {
+      if (
+        method === "thread/tokenUsage/updated" &&
+        params.tokenUsage === null
+      ) {
+        const state = entry(params.threadId);
+        state.value = null;
+        state.turnId = null;
+        state.revision++;
+        write(params.threadId, state);
+      }
       if (method === "thread/tokenUsage/updated")
         remember(params.threadId, params.tokenUsage, params.turnId);
       if (method === "thread/deleted") remove(params.threadId);

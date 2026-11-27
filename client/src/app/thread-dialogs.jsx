@@ -6,6 +6,7 @@ import {
 } from "../domain/thread-order.js";
 import { visibleBackendThreads } from "../domain/backend-visibility.js";
 import { RpcConnectionError } from "../infrastructure/rpc-client.js";
+import { resourceTarget } from "../../../shared/backend-identity.mjs";
 import React, { useState, useEffect, useRef } from "react";
 
 import {
@@ -194,7 +195,9 @@ export function DeleteDialog({ thread }) {
         删除“<strong>{titleOf(thread)}</strong>”？
       </p>
       <p className="section-description">
-        删除后无法从网页恢复此对话。项目文件会保留。
+        {resourceTarget(thread.id).backendId === "agy"
+          ? "当前 Antigravity 原生会话也将永久删除。项目文件会保留。"
+          : "删除后无法从网页恢复此对话。项目文件会保留。"}
       </p>
       {error && (
         <div className="inline-error" role="alert">

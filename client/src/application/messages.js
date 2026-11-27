@@ -117,6 +117,7 @@ export function createMessages({
       replace,
       implementation,
       delegationMode = get().delegationMode,
+      nativeCommand,
       onFailure,
     } = {},
   ) {
@@ -146,12 +147,8 @@ export function createMessages({
           currentPlan()?.id !== implementation.itemId)
       )
         return false;
-      if (replace) await editing.prepare(replace);
-      const references = await referenceInputs(
-        text,
-        resourceTarget(thread.id).backendId,
-        rpc,
-      );
+      const { backendId } = resourceTarget(thread.id);
+      const references = await referenceInputs(text, backendId, rpc);
       const input = [
         ...(text.trim() || annotations.length
           ? [
@@ -164,11 +161,16 @@ export function createMessages({
               },
             ]
           : []),
-        ...(await attachmentInputs(attachments, rpc)),
+        ...(await attachmentInputs(attachments, rpc, backendId)),
         ...references.inputs,
       ];
-      const running = get().active[thread.id];
-      if (get().current?.id === thread.id)
+      const agy = backendId === "agy";
+      if (replace) await editing.prepare(replace);
+      const running =
+        agy && replace
+          ? null
+          : (agy && submission.active[thread.id]) || get().active[thread.id];
+      if (get().current?.id === thread.id && !(agy && running))
         put({
           id: "optimistic-" + uid(),
           type: "userMessage",
@@ -181,7 +183,10 @@ export function createMessages({
         threadId: thread.id,
         ...(submission.backendId === "agy" && {
           delegateTo: selectedDelegate(submission),
+          nativeCommand,
         }),
+        ...(agy &&
+          replace && { expectedLastTurnId: replace.retainedLastTurnId }),
         input,
         model: submission.model || undefined,
         providerId: submission.providerId,

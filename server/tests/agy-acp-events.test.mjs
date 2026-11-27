@@ -100,3 +100,88 @@ test("原生非零退出码呈现实际输出，空文本条目使用工具失�
   update("empty", "failed", { output: "" });
   assert.equal(activity.turn.items[1].result, undefined);
 });
+
+test("ACP 相邻摘要共用记录，新工具或新文件变更开始下一组", () => {
+  const turn = { id: "turn", items: [] };
+  const activity = { turn, session: { cwd: process.cwd() } };
+  const events = [];
+  const update = (sessionUpdate, params) =>
+    applyAcpUpdate(activity, { sessionUpdate, ...params }, (method, data) =>
+      events.push({ method, ...structuredClone(data) }),
+    );
+  const thought = (text) =>
+    update("agent_thought_chunk", { content: { type: "text", text } });
+  const tool = (kind, params = {}) =>
+    update(kind, { toolCallId: "tool", ...params });
+  const diff = {
+    status: "completed",
+    content: [
+      { type: "diff", path: "example.txt", oldText: null, newText: "示例" },
+    ],
+  };
+
+  thought("第一段");
+  thought("\n\n第二段");
+  tool("tool_call", { status: "pending" });
+  thought("读取之后");
+  tool("tool_call_update", { status: "in_progress" });
+  thought("继续第二组");
+  tool("tool_call_update", diff);
+  thought("变更之后");
+  tool("tool_call_update", diff);
+  thought("继续第三组");
+
+  assert.deepEqual(
+    turn.items.map(({ type, summary }) => summary ?? type),
+    [
+      ["第一段\n\n第二段"],
+      "mcpToolCall",
+      ["读取之后继续第二组"],
+      "fileChange",
+      ["变更之后继续第三组"],
+    ],
+  );
+  const started = events.filter(({ method }) => method === "item/started");
+  assert.deepEqual(
+    started.map(({ item }) => [item.id, item.expandableSummary]),
+    turn.items
+      .filter(({ type }) => type === "reasoning")
+      .map(({ id }) => [id, true]),
+  );
+  assert.deepEqual(
+    events
+      .filter(({ method }) => method === "item/reasoning/summaryTextDelta")
+      .map(({ itemId, summaryIndex }) => [itemId, summaryIndex]),
+    started.flatMap(({ item }) => [
+      [item.id, 0],
+      [item.id, 0],
+    ]),
+  );
+});
+
+test("ACP 工具的首条通知为状态更新时也分隔摘要", () => {
+  const turn = { id: "turn", items: [] };
+  const activity = { turn, session: { cwd: process.cwd() } };
+  for (const update of [
+    { sessionUpdate: "agent_thought_chunk", content: { text: "第一组" } },
+    { sessionUpdate: "tool_call_update", toolCallId: "tool" },
+    { sessionUpdate: "agent_thought_chunk", content: { text: "第二组" } },
+  ])
+    applyAcpUpdate(activity, update, () => {});
+  assert.deepEqual(
+    turn.items.map(({ type }) => type),
+    ["reasoning", "mcpToolCall", "reasoning"],
+  );
+});
+
+test("旧 Antigravity 历史摘要沿用原记录并支持展开长正文", () => {
+  const item = {
+    type: "reasoning",
+    id: "legacy",
+    summary: ["核对图表和回退结果。".repeat(12)],
+  };
+  assert.deepEqual(visibleAgyItems([item]), [
+    { ...item, expandableSummary: true },
+  ]);
+  assert.equal(item.expandableSummary, undefined);
+});

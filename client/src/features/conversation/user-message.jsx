@@ -94,7 +94,7 @@ function MessageEditor({ item, threadId, onCancel }) {
   return (
     <form
       className="user-message-editor"
-      aria-label="编辑上一条消息"
+      aria-label={s.backendId === "agy" ? "编辑消息" : "编辑上一条消息"}
       onSubmit={submit}
       onKeyDownCapture={(event) => {
         if (input.current?.composing || isCompositionKey(event.nativeEvent))
@@ -236,7 +236,7 @@ export function UserMessage({ item, readOnly, editable, cwd }) {
               {editable && (
                 <IconButton
                   icon={Pencil}
-                  title="编辑上一条消息"
+                  title={s.backendId === "agy" ? "编辑消息" : "编辑上一条消息"}
                   disabled={
                     s.busy ||
                     s.loading ||

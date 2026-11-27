@@ -219,6 +219,12 @@ export function createDelegationRuntime({
       readDelegationStep(store, executor, parent, input),
     history: (method, params) =>
       readDelegationHistory(store, executor, method, params, validateParent),
+    async readExecutorBackground(task) {
+      const entry = await executor.resolve(task);
+      return executor.backgrounds(entry, task.executor.threadId, {
+        requireService: true,
+      });
+    },
     async snapshot() {
       const { tasks } = await store.read();
       const records = Object.values(tasks);

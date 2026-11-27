@@ -202,7 +202,7 @@ export function createExecutors({ config, version, onEvent }) {
     entry.subscriptions.add(threadId);
   }
 
-  async function backgrounds(entry, threadId) {
+  async function backgrounds(entry, threadId, { requireService = false } = {}) {
     const terminals = [];
     let cursor;
     do {
@@ -216,7 +216,7 @@ export function createExecutors({ config, version, onEvent }) {
     const { jobs } =
       entry.backend.type === "codex" &&
       background.available &&
-      background.listening()
+      (requireService || background.listening())
         ? await taskRequest(background.directory, "tool", {
             name: "background_list",
             args: {},

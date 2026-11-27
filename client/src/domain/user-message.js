@@ -137,6 +137,7 @@ export function userMessageText(content, quote) {
     annotations,
     references,
     codeAttachments = [],
+    attachments,
   } = parseUserMessage(content);
   return [
     planApprovalLabel(text),
@@ -155,6 +156,9 @@ export function userMessageText(content, quote) {
     ...references
       .filter((file) => !text.includes("@" + file.name))
       .map((file) => "@" + file.name),
+    ...attachments
+      .filter(({ type }) => type === "file")
+      .map(({ name }) => "@" + name),
     ...codeAttachments.map(({ matches }) =>
       matches.map(({ path, line }) => `${path}:${line}`).join("\n"),
     ),

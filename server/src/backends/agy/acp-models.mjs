@@ -72,7 +72,7 @@ export async function applyAcpSelection(entry, input, session) {
     : mode?.currentValue === "plan"
       ? "default"
       : undefined;
-  if (modeValue && mode.currentValue !== modeValue)
+  if (!input.preserveMode && modeValue && mode.currentValue !== modeValue)
     updateAcpConfiguration(
       entry,
       await entry.client.call("session/set_config_option", {

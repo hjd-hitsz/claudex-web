@@ -16,6 +16,11 @@ const compactTurn = {
 test("桥接结果按任务合并，已收起的提示及新任务隔离旧结果", () => {
   const finished = { ...entry, status: "completed", turnId: "compact" };
   assert.deepEqual(mergeCompactions({}, { thread: finished }), {});
+  const automatic = { ...finished, source: "automatic" };
+  assert.deepEqual(mergeCompactions({}, { thread: automatic }), {});
+  assert.deepEqual(mergeCompactions({}, { thread: automatic }, true), {
+    thread: automatic,
+  });
   assert.deepEqual(mergeCompactions({ thread: entry }, { thread: finished }), {
     thread: finished,
   });

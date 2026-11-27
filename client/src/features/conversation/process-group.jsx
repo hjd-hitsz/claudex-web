@@ -70,7 +70,7 @@ export function ProcessGroup({
   );
   const summary =
     latest?.type === "reasoning"
-      ? reasoningSummaries(latest.summary).at(-1)
+      ? reasoningSummaries(latest.summary, latest.expandableSummary).at(-1)
       : null;
   return (
     <div className="process-group">

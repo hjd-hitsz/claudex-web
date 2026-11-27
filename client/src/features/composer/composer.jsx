@@ -13,6 +13,7 @@ import {
   ChevronDown,
   LoaderCircle,
   Paperclip,
+  Sparkles,
   Folder,
   ListChecks,
   AlertCircle,
@@ -53,6 +54,7 @@ import { AttachmentPreview } from "./attachment-preview.jsx";
 import { ComposerSurface } from "./composer-surface.jsx";
 import { CodeFileAttachments } from "./code-file-attachments.jsx";
 import { ComposerActivity } from "./composer-activity.jsx";
+import { AgyContextUsage } from "./agy-context-usage.jsx";
 import { sameDraftText } from "../../domain/code-line-reference.js";
 export function Composer({ inputRef }) {
   const [preview, setPreview] = useState(null);
@@ -240,10 +242,19 @@ export function Composer({ inputRef }) {
                     type="button"
                     className="attachment-preview"
                     aria-label={"预览 " + a.name}
-                    onClick={() => setPreview(a)}
+                    onClick={() => {
+                      if (s.backendId === "agy" && a.input?.type === "skill") {
+                        set({
+                          panel: "files",
+                          panelFile: { kind: "file", path: a.input.path },
+                        });
+                      } else setPreview(a);
+                    }}
                   >
                     {a.preview ? (
-                      <img src={a.preview} />
+                      <img src={a.preview} alt="" />
+                    ) : a.input?.type === "skill" ? (
+                      <Sparkles size={17} />
                     ) : (
                       <Paperclip size={17} />
                     )}
@@ -286,9 +297,11 @@ export function Composer({ inputRef }) {
                 : s.goalMode
                   ? "描述目标，写明可衡量的完成条件…"
                   : active
-                    ? backendCapability(s, "inputMode") === "queue"
-                      ? "输入后排队执行…"
-                      : "补充说明，或等待任务完成…"
+                    ? s.backendId === "agy"
+                      ? "补充说明将在下一次模型请求生效…"
+                      : backendCapability(s, "inputMode") === "queue"
+                        ? "输入后排队执行…"
+                        : "补充说明，或等待任务完成…"
                     : "描述任务，@ 引用文件，/ 使用命令…"
             }
             value={draft}
@@ -435,20 +448,28 @@ export function Composer({ inputRef }) {
           <span>{s.projectless ? "未分类" : basename(s.cwd)}</span>
           <ChevronDown size={11} />
         </button>
-        <span className="context-info" role={matching ? "status" : undefined}>
-          {matching ? (
-            "正在匹配代码文件…"
-          ) : usage != null ? (
-            <>
-              上下文 {usage.toLocaleString()} /{" "}
-              {windowSize?.toLocaleString() ?? "—"} tokens
-              {windowSize > 0 &&
-                `（${Math.round((usage / windowSize) * 100)}%）`}
-            </>
-          ) : unavailable ? null : (
-            "Ctrl + Enter 发送"
-          )}
-        </span>
+        {!matching && s.backendId === "agy" && token ? (
+          <AgyContextUsage
+            key={s.current?.id}
+            token={token}
+            turns={s.turns[s.current?.id]}
+          />
+        ) : (
+          <span className="context-info" role={matching ? "status" : undefined}>
+            {matching ? (
+              "正在匹配代码文件…"
+            ) : usage != null ? (
+              <>
+                上下文 {usage.toLocaleString()} /{" "}
+                {windowSize?.toLocaleString() ?? "—"} tokens
+                {windowSize > 0 &&
+                  `（${Math.round((usage / windowSize) * 100)}%）`}
+              </>
+            ) : unavailable ? null : (
+              "Ctrl + Enter 发送"
+            )}
+          </span>
+        )}
       </div>
     </ComposerSurface>
   );

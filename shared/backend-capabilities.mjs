@@ -34,10 +34,15 @@ export const claudeCapabilities = Object.freeze({
 
 export const agyCapabilities = Object.freeze({
   compact: true,
+  inputMode: "steer",
   questions: true,
   fork: true,
+  editHistory: true,
   subagents: true,
+  skills: true,
   mcp: true,
   fileUndo: true,
   delegation: true,
+  backgroundTerminals: true,
+  plugins: true,
 });

@@ -1,5 +1,7 @@
-// 原生摘要保留首行标题；带显式标题的完整思考正文独立展开。
-export function reasoningSummaries(summary = []) {
+const summaryTitleLimit = 48;
+
+// 保留原生摘要的首行标题。完整正文包含过长的标题，以便展开后阅读。
+export function reasoningSummaries(summary = [], expandableSummary = false) {
   return summary.flatMap((part) => {
     const text = (typeof part === "string" ? part : part?.text || "").trim();
     if (!text) return [];
@@ -11,7 +13,14 @@ export function reasoningSummaries(summary = []) {
       .replace(/^(\*\*|__)(.*?)\1$/, "$2")
       .trim();
     if (!title.replace(/[\s*_#`]/g, "")) return [];
-    return [{ title, body: rest.join("\n").trim() }];
+    const body = rest.join("\n").trim();
+    return [
+      {
+        title,
+        body:
+          expandableSummary && title.length > summaryTitleLimit ? text : body,
+      },
+    ];
   });
 }
 

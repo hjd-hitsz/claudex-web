@@ -1,3 +1,5 @@
+import { acpConfiguration } from "./acp-models.mjs";
+
 const refreshInterval = 5 * 60 * 1000;
 
 export function createAgyModelCatalogue({ read, publish }) {
@@ -35,4 +37,26 @@ export function createAgyModelCatalogue({ read, publish }) {
       clearTimeout(timer);
     },
   };
+}
+
+export async function readAcpCatalogue(
+  client,
+  initialize,
+  cwd,
+  readRole,
+  readCommands,
+) {
+  await initialize(client);
+  const role = await readRole();
+  const result = await client.call("session/new", {
+    cwd,
+    mcpServers: [],
+    _meta: { antigravity: { systemPrompt: { append: role } } },
+  });
+  try {
+    await readCommands();
+  } finally {
+    await client.call("session/close", { sessionId: result.sessionId });
+  }
+  return acpConfiguration(result);
 }

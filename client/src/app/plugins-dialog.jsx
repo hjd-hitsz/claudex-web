@@ -8,6 +8,7 @@ const statusLabels = {
   pending: "正在连接",
   failed: "连接失败",
   disabled: "已停用",
+  configured: "已配置",
   "needs-auth": "需要认证",
 };
 
@@ -32,6 +33,7 @@ export function PluginsDialog() {
           rpc("plugin/installed", params),
           (async () => {
             const data = [];
+            let unavailable = false;
             let cursor;
             do {
               const page = await rpc("mcpServerStatus/list", {
@@ -41,9 +43,10 @@ export function PluginsDialog() {
               });
               if (cancelled) return null;
               data.push(...page.data);
+              unavailable ||= page.unavailable === true;
               cursor = page.nextCursor;
             } while (cursor);
-            return data;
+            return { data, unavailable };
           })(),
         ]);
         if (cancelled) return;
@@ -53,12 +56,14 @@ export function PluginsDialog() {
               plugins.marketplaces?.flatMap(
                 (marketplace) => marketplace.plugins || [],
               ) || [],
-            mcp,
+            mcp: mcp.data,
+            pluginsUnavailable: plugins.unavailable === true,
+            mcpUnavailable: mcp.unavailable,
           },
           error: "",
           loading: false,
         });
-        if (mcp.some((server) => server.status === "pending"))
+        if (mcp.data.some((server) => server.status === "pending"))
           timer = setTimeout(read, 3000);
       } catch (error) {
         if (!cancelled)
@@ -119,7 +124,11 @@ export function PluginsDialog() {
               </span>
             </div>
           ))}
-          {!resource.data.plugins.length && <p>当前工作目录没有已安装插件。</p>}
+          {resource.data.pluginsUnavailable ? (
+            <p>暂时无法读取已安装插件。</p>
+          ) : (
+            !resource.data.plugins.length && <p>当前工作目录没有已安装插件。</p>
+          )}
           <h3 className="section-label">工具连接</h3>
           {resource.data.mcp.map((server) => (
             <div className="catalog-card" key={server.name}>
@@ -133,8 +142,11 @@ export function PluginsDialog() {
                     : server.name}
                 </strong>
                 <p>
-                  {Object.keys(server.tools || {}).length} 项工具
+                  {backendId === "agy" && !server.tools
+                    ? statusLabels[server.status]
+                    : `${Object.keys(server.tools || {}).length} 项工具`}
                   {statusLabels[server.status] &&
+                    (backendId !== "agy" || server.tools) &&
                     ` · ${statusLabels[server.status]}`}
                 </p>
                 {server.error && (
@@ -147,7 +159,11 @@ export function PluginsDialog() {
               </div>
             </div>
           ))}
-          {!resource.data.mcp.length && <p>当前工作目录没有工具连接。</p>}
+          {resource.data.mcpUnavailable ? (
+            <p>暂时无法读取 MCP 配置。</p>
+          ) : (
+            !resource.data.mcp.length && <p>当前工作目录没有工具连接。</p>
+          )}
         </>
       )}
     </div>

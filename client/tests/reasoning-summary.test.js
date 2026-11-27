@@ -29,6 +29,19 @@ test("只有标题时正文为空，不生成展开内容", () => {
       { title: "确认配置", body: "" },
     ]);
 });
+test("Antigravity 长标题可展开查看原始全文，含单行和多行摘要", () => {
+  const heading = "核对图表和回退结果。".repeat(12);
+  for (const text of [heading, `**${heading}**\n\n第二段正文。`])
+    assert.deepEqual(reasoningSummaries([text], true), [
+      { title: heading, body: text },
+    ]);
+  assert.deepEqual(reasoningSummaries([heading]), [
+    { title: heading, body: "" },
+  ]);
+  assert.deepEqual(reasoningSummaries(["检查配置"], true), [
+    { title: "检查配置", body: "" },
+  ]);
+});
 test("多段摘要保留各自标题和正文，跳过空段落", () => {
   assert.deepEqual(
     reasoningSummaries([

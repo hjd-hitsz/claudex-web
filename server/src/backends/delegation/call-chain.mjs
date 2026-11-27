@@ -160,7 +160,7 @@ function withoutFileTree(answer) {
 }
 
 export function resultNoticePayload(result) {
-  const { stepId, status, callChain, turns, answer, error } = result;
+  const { stepId, status, callChain, turns, artifacts, answer, error } = result;
   const context = contextMetrics(result.context);
   return {
     stepId: traceId(stepId),
@@ -174,6 +174,10 @@ export function resultNoticePayload(result) {
       callCount:
         callCount ?? callChain?.filter((call) => call.turnId === turnId).length,
     })),
+    ...(Array.isArray(artifacts) &&
+      artifacts.length > 0 && {
+        artifacts: artifacts.map(({ path, kind }) => ({ path, kind })),
+      }),
     answer: withoutFileTree(answer),
     error,
   };

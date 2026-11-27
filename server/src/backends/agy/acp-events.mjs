@@ -2,6 +2,33 @@ import { acpFileChanges } from "./acp-files.mjs";
 import { visibleAcpMessage } from "./acp-messages.mjs";
 import { randomUUID } from "node:crypto";
 
+export function acpCommands(update) {
+  if (update?.sessionUpdate !== "available_commands_update") return;
+  const commands = new Map();
+  for (const { name, description, input } of update.availableCommands || []) {
+    if (typeof name !== "string" || !/^[\w:-]+$/.test(name)) continue;
+    const key = name.toLowerCase();
+    if (!commands.has(key))
+      commands.set(key, { name: key, description, argumentHint: input?.hint });
+  }
+  return [...commands.values()];
+}
+
+export async function waitForAcpCommands(ready) {
+  // The optional command notification can arrive after session/new or resume.
+  let timeout;
+  try {
+    return await Promise.race([
+      ready,
+      new Promise((resolve) => {
+        timeout = setTimeout(resolve, 1000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function acpContent(input) {
   return (input || []).map((part) => {
     if (part.type === "text") return { type: "text", text: part.text };
@@ -32,7 +59,7 @@ function appendText(activity, field, text, emit) {
       id: randomUUID(),
       ...(message
         ? { type: "agentMessage", text: "", phase: "final_answer" }
-        : { type: "reasoning", summary: [""] }),
+        : { type: "reasoning", summary: [""], expandableSummary: true }),
     };
     activity[field] = item;
     turn.items.push(item);
@@ -91,10 +118,6 @@ export function applyAcpUpdate(activity, update, emit) {
     activity.usage = update;
     return;
   }
-  if (kind === "compaction" || kind === "session_compaction") {
-    activity.compacted = true;
-    return;
-  }
   if (
     kind === "notice" &&
     ["error", "fatal"].includes(update.level ?? update.severity)
@@ -150,11 +173,17 @@ export function applyAcpUpdate(activity, update, emit) {
   };
   put(turn, item, emit);
   const changes = acpFileChanges(update, activity.session.cwd);
+  const fileItemId = update.toolCallId + "-files";
+  if (
+    !previous ||
+    (changes.length && !turn.items.some(({ id }) => id === fileItemId))
+  )
+    activity.thought = undefined;
   if (changes.length)
     put(
       turn,
       {
-        id: update.toolCallId + "-files",
+        id: fileItemId,
         type: "fileChange",
         status: "completed",
         changes,

@@ -96,6 +96,7 @@ export function createApplication() {
       skills: result.data.flatMap((entry) => entry.skills || []),
       nativeCommands: result.commands || [],
       nativeAgents: result.agents || [],
+      skillsContext: { cwd, threadId: current?.id },
     });
   }
   const transport = createRpcClient({
@@ -265,6 +266,7 @@ export function createApplication() {
     notice,
     notifications,
     updateAgyCatalogue: backends.updateAgyCatalogue,
+    loadSkills,
   });
   const connection = createConnection({
     get,

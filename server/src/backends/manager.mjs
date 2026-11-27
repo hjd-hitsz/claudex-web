@@ -420,7 +420,8 @@ export function createBackendManager({
     if (workspace.handles(method, entry.backend, entry.adapter.workspaceOwner))
       return reply(await workspace.request(method, params, entry.backend));
     const recipient = proxy(entry, client);
-    if (method === "thread/fork" && !(await tokenUsage.forkSource(params)))
+    const forkUsage = method === "thread/fork" && target.backendId !== "agy";
+    if (forkUsage && !(await tokenUsage.forkSource(params)))
       await call(entry, "thread/read", {
         threadId: target.nativeId,
         includeTurns: false,
@@ -439,7 +440,7 @@ export function createBackendManager({
       threadId: params.threadId,
       usageRevision: tokenUsage.revision(params.threadId),
       selectedMode,
-      ...(method === "thread/fork" && {
+      ...(forkUsage && {
         forkUsage: await tokenUsage.forkSource(params),
       }),
     });

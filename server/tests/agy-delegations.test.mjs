@@ -220,6 +220,7 @@ test("结果通知按序投递完整调用链，任务保留执行证据", () =>
     context: { compactCount: 0 },
     callChain: step.result.callChain,
     turns: step.result.turns,
+    artifacts,
     answer,
     error: turn.error.message,
   };
@@ -305,6 +306,7 @@ test("回投从模型上下文移除目录树并保留技术结论及原始证�
     stages.flatMap(({ evidence }) => evidence),
   );
   assert.deepEqual(result.artifacts, artifacts);
+  assert.deepEqual(notice.payload.artifacts, artifacts);
   assert.equal(task.status, "completed");
   assert.equal(notice.payload.status, task.status);
   assert.equal(notice.payload.answer, full);

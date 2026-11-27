@@ -19,6 +19,7 @@ export function createEvents({
   notice,
   notifications,
   updateAgyCatalogue,
+  loadSkills,
 }) {
   function closeTerminal(processId) {
     const terminal = get().terminals[processId];
@@ -61,9 +62,11 @@ export function createEvents({
     if (method === "lan/compaction") {
       if (!records.deletedThreads.has(p.threadId))
         set({
-          compactions: mergeCompactions(get().compactions, {
-            [p.threadId]: p.compaction,
-          }),
+          compactions: mergeCompactions(
+            get().compactions,
+            { [p.threadId]: p.compaction },
+            true,
+          ),
         });
       return;
     }
@@ -73,6 +76,11 @@ export function createEvents({
         (records.turnRevisions.get(p.threadId) || 0) + 1,
       );
     if (method === "thread/reverted") {
+      if (p.resetContext) {
+        const compactions = { ...get().compactions };
+        delete compactions[p.threadId];
+        set({ compactions });
+      }
       messages.handleReverted(p.threadId);
       return;
     }
@@ -86,6 +94,11 @@ export function createEvents({
     }
     if (method === "lan/agy/models") {
       updateAgyCatalogue(p);
+      return;
+    }
+    if (method === "lan/agy/commands") {
+      if (get().backendId === "agy" && get().current?.id === p.threadId)
+        loadSkills().catch(report);
       return;
     }
     if (method === "thread/archived") {

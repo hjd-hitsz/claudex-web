@@ -19,6 +19,7 @@ import {
 import { answerAcpPermission } from "../../server/src/backends/agy/acp-permissions.mjs";
 import { savedAgyAgent } from "../../server/src/backends/agy/native-agent.mjs";
 import { findCli } from "../../server/src/backends/cli-installation.mjs";
+import { traceId } from "../../server/src/backends/delegation/trace-ids.mjs";
 import {
   readAgyRole,
   saveAgyRole,
@@ -55,7 +56,7 @@ exec bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /run/user --bind ${quot
 );
 const events = [];
 const requests = [];
-let returnedResult;
+const resultRequests = [];
 const evidenceMarker = "FIXTURE_DELEGATION_LOG";
 const mcpCalls = [];
 const mcpMethods = [];
@@ -112,19 +113,33 @@ const proxy = createServer(async (request, response) => {
   const commandReturned =
     serialized.includes("functionResponse") &&
     serialized.includes("fixture-missing-file");
-  if (serialized.includes(noticeMarker("fixture-step:result"))) {
-    returnedResult = {
-      answer: serialized.includes("FIXTURE_DELEGATION_ANSWER"),
-      artifact: serialized.includes("report.md"),
-      evidence: serialized.includes(evidenceMarker),
-      chain: serialized.includes("fixture-call"),
-    };
+  const marker = noticeMarker("fixture-step:result");
+  const initialMessage = body.contents?.at(-1);
+  const resultPart = body.contents
+    ?.flatMap(({ parts }) => parts)
+    .find(({ text }) => text?.startsWith("<USER_REQUEST>\n" + marker));
+  const result =
+    resultPart &&
+    JSON.parse(
+      resultPart.text.split("\n").find((line) => line.startsWith('{"taskId"')),
+    );
+  if (result) {
+    resultRequests.push({
+      request: requests.length + 1,
+      direct: initialMessage.parts.includes(resultPart),
+      answer: result.answer === "FIXTURE_DELEGATION_ANSWER",
+      artifacts: result.artifacts ?? [],
+      evidence: JSON.stringify(result).includes(evidenceMarker),
+      chain: result.callChain.some(
+        ({ callId }) => callId === traceId("fixture-call"),
+      ),
+    });
   }
   const instruction = JSON.stringify(body.systemInstruction || "");
   requests.push({
     model: /\/models\/([^:]+):/.exec(url.pathname)?.[1],
     tools: tools.map(({ name }) => name),
-    role: instruction.includes("你是用户的秘书"),
+    role: instruction.includes("你是用户的全能工作秘书"),
     customRole: instruction.includes("CLAUDEX_ROLE_OVERRIDE_TEST"),
     presetRole: instruction.includes("CLAUDEX_SECRETARY_PRESET_TEST"),
     image: serialized.includes("inlineData"),
@@ -144,7 +159,6 @@ const proxy = createServer(async (request, response) => {
   const lookup = tools.find(
     ({ name }) => name === "mcp_claudex_delegation_read_delegation_step",
   );
-  const resultNotice = serialized.includes(noticeMarker("fixture-step:result"));
   const gotStep = serialized.includes("FIXTURE_NATIVE_STEP_OUTPUT");
   const part =
     legacy && !legacyContinuation && !commandReturned
@@ -158,15 +172,15 @@ const proxy = createServer(async (request, response) => {
             },
           },
         }
-      : resultNotice && lookup && !gotStep
+      : result && lookup && !gotStep
         ? {
             functionCall: {
               name: lookup.name,
               args: {
                 toolSummary: "核对执行记录",
-                taskId: "fixture-task",
-                stepId: "fixture-step",
-                callId: "fixture-call",
+                taskId: result.taskId,
+                stepId: result.stepId,
+                callId: result.callChain[0].callId,
               },
             },
           }
@@ -593,17 +607,32 @@ try {
     prompt,
   );
   assert.equal(returned.turn.status, "completed", returned.turn.error?.message);
-  assert.deepEqual(returnedResult, {
-    answer: true,
-    artifact: true,
-    evidence: false,
-    chain: true,
-  });
+  assert.deepEqual(
+    resultRequests.map(({ direct }) => direct),
+    [true, false],
+  );
+  for (const { request, direct, ...result } of resultRequests) {
+    assert.deepEqual(
+      result,
+      {
+        answer: true,
+        artifacts: notice.payload.artifacts,
+        evidence: false,
+        chain: true,
+      },
+      `模型请求 ${request}（${direct ? "首次回投" : "工具结果续接"}）`,
+    );
+  }
   assert.equal((await store.read()).notices[notice.id].status, "delivered");
   assert.deepEqual(
     mcpCalls.find(({ tool }) => tool === "read_delegation_step")?.input,
-    { taskId: "fixture-task", stepId: "fixture-step", callId: "fixture-call" },
+    {
+      taskId: traceId("fixture-task"),
+      stepId: traceId("fixture-step"),
+      callId: traceId("fixture-call"),
+    },
   );
+  console.log(JSON.stringify({ resultRequests }));
   console.log("原生 ACP 从回投取得调用 ID，并调用 MCP 读取步骤详情。");
   console.log(
     `agy ${version} 原生 ACP 已验证 MCP、历史回放、默认角色更新、Antigravity 独立发起预设及打断后在同一会话执行新要求`,
@@ -612,6 +641,7 @@ try {
   console.error(
     JSON.stringify({
       requests,
+      resultRequests,
       mcpMethods,
       mcpCalls: mcpCalls.map(({ tool }) => tool),
       events: events.map(({ method }) => method),

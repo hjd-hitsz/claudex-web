@@ -39,12 +39,13 @@ export function CompactionStatus({ entry }) {
       document.removeEventListener("visibilitychange", check);
     };
   }, [threadId, entry.id, working, s.connected]);
+  const automatic = entry.source === "automatic";
   const titles = {
     starting: "正在提交上下文整理…",
-    running: "正在整理上下文…",
+    running: automatic ? "正在自动整理上下文…" : "正在整理上下文…",
     reconnecting: "正在确认整理状态…",
-    completed: "上下文整理完成",
-    failed: "上下文整理失败",
+    completed: automatic ? "已自动整理上下文" : "上下文整理完成",
+    failed: automatic ? "自动整理上下文失败" : "上下文整理失败",
     interrupted: "上下文整理已中断",
     unconfirmed: entry.commandFinished ? "整理命令已执行" : "整理结果待确认",
   };

@@ -63,6 +63,13 @@ export const composerCommands = [
 ];
 
 export function nativeComposerCommands(state) {
+  if (
+    state.backendId === "agy" &&
+    (!state.skillsContext ||
+      state.skillsContext.cwd !== state.cwd ||
+      state.skillsContext.threadId !== state.current?.id)
+  )
+    return [];
   const managed = new Set([
     ...composerCommands.map((command) => command.id),
     "clear",
@@ -70,7 +77,7 @@ export function nativeComposerCommands(state) {
     "fast",
   ]);
   return (state.nativeCommands || [])
-    .filter((command) => !managed.has(command.name))
+    .filter(({ name }) => !managed.has(name))
     .map((command) => ({
       id: command.name,
       label: command.name,
@@ -97,7 +104,7 @@ export function parseComposerCommand(text, native = []) {
 export function commandAvailable(command, state) {
   if (
     state.backendId === "agy" &&
-    ["plan", "goal", "review", "skills", "stop"].includes(command.id)
+    ["plan", "goal", "review"].includes(command.id)
   )
     return false;
   return (
@@ -181,7 +188,10 @@ async function executeCommand(text) {
       modal: { type: "command", view, thread: s.current, cwd: s.cwd, ...extra },
     });
   if (command.native) {
-    return store.sendMessage(text, s.attachments, { clearDraft: true });
+    return store.sendMessage(text, s.attachments, {
+      clearDraft: true,
+      ...(s.backendId === "agy" && { nativeCommand: command.id }),
+    });
   }
   switch (command.id) {
     case "init": {

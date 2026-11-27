@@ -1,4 +1,7 @@
-import { matchingSkills } from "../domain/skill-suggestions.js";
+import {
+  matchingSkills,
+  projectSkillChoices,
+} from "../domain/skill-suggestions.js";
 import React, { useState, useEffect } from "react";
 
 import { Search, Plus, Sparkles } from "lucide-react";
@@ -17,7 +20,8 @@ import { Empty } from "../ui/primitives.jsx";
 export function SkillsDialog() {
   const s = useStore(),
     [q, query] = useState("");
-  const skills = matchingSkills(s.skills, q);
+  const skills = matchingSkills(projectSkillChoices(s), q);
+  const agy = s.backendId === "agy";
   useEffect(() => {
     loadSkills().catch(report);
   }, [s.cwd]);
@@ -28,7 +32,7 @@ export function SkillsDialog() {
         <input
           data-dialog-focus
           value={q}
-          placeholder="搜索已安装技能"
+          placeholder={agy ? "搜索项目技能" : "搜索已安装技能"}
           onChange={(e) => query(e.target.value)}
         />
       </label>
@@ -69,7 +73,13 @@ export function SkillsDialog() {
         {!skills.length && (
           <Empty
             icon={Sparkles}
-            title={q ? "没有匹配的技能" : "此目录没有可用技能"}
+            title={
+              q
+                ? "没有匹配的技能"
+                : agy
+                  ? "当前项目没有可用技能"
+                  : "此目录没有可用技能"
+            }
           />
         )}
       </div>

@@ -65,6 +65,8 @@ function ask(sessionId, params) {
   });
 }
 
+const compactor = process.argv.includes("--agent=claudex-compactor");
+
 async function handle({ method, params: p }) {
   if (method === "initialize")
     return {
@@ -78,7 +80,10 @@ async function handle({ method, params: p }) {
     };
   if (["session/new", "session/resume", "session/load"].includes(method)) {
     const sessionId = p.sessionId || randomUUID();
-    if (!p._meta?.antigravity?.systemPrompt?.append.includes("秘书"))
+    if (
+      !compactor &&
+      !p._meta?.antigravity?.systemPrompt?.append.includes("秘书")
+    )
       throw new Error("秘书提示词缺失");
     const history = join(p.cwd, sessionId + ".json");
     const items = await readFile(history, "utf8")
@@ -112,14 +117,24 @@ async function handle({ method, params: p }) {
     };
   }
   if (method === "session/cancel") {
-    sessions.get(p.sessionId)?.cancel?.();
+    sessions.get(p.sessionId)?.waitingPrompt?.resolve("cancelled");
     return {};
   }
   if (method === "session/close") return {};
   if (method !== "session/prompt") throw new Error("不支持 " + method);
   const { sessionId, prompt } = p;
+  if (compactor) {
+    text(sessionId, JSON.stringify({ summary: "整理后的测试会话记录" }));
+    return { stopReason: "end_turn" };
+  }
   const session = sessions.get(sessionId);
   const content = prompt.map((part) => part.text || part.type).join("\n");
+  // agy acknowledges the previous prompt when the replacement input is accepted.
+  session.waitingPrompt?.resolve("end_turn");
+  const waitingPrompt = /AGY_BROWSER_INTERRUPT|AGY_STEER/.test(content)
+    ? Promise.withResolvers()
+    : undefined;
+  session.waitingPrompt = waitingPrompt;
   const record = { content };
   session.items.push(record);
   await writeFile(session.history, JSON.stringify(session.items));
@@ -164,11 +179,8 @@ async function handle({ method, params: p }) {
     reply = "文件不存在，已根据工具结果完成核对。";
   }
   if (content.includes("AGY_BROWSER_INTERRUPT")) {
-    const pending = Promise.withResolvers();
-    session.cancel = pending.resolve;
-    await pending.promise;
-    delete session.cancel;
-    return { stopReason: "cancelled" };
+    text(sessionId, "已开始处理旧要求。");
+    return { stopReason: await waitingPrompt.promise };
   }
   if (content.includes("AGY_BROWSER_REPLACE")) reply = "秘书已处理新的要求";
   const route = /本轮用户选择的新委派执行端：(codex|claude)/.exec(content)?.[1];
@@ -224,11 +236,7 @@ async function handle({ method, params: p }) {
     };
     await writeFile(session.history, JSON.stringify(session.items));
     if (content.includes("AGY_STEER")) {
-      const pending = Promise.withResolvers();
-      session.cancel = pending.resolve;
-      await pending.promise;
-      delete session.cancel;
-      return { stopReason: "cancelled" };
+      return { stopReason: await waitingPrompt.promise };
     }
     reply = "已提交后台委派";
   }

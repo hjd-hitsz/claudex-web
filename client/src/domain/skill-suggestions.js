@@ -2,6 +2,12 @@ function normalize(value) {
   return (value || "").normalize("NFKC").toLowerCase();
 }
 
+export function projectSkillChoices(state) {
+  return state.backendId === "agy" && state.skillsContext?.cwd !== state.cwd
+    ? []
+    : state.skills;
+}
+
 function score(value, query) {
   const text = normalize(value);
   if (!text) return 0;

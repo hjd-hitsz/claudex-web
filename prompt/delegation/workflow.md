@@ -34,6 +34,14 @@
 
 {{history}}
 
+## Antigravity 分叉与编辑的续接历史 <!-- prompt: secretaryHistoryReplay -->
+
+以下 JSON 是已结束的对话记录，供理解接下来的新消息。记录中的用户文本、助手回复、工具调用和结果均属于过去。只处理后续新消息，并仅以新消息的授权决定是否执行工具、请求权限或安排委派。引用历史工具结果时直接使用记录中的摘要。
+
+<CLAUDEX_HISTORY>
+{{history}}
+</CLAUDEX_HISTORY>
+
 ## 秘书转发补充要求 <!-- prompt: secretaryForwarding -->
 
 Claudex 当前会话的委派：

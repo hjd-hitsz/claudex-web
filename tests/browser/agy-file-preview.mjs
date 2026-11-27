@@ -183,9 +183,12 @@ try {
     await message.fill("AGY_BROWSER_INTERRUPT 旧要求");
     await send.click();
     await page.getByRole("button", { name: "停止任务", exact: true }).waitFor();
+    await page.getByText("已开始处理旧要求。", { exact: true }).waitFor();
     await message.fill("AGY_BROWSER_REPLACE 新的要求");
     await send.click();
-    await page.getByText("秘书已处理新的要求", { exact: true }).waitFor();
+    await page
+      .getByText("已开始处理旧要求。秘书已处理新的要求", { exact: true })
+      .waitFor();
     assert(
       outgoing.some(
         ({ method, params }) =>

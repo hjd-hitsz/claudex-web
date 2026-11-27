@@ -100,6 +100,23 @@ test("相同原生会话 ID 按实例路由，单实例故障保留另一实例�
   );
   assert.equal(readBackend, "claude");
   assert.equal(readRequest.params.threadId, "same");
+  for (const backend of ["codex", "claude"]) {
+    for (const method of [
+      "thread/name/set",
+      "thread/archive",
+      "thread/unarchive",
+      "thread/delete",
+    ]) {
+      await call(method, {
+        threadId: resourceId(backend, "same"),
+        name: "Fixture",
+      });
+      const [destination, forwarded] = seen.at(-1);
+      assert.equal(destination, backend);
+      assert.equal(forwarded.method, method);
+      assert.equal(forwarded.params.threadId, "same");
+    }
+  }
   const first = await call("thread/list", {}),
     second = await call("thread/list", { cursor: first.nextCursor });
   assert.equal(first.data[0].id, "same");

@@ -267,7 +267,16 @@ export function Conversation({ children, footer, focusComposer }) {
                       <Message
                         key={`${s.current?.id}:${group.id}`}
                         item={group.item}
-                        editable={group.item.id === editableId}
+                        editable={
+                          group.item.id === editableId ||
+                          (s.backendId === "agy" &&
+                            group.item.turnId &&
+                            !group.item.optimistic &&
+                            turnItems
+                              .get(group.item.turnId)
+                              ?.find(({ type }) => type === "userMessage")
+                              ?.id === group.item.id)
+                        }
                         annotations={annotations.get(group.item.id)}
                         focusComposer={focusComposer}
                       />

@@ -6,6 +6,7 @@ import { secretaryName } from "./native-agent.mjs";
 export function createAcpClient({
   executable,
   cwd,
+  agent = secretaryName,
   proxy,
   onUpdate,
   onRequest,
@@ -15,11 +16,11 @@ export function createAcpClient({
     executable,
     [
       "acp",
-      "--agent=" + secretaryName,
+      "--agent=" + agent,
       "--add-dir=" + cwd,
       "--include-default-customizations=false",
       "--sandbox",
-      "--dangerously-skip-permissions",
+      ...(agent === secretaryName ? ["--dangerously-skip-permissions"] : []),
     ],
     {
       cwd,
@@ -31,6 +32,7 @@ export function createAcpClient({
   let sequence = 0;
   let errorOutput = "";
   let closed = false;
+  const exited = new Promise((resolve) => child.once("close", resolve));
 
   function send(packet) {
     if (closed || child.stdin.destroyed) throw new Error("agy ACP 连接已关闭");
@@ -104,6 +106,7 @@ export function createAcpClient({
   });
 
   return {
+    exited,
     get closed() {
       return closed;
     },

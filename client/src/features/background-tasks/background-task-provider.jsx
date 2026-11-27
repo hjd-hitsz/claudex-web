@@ -15,11 +15,15 @@ export function BackgroundTaskProvider({ children }) {
   const enabled = useStoreSelector(
     (state) =>
       state.connected &&
-      (state.current?.backendId === "claude" ||
-        state.backends.some(
-          (backend) =>
-            backend.id === "codex" && backend.backgroundTerminalAvailable,
-        )),
+      (state.current?.backendId === "agy"
+        ? state.backends.some(
+            (backend) => backend.id === "agy" && backend.ready,
+          )
+        : state.current?.backendId === "claude" ||
+          state.backends.some(
+            (backend) =>
+              backend.id === "codex" && backend.backgroundTerminalAvailable,
+          )),
   );
   const tasks = useBackgroundTasks(threadId, enabled);
   return (

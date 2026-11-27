@@ -65,6 +65,10 @@ export function createDelegations({
     for (const task of Object.values(tasks))
       if (task.parentId === entry.id && !enabled.includes(task.target))
         enabled.push(task.target);
+    entry.mcpTools = [
+      ...enabled.map((target) => "ask_" + target),
+      delegationStepToolName,
+    ];
     return [...enabled, delegationStepToolName];
   }
   async function forwardingContext(parentId, blocks) {
@@ -91,10 +95,11 @@ export function createDelegations({
   }
   async function invoke({ token, tool, input }) {
     const entry = agyEntry(token);
+    const activity = sessions().active.get(entry.id);
+    if (!activity?.submitted || activity.entry !== entry)
+      throw new Error("当前没有提交委派的 agy 轮次");
     if (tool === delegationStepToolName)
       return runtime.readStep({ id: entry.id }, input);
-    const activity = sessions().active.get(entry.id);
-    if (!activity?.ready) throw new Error("当前没有提交委派的 agy 轮次");
     const target = { ask_codex: "codex", ask_claude: "claude" }[tool];
     if (!target) throw new Error("未知委派工具");
     const { input: send, turn, session } = activity;
@@ -103,9 +108,22 @@ export function createDelegations({
         ? buildDelegationSelection(getBackend(), target)
         : null;
     const { response, task, obsolete } = await store.change((data) => {
-      if (sessions().active.get(entry.id) !== activity || activity.cancelled)
+      if (
+        sessions().active.get(entry.id) !== activity ||
+        sessions().entries.get(entry.id) !== entry ||
+        !activity.submitted ||
+        activity.cancelled
+      )
         throw new Error("该 Antigravity 轮次已中断");
       const before = findDelegationTask(data.tasks, session, input?.task_id);
+      if (
+        before?.parentId === entry.id &&
+        !session.turns.some(
+          ({ id }) => id === before.steps.at(-1).parentTurnId,
+        ) &&
+        turn.id !== before.steps.at(-1).parentTurnId
+      )
+        throw new Error("此委派步骤所属轮次已移出当前历史");
       const previous = before?.steps.at(-1).id;
       const request = before?.request;
       const response = acceptDelegation(data, {
@@ -204,5 +222,6 @@ export function createDelegations({
     acpRequest: answerAcpPermission,
     prepareMcp,
     finishNotice,
+    delivering: (id) => delivery.has(id),
   };
 }

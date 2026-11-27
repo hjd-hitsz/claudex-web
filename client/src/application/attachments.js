@@ -34,7 +34,7 @@ export async function readAttachment(file) {
   };
 }
 
-export async function attachmentInputs(attachments, rpc) {
+export async function attachmentInputs(attachments, rpc, backendId) {
   return Promise.all(
     attachments.map(async (attachment) => {
       if (attachment.input) return attachment.input;
@@ -47,6 +47,13 @@ export async function attachmentInputs(attachments, rpc) {
         });
         attachment.path = result.path;
       }
+      if (backendId === "agy")
+        return {
+          type: "file",
+          path: attachment.path,
+          name: attachment.name,
+          mimeType: attachment.mime,
+        };
       return fileReferenceInput({ path: attachment.path });
     }),
   );

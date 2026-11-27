@@ -1,5 +1,8 @@
 import { rankFileSuggestions } from "../../domain/file-suggestions.js";
-import { matchingSkills as findSkills } from "../../domain/skill-suggestions.js";
+import {
+  matchingSkills as findSkills,
+  projectSkillChoices,
+} from "../../domain/skill-suggestions.js";
 import { pathIcon } from "../../ui/path-icon.jsx";
 import { referenceMarkdown } from "../../domain/inline-references.js";
 import React, { useState, useEffect, useRef } from "react";
@@ -141,19 +144,20 @@ export function useComposerShortcuts(area, submitAfterCodeLookup) {
   }, [s.current?.id]);
   const q = trigger?.query.toLowerCase() || "";
   const pathQuery = trigger?.kind === "@" && /[/\\]/.test(q);
-  const matchingSkills = findSkills(pathQuery ? [] : s.skills, q).map(
-    (skill) => ({
-      id: "skill:" + (skill.path || skill.name),
-      kind: "skill",
-      label: skill.interface?.displayName || skill.name,
-      description:
-        skill.interface?.shortDescription ||
-        skill.shortDescription ||
-        skill.description,
-      icon: Sparkles,
-      skill,
-    }),
-  );
+  const matchingSkills = findSkills(
+    pathQuery ? [] : projectSkillChoices(s),
+    q,
+  ).map((skill) => ({
+    id: "skill:" + (skill.path || skill.name),
+    kind: "skill",
+    label: skill.interface?.displayName || skill.name,
+    description:
+      skill.interface?.shortDescription ||
+      skill.shortDescription ||
+      skill.description,
+    icon: Sparkles,
+    skill,
+  }));
   const items =
     trigger?.kind === "/"
       ? [
@@ -443,7 +447,7 @@ export function useComposerShortcuts(area, submitAfterCodeLookup) {
             <span>
               <b>{item.kind === "command" ? "/" + item.id : item.label}</b>
               <small>
-                {item.kind === "command"
+                {item.kind === "command" && !item.native
                   ? item.label + " · " + item.description
                   : item.description}
               </small>

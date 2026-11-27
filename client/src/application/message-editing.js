@@ -3,6 +3,7 @@ export function createMessageEditing({ get, set, rpc, navigation }) {
   const reverting = new Set();
   async function prepare(edit) {
     const { threadId, item } = edit;
+    const agy = get().backendId === "agy";
     const epoch = navigation.opening;
     const current = () =>
       get().connected &&
@@ -42,15 +43,26 @@ export function createMessageEditing({ get, set, rpc, navigation }) {
     );
     if (
       index < 0 ||
-      users.at(-1)?.id !== item.id ||
+      (!agy && users.at(-1)?.id !== item.id) ||
       turns[index].items.find((entry) => entry.type === "userMessage")?.id !==
         item.id
     )
-      throw new Error("仅可编辑最近一轮的初始消息，请重新打开对话核对历史。");
+      throw new Error(
+        agy
+          ? "找不到可编辑的轮次首条消息，请重新打开对话核对历史。"
+          : "仅可编辑最近一轮的初始消息，请重新打开对话核对历史。",
+      );
     navigation.invalidateHistory();
     reverting.add(threadId);
     try {
-      await rpc("thread/revert", { threadId, beforeTurnId: item.turnId });
+      await rpc("thread/revert", {
+        threadId,
+        beforeTurnId: item.turnId,
+        ...(agy && {
+          beforeItemId: item.id,
+          expectedLastTurnId: turns.at(-1)?.id ?? null,
+        }),
+      });
     } catch (error) {
       if (
         !/(?:unknown|unsupported) method|method not found|thread\/revert.*(?:not supported|not implemented)/i.test(
@@ -66,6 +78,7 @@ export function createMessageEditing({ get, set, rpc, navigation }) {
     }
     const retained = turns.slice(0, index);
     edit.retainedIds = JSON.stringify(retained.map((turn) => turn.id));
+    edit.retainedLastTurnId = retained.at(-1)?.id ?? null;
     if (!current()) throw new Error("消息历史已更新，请返回原对话重新发送。");
     const retainedIds = new Set(retained.map((turn) => turn.id));
     const keep = (values) =>

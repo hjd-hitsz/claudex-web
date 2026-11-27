@@ -143,9 +143,11 @@ export function Activity({ item, cwd }) {
   );
 }
 export function Reasoning({ item, cwd, complete = false }) {
-  return reasoningSummaries(item.summary).map((summary, index) => (
-    <ReasoningPart key={index} {...summary} cwd={cwd} complete={complete} />
-  ));
+  return reasoningSummaries(item.summary, item.expandableSummary).map(
+    (summary, index) => (
+      <ReasoningPart key={index} {...summary} cwd={cwd} complete={complete} />
+    ),
+  );
 }
 export function ReasoningPart({ title, body, cwd, complete = false }) {
   const heading = useSummaryTranslation(title, "title", complete);

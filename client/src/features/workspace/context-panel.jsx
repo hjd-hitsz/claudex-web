@@ -68,15 +68,17 @@ export function ContextCard() {
           <small>{s.terminalOpen ? "已打开" : "打开"}</small>
         </button>
       </nav>
-      <BackgroundTaskList
-        {...backgroundTasks}
-        onSelect={(task) =>
-          set({
-            panel: "background-task",
-            panelBackgroundTask: { ...task, threadId: s.current.id },
-          })
-        }
-      />
+      {(s.current?.backendId !== "agy" || backgroundTasks.tasks.length > 0) && (
+        <BackgroundTaskList
+          {...backgroundTasks}
+          onSelect={(task) =>
+            set({
+              panel: "background-task",
+              panelBackgroundTask: { ...task, threadId: s.current.id },
+            })
+          }
+        />
+      )}
       {agents.length > 0 && (
         <div className="context-agents">
           <div className="context-section-heading">

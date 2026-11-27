@@ -5,26 +5,30 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writePrivateFile } from "../../private-file.mjs";
 import { createAcpClient } from "./acp-client.mjs";
-import { applyAcpUpdate, flushAcpMessage } from "./acp-events.mjs";
+import { createAgyTurns } from "./acp-turns.mjs";
 import {
-  acpConfiguration,
-  applyAcpSelection,
-  updateAcpConfiguration,
-} from "./acp-models.mjs";
-import { createAgyModelCatalogue } from "./model-catalogue.mjs";
+  acpCommands,
+  applyAcpUpdate,
+  waitForAcpCommands,
+} from "./acp-events.mjs";
+import { applyAcpSelection, updateAcpConfiguration } from "./acp-models.mjs";
+import { createAgyCompactions } from "./compactions.mjs";
+import {
+  createAgyModelCatalogue,
+  readAcpCatalogue,
+} from "./model-catalogue.mjs";
 import { resolveSourcePrompt } from "../delegation/settings.mjs";
 import { nowSeconds } from "./session-store.mjs";
-import { currentResultNotice } from "../delegation/delegation-store.mjs";
 import { savedAgyAgent, secretaryName } from "./native-agent.mjs";
-import { agyConversationContext } from "./acp-messages.mjs";
-import { readPromptSections, renderPrompt } from "../../prompts.mjs";
+import { restoreAgyToolResults } from "./tmp_function/history-tool-results.mjs";
+import {
+  installAgyCompactor,
+  createAgySessionCompaction,
+} from "./tmp_function/session-compact.mjs";
 
 const mcp = fileURLToPath(new URL("./delegation-mcp.mjs", import.meta.url));
 const capable = (response, key) =>
   response.agentCapabilities?.sessionCapabilities?.[key];
-const continuation = readPromptSections("delegation/workflow.md")(
-  "secretaryContinuation",
-);
 
 export function createAcpSessions({
   store,
@@ -32,12 +36,16 @@ export function createAcpSessions({
   socket,
   execution,
   emit,
+  createClient = createAcpClient,
   readAgent = savedAgyAgent,
+  readCheckpoint,
 }) {
   const entries = new Map();
   const tokens = new Map();
   const active = new Map();
   const pending = new Map();
+  const rewriting = new Set();
+  const compactions = createAgyCompactions(readCheckpoint);
   const catalogue = createAgyModelCatalogue({
     read: readCatalogue,
     publish: ({ models, model, effort }) =>
@@ -50,17 +58,16 @@ export function createAcpSessions({
   const launchDir = () => join(getBackend().stateDir, "launch");
   const readRole = () => resolveSourcePrompt(getBackend(), "agy");
 
-  function spawn(onUpdate, onRequest, onExit) {
-    const { proxy } = getBackend();
-    return createAcpClient({
+  const spawn = (onUpdate, onRequest, onExit, agent) =>
+    createClient({
       executable: path,
+      agent,
       cwd: launchDir(),
-      proxy,
+      proxy: getBackend().proxy,
       onUpdate,
       onRequest,
       onExit,
     });
-  }
   async function initialize(client) {
     const result = await client.call("initialize", {
       protocolVersion: 1,
@@ -93,6 +100,7 @@ export function createAcpSessions({
     );
     await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
     await writePrivateFile(destination, secretaryAgent);
+    await installAgyCompactor(launchDir());
     const client = spawn();
     try {
       startup = await initialize(client);
@@ -108,23 +116,35 @@ export function createAcpSessions({
   }
   async function readCatalogue() {
     if (!startup) throw new Error(connectionError || "agy ACP 尚未就绪");
-    const client = spawn();
+    const commandReady = Promise.withResolvers();
+    let commands = [];
+    const client = spawn((method, params) => {
+      const available =
+        method === "session/update" && acpCommands(params.update);
+      if (available) {
+        commands = available;
+        commandReady.resolve();
+      }
+    });
     catalogueClient = client;
     try {
-      await initialize(client);
-      const role = await readRole();
-      const session = await client.call("session/new", {
-        cwd: launchDir(),
-        mcpServers: [],
-        _meta: { antigravity: { systemPrompt: { append: role } } },
-      });
-      const result = acpConfiguration(session);
-      await client.call("session/close", { sessionId: session.sessionId });
-      return result;
+      const models = await readAcpCatalogue(
+        client,
+        initialize,
+        launchDir(),
+        readRole,
+        () => waitForAcpCommands(commandReady.promise),
+      );
+      return { ...models, commands };
     } finally {
       client.close();
       catalogueClient = undefined;
     }
+  }
+  async function commands(entry) {
+    if (entry?.commands !== undefined) return entry.commands;
+    const fallback = await catalogue.get();
+    return entry?.commands ?? fallback.commands;
   }
   function discard(id, entry) {
     if (entries.get(id) !== entry) return;
@@ -164,21 +184,42 @@ export function createAcpSessions({
     entries.set(session.id, entry);
     const notify = (method, params) =>
       emit({ method, params: { threadId: session.id, ...params } });
+    const earlyCommands = new Map();
+    function setCommands(commands) {
+      if (JSON.stringify(entry.commands) === JSON.stringify(commands)) return;
+      entry.commands = commands;
+      notify("lan/agy/commands", {});
+    }
     entry.client = spawn(
       (method, p) => {
-        if (method !== "session/update" || p.sessionId !== entry.nativeId)
+        if (entries.get(session.id) !== entry || method !== "session/update")
           return;
+        const commands = acpCommands(p.update);
+        if (p.sessionId !== entry.nativeId) {
+          if (commands && !entry.nativeId)
+            earlyCommands.set(p.sessionId, commands);
+          return;
+        }
         if (p.update.configOptions) updateAcpConfiguration(entry, p.update);
-        if (p.update.sessionUpdate === "available_commands_update")
-          entry.commands = p.update.availableCommands || [];
+        if (commands) setCommands(commands);
         const activity = active.get(session.id);
-        if (activity?.submitted) {
+        if (activity?.entry === entry && activity.submitted) {
           if (p.update.sessionUpdate === "session_info_update")
             activity.title = p.update.title;
-          applyAcpUpdate(activity, p.update, notify);
+          if (!activity.compaction.update(p.update))
+            applyAcpUpdate(activity, p.update, notify);
         }
       },
-      (method, params) => execution.acpRequest(entry, method, params),
+      (method, params) => {
+        const activity = active.get(session.id);
+        if (
+          entries.get(session.id) !== entry ||
+          activity?.entry !== entry ||
+          !activity.submitted
+        )
+          throw new Error("agy 原生会话当前没有已提交的轮次");
+        return execution.acpRequest(entry, method, params);
+      },
       () => {
         if (entries.get(session.id) !== entry) return;
         entries.delete(session.id);
@@ -218,6 +259,9 @@ export function createAcpSessions({
         : await entry.client.call("session/new", options);
       entry.nativeId = session.nativeId || response.sessionId;
       if (!entry.nativeId) throw new Error("agy 未返回原生会话 ID");
+      if (earlyCommands.has(entry.nativeId))
+        setCommands(earlyCommands.get(entry.nativeId));
+      earlyCommands.clear();
       updateAcpConfiguration(entry, response);
       idle(session.id, entry);
       return entry;
@@ -260,165 +304,31 @@ export function createAcpSessions({
     return { entry, repair };
   }
 
-  async function prompt(session, record, input, blocks) {
-    if (active.has(session.id)) throw new Error("agy 会话已有正在执行的轮次");
-    const turn = {
-      id: record.id,
-      status: "inProgress",
-      startedAt: nowSeconds(),
-      items: record.items,
-    };
-    const done = Promise.withResolvers();
-    const activity = {
-      turn,
-      input,
-      session,
-      ready: false,
-      done: done.promise,
+  async function prepareHistory(session) {
+    const { entry } = await prepareSession(session, await readRole(), {
       controller: new AbortController(),
-    };
-    let initialItemCount = 0;
-    let ignored = false;
-    active.set(session.id, activity);
-    const notify = (method, params) =>
-      emit({ method, params: { threadId: session.id, ...params } });
-    try {
-      const role = await readRole();
-      const { entry, repair } = await prepareSession(session, role, activity);
-      await applyAcpSelection(entry, input, session);
-      let promptBlocks = input.userInput
-        ? await execution.forwardingContext(session.id, blocks)
-        : blocks;
-      const contextPending =
-        (repair || session.nativeContextPending) &&
-        (input.userInput || input.notice);
-      if (contextPending && session.turns.length)
-        promptBlocks = [
-          {
-            type: "text",
-            text: renderPrompt(continuation, {
-              history: agyConversationContext(session.turns),
-            }),
-          },
-          ...promptBlocks,
-        ];
-      const submitted = await store.change((data) => {
-        if (activity.cancelled) return false;
-        const notice = data.notices[record.noticeId];
-        if (
-          record.noticeId &&
-          (notice?.status !== "queued" || !currentResultNotice(data, notice))
-        )
-          return false;
-        const s = store.session(data, session.id);
-        if (repair) {
-          s.previousNativeId = session.nativeId;
-          s.nativeContextPending = true;
-        }
-        s.nativeId = entry.nativeId;
-        s.model = entry.config.model || s.model;
-        s.effort = entry.config.effort || s.effort;
-        s.turns.push(turn);
-        if (record.noticeId) notice.status = "submitting";
-        return true;
-      });
-      if (!submitted || activity.cancelled) {
-        ignored = Boolean(record.noticeId && !submitted);
-        turn.status = "interrupted";
-        return { turn };
-      }
-      activity.ready = true;
-      notify("turn/started", { turn });
-      initialItemCount = turn.items.length;
-      for (const item of turn.items)
-        notify("item/completed", { turnId: turn.id, item });
-      notify("thread/settings/updated", {
-        threadSettings: {
-          model: entry.config.model,
-          reasoningEffort: entry.config.effort,
-          collaborationMode: { mode: "default" },
-        },
-      });
-      activity.submitted = true;
-      const result = await entry.client.call(
-        "session/prompt",
-        { sessionId: entry.nativeId, prompt: promptBlocks },
-        0,
-      );
-      activity.contextAccepted =
-        contextPending && result.stopReason !== "cancelled";
-      flushAcpMessage(activity, notify);
-      const lastAction = turn.items.findLast(({ type }) =>
-        ["agentMessage", "mcpToolCall", "fileChange"].includes(type),
-      );
-      if (lastAction?.type === "mcpToolCall" && lastAction.status === "failed")
-        activity.error ||= `Antigravity 在工具「${lastAction.tool}」失败后结束了本轮。`;
-      turn.status =
-        activity.cancelled || result.stopReason === "cancelled"
-          ? "interrupted"
-          : activity.error
-            ? "failed"
-            : result.stopReason === "end_turn"
-              ? "completed"
-              : "failed";
-      if (turn.status === "failed")
-        turn.error = {
-          message: activity.error || "agy 结束原因：" + result.stopReason,
-        };
-      if (record.noticeId) await execution.finishNotice(record.noticeId, turn);
-    } catch (error) {
-      flushAcpMessage(activity, notify);
-      turn.status = activity.cancelled ? "interrupted" : "failed";
-      if (!activity.cancelled) turn.error = { message: error.message };
-    } finally {
-      try {
-        if (!ignored) {
-          turn.completedAt = nowSeconds();
-          await store.change((data) => {
-            const s = store.session(data, session.id);
-            const index = s.turns.findIndex(({ id }) => id === turn.id);
-            if (index === -1) s.turns.push(turn);
-            else s.turns[index] = turn;
-            s.updatedAt = turn.completedAt;
-            if (activity.contextAccepted) delete s.nativeContextPending;
-            if (!s.name && activity.title) s.name = activity.title;
-            if (activity.usage)
-              s.tokenUsage = {
-                last: { totalTokens: activity.usage.used },
-                modelContextWindow: activity.usage.size,
-              };
-          });
-          for (const item of turn.items.slice(initialItemCount))
-            notify("item/completed", { turnId: turn.id, item });
-          if (!session.name && activity.title)
-            notify("thread/name/updated", { threadName: activity.title });
-          if (activity.usage)
-            notify("thread/tokenUsage/updated", {
-              turnId: turn.id,
-              tokenUsage: {
-                last: { totalTokens: activity.usage.used },
-                modelContextWindow: activity.usage.size,
-              },
-            });
-          notify("turn/completed", { turn });
-        }
-      } finally {
-        active.delete(session.id);
-        const entry = entries.get(session.id);
-        if (entry) idle(session.id, entry);
-        done.resolve();
-      }
-    }
-    return { turn, compacted: activity.compacted };
+    });
+    await applyAcpSelection(entry, {}, session);
+    idle(session.id, entry);
+    return entry;
   }
-  function cancelActive(id) {
-    const activity = active.get(id);
-    if (!activity || activity.cancelled) return;
-    activity.cancelled = true;
-    activity.controller.abort();
-    const entry = entries.get(id);
-    if (activity.submitted && entry && !entry.client.closed)
-      entry.client.notify("session/cancel", { sessionId: entry.nativeId });
+
+  const { prompt, steer, cancelActive } = createAgyTurns({
+    active,
+    entries,
+    compactions,
+    store,
+    execution,
+    emit,
+    readRole,
+    prepareSession,
+    commands,
+    toolResults,
+    agentInfo: () => startup.agentInfo,
+    idle,
+  });
+  function toolResults(turns, nativeIds) {
+    restoreAgyToolResults(turns, nativeIds, startup?.agentInfo);
   }
   async function replace(session, record, input, blocks) {
     const id = session.id;
@@ -470,28 +380,62 @@ export function createAcpSessions({
       client.close();
     }
   }
+  function discardSession(id) {
+    const entry = entries.get(id);
+    if (entry) discard(id, entry);
+  }
+  async function closeForHistory(id) {
+    const entry = entries.get(id);
+    if (!entry) return;
+    try {
+      await entry.open;
+      if (!entry.client.closed)
+        await entry.client.call("session/close", { sessionId: entry.nativeId });
+    } finally {
+      discard(id, entry);
+      await entry.client.exited;
+    }
+  }
   return {
     connect,
     open,
     prompt,
+    steer,
     replace,
     replay,
     active,
     pending,
+    rewriting,
+    prepareHistory,
+    toolResults,
     entries,
     tokens,
     catalogue: catalogue.get,
+    commands: (id) => commands(entries.get(id)),
+    promptCapabilities: () => startup?.agentCapabilities?.promptCapabilities,
+    compactions: compactions.entries,
+    compact: createAgySessionCompaction({
+      store,
+      active,
+      compactions,
+      launchDir,
+      emit,
+      readRole,
+      discard: discardSession,
+      spawn,
+      initialize,
+    }),
     error: () => connectionError,
-    busy: (id) => active.has(id) || pending.has(id),
+    busy: (id) => active.has(id) || pending.has(id) || rewriting.has(id),
     interrupt(id) {
       pending.delete(id);
       cancelActive(id);
     },
-    discard(id) {
-      const entry = entries.get(id);
-      if (entry) discard(id, entry);
-    },
+    discard: discardSession,
+    closeForHistory,
+    agentInfo: () => startup?.agentInfo,
     close() {
+      for (const id of active.keys()) cancelActive(id);
       catalogue.close();
       catalogueClient?.close();
       for (const [id, entry] of entries) discard(id, entry);

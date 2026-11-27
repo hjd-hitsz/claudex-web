@@ -442,13 +442,14 @@ try {
   await until(
     async () =>
       (await rpc("lan/compaction/check", { threadId: thread.id })).compaction
-        ?.commandFinished,
-    "整理命令回执",
+        ?.status === "completed",
+    "整理检查点完成",
   );
   assert(
     events.some(
       ({ method, params }) =>
-        method === "lan/compaction" && params.compaction?.commandFinished,
+        method === "lan/compaction" &&
+        params.compaction?.status === "completed",
     ),
   );
   const { thread: branch } = await rpc("thread/fork", {
@@ -732,7 +733,7 @@ try {
     if (mode === "RUNNING")
       await until(() => takeovers[target].entered, "旧执行进入模型");
     const approval = previous.request?.localId;
-    await send(
+    const updated = await send(
       target === "codex" ? "turn/steer" : "turn/start",
       "AGY_REPLACE。你负责后续汇报，SECRETARY_FOLLOWUP_ONLY。",
       secretary.id,
@@ -788,13 +789,19 @@ try {
       );
     }
     if (target === "codex") {
+      assert.equal(updated.turnId, secretary.id);
       const { thread } = await rpc("thread/read", {
         threadId: parent.id,
         includeTurns: true,
       });
+      const secretaryTurn = thread.turns.find(({ id }) => id === secretary.id);
+      assert.equal(secretaryTurn.status, "completed");
       assert.equal(
-        thread.turns.find(({ id }) => id === secretary.id).status,
-        "interrupted",
+        secretaryTurn.items.filter(
+          ({ type, content }) =>
+            type === "userMessage" && content[0].text.includes("AGY_REPLACE"),
+        ).length,
+        1,
       );
     }
     console.log(

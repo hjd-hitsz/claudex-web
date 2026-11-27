@@ -14,6 +14,7 @@ import { parseUserMessage } from "../../domain/user-message.js";
 import { CodeFileAttachments } from "../composer/code-file-attachments.jsx";
 export function Content({ content, cwd }) {
   const parsed = parseUserMessage(content);
+  const files = parsed.attachments.filter(({ type }) => type === "file");
   parsed.text = planApprovalLabel(parsed.text);
   return (
     <>
@@ -60,6 +61,13 @@ export function Content({ content, cwd }) {
             {c.name}
           </span>
         ) : null,
+      )}
+      {files.length > 0 && (
+        <div className="user-reference-list">
+          {files.map((file, index) => (
+            <FileReference key={index} file={file} />
+          ))}
+        </div>
       )}
     </>
   );

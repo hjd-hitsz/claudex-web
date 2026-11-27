@@ -22,6 +22,18 @@
 
 请根据任务按需读取。
 
+## 用户选择的技能 <!-- prompt: selectedSkill -->
+
+用户为当前请求选择了技能 {{name}}。以下是该技能的 SKILL.md 正文，请按当前任务应用。
+
+{{text}}
+
+## 二进制附件编码 <!-- prompt: binaryResource -->
+
+此附件的原始媒体类型为 {{mimeType}}，以下 Base64 内容保留附件的全部字节。
+
+{{base64}}
+
 ## 旧版本机文件或目录读取提示 <!-- prompt: legacyReadFile -->
 
 请根据任务按需读取。
