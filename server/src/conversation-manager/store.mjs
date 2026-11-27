@@ -56,6 +56,10 @@ export async function openConversationStore(directory) {
       CREATE INDEX IF NOT EXISTS conversation_pending
         ON messages (recipient_runtime, status, sequence)
         WHERE status IN ('accepted', 'queued', 'unknown');
+      CREATE INDEX IF NOT EXISTS conversation_waiting
+        ON messages (sender_runtime, sender)
+        WHERE json_extract(record, '$.waitingForReply') = 1
+          AND status <> 'failed';
     `);
     db.prepare(
       "INSERT OR IGNORE INTO conversation_settings VALUES ('gateway_key', ?)",
@@ -95,14 +99,38 @@ export async function openConversationStore(directory) {
     WHERE recipient_runtime = ? AND status IN ('accepted', 'queued', 'unknown')
     ORDER BY sequence
   `);
+  const activity = db.prepare(`
+    SELECT recipient AS threadId, 'collaborating' AS activity FROM messages
+      WHERE recipient_runtime = $runtime
+        AND status IN ('accepted', 'dispatching', 'queued', 'unknown')
+    UNION
+    SELECT sender, 'collaborating' FROM messages
+      WHERE sender_runtime = $runtime
+        AND status IN ('accepted', 'dispatching', 'queued', 'unknown')
+    UNION
+    SELECT sender, 'waitingForPeer' FROM messages AS outgoing
+      WHERE sender_runtime = $runtime AND status <> 'failed'
+        AND json_extract(record, '$.waitingForReply') = 1
+        AND NOT EXISTS (
+          SELECT 1 FROM messages
+            WHERE reply_to = outgoing.id AND status = 'delivered'
+        )
+  `);
+  const stopWaiting = db.prepare(`
+    UPDATE messages SET record = json_set(record, '$.waitingForReply', 0)
+    WHERE id = ?
+  `);
   function record(row) {
     if (!row) return null;
-    const { from, to, body, acceptedAt } = JSON.parse(row.record);
+    const { from, to, body, acceptedAt, expectReply, waitingForReply } =
+      JSON.parse(row.record);
     return {
       from: { ...from, runtimeId: row.sender_runtime, threadId: row.sender },
       to: { ...to, runtimeId: row.recipient_runtime, threadId: row.recipient },
       body,
       acceptedAt,
+      expectReply: Boolean(expectReply),
+      waitingForReply: Boolean(waitingForReply),
       id: row.id,
       requestId: row.request,
       replyTo: row.reply_to,
@@ -112,12 +140,20 @@ export async function openConversationStore(directory) {
     };
   }
   const snapshot = ({ title, cwd }) => ({ title, cwd });
-  function messageData(from, to, body, acceptedAt) {
+  function messageData(
+    from,
+    to,
+    body,
+    acceptedAt,
+    expectReply,
+    waitingForReply,
+  ) {
     return JSON.stringify({
       from: snapshot(from),
       to: snapshot(to),
       body,
       acceptedAt,
+      ...(expectReply && { expectReply, waitingForReply }),
     });
   }
   return {
@@ -130,7 +166,7 @@ export async function openConversationStore(directory) {
     existing(sender, requestId) {
       return record(request.get(sender.runtimeId, sender.threadId, requestId));
     },
-    insert(requestId, replyTo, from, to, body) {
+    insert(requestId, replyTo, from, to, body, expectReply = false) {
       const id = randomUUID();
       insert.run(
         id,
@@ -140,12 +176,23 @@ export async function openConversationStore(directory) {
         to.threadId,
         requestId,
         replyTo,
-        messageData(from, to, body, new Date().toISOString()),
+        messageData(
+          from,
+          to,
+          body,
+          new Date().toISOString(),
+          expectReply,
+          expectReply,
+        ),
       );
       return record(request.get(from.runtimeId, from.threadId, requestId));
     },
-    claim({ id, from, to, body, acceptedAt }) {
-      claim.run(messageData(from, to, body, acceptedAt), id);
+    claim({ id, from, to, body, acceptedAt, expectReply }) {
+      const { waitingForReply } = record(get.get(id));
+      claim.run(
+        messageData(from, to, body, acceptedAt, expectReply, waitingForReply),
+        id,
+      );
     },
     update(id, status, receipt = {}) {
       update.run(status, JSON.stringify(receipt), id);
@@ -156,6 +203,8 @@ export async function openConversationStore(directory) {
         .map(record),
     replies: (id) => replies.all(id).map(record),
     pending: (runtime) => pending.all(runtime).map(record),
+    activity: (runtime) => activity.all({ runtime }),
+    stopWaiting: (id) => stopWaiting.run(id),
     close: () => db.close(),
   };
 }

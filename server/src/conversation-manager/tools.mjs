@@ -77,7 +77,11 @@ export const conversationTools = [
     inputSchema: {
       type: "object",
       properties: {
-        action: { enum: ["send", "reply", "status", "inbox"] },
+        action: { enum: ["send", "reply", "status", "inbox", "stop_waiting"] },
+        expectReply: {
+          type: "boolean",
+          description: descriptions("expectReply"),
+        },
         threadId: {
           ...text,
           description: descriptions("destinationThreadId"),
@@ -123,6 +127,7 @@ export function conversationArguments(name, args = {}) {
     if (
       !spec ||
       (spec.enum && !spec.enum.includes(value)) ||
+      (spec.type === "boolean" && typeof value !== "boolean") ||
       (spec.type === "string" &&
         (typeof value !== "string" ||
           value.trim().length < spec.minLength ||

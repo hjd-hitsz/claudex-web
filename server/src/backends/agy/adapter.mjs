@@ -375,6 +375,11 @@ export function createAgyAdapter({
           activeTurns: Object.fromEntries(
             [...sessions.active].map(([id, { turn }]) => [id, turn.id]),
           ),
+          queuedInputs: Object.fromEntries(
+            [...sessions.pending].filter(
+              ([id, turnId]) => sessions.active.get(id)?.turn.id !== turnId,
+            ),
+          ),
           compactions: Object.fromEntries(compactions),
           undoneFiles: [...files.undoneFiles.values()],
         },

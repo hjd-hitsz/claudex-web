@@ -1,5 +1,6 @@
 import { backgroundTaskViews } from "./background-task-views.mjs";
 import { createCodexBackgroundActivity } from "./background-activity.mjs";
+import { observeCodexWork } from "./native-activity.mjs";
 import {
   backgroundParams,
   backgroundTerminals,
@@ -32,6 +33,7 @@ import type {
   RpcMessage,
 } from "./native-protocol.d.mts";
 import type { CodexClient } from "./upstream.mjs";
+import { requestActivity } from "../../conversation-manager/request-activity.mjs";
 
 const conversationUserRequests = new Set([
   "item/commandExecution/requestApproval",
@@ -166,6 +168,13 @@ export function createCodexAdapter({
     if (!threadMethods.has(method)) {
       return enabled ? backgroundTurnParams(method, params) : params;
     }
+    if (
+      method !== "thread/resume" &&
+      (params.threadSource == null ||
+        params.threadSource === "claudex-web-projectless" ||
+        params.threadSource === "codex-web-projectless")
+    )
+      params = { ...params, threadSource: "user" };
     return subagentModelParams(
       method,
       backgroundParams(
@@ -236,6 +245,13 @@ export function createCodexAdapter({
     transport,
     subscriptions,
     backgroundActivity,
+    observeNativeWork: (threadId: string) =>
+      observeCodexWork(transport, threadId),
+    requestActivities: (threadId: string) =>
+      [...questions.values()].flatMap(({ method, params }) => {
+        const activity = requestActivity(method, params);
+        return params?.threadId === threadId && activity ? [activity] : [];
+      }),
     busy: (threadId: string, replying: boolean) =>
       compactions.busy(threadId) ||
       files.undoing.has(threadId) ||

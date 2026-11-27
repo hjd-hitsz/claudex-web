@@ -707,6 +707,8 @@ try {
   assert.deepEqual(backgroundActivity, {
     threadId: thread.id,
     status: "background",
+    activities: ["background"],
+    delegating: false,
     generating: false,
     background: true,
     live: true,

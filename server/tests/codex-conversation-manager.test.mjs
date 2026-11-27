@@ -109,6 +109,37 @@ test("discovers native loaded active threads and preserves available metadata", 
   });
 });
 
+test("attributes a native child session's work to its unloaded parent", async () => {
+  let childStatus = "active";
+  const { manager } = fixture({
+    "thread/loaded/list": () => ({ data: [target.threadId] }),
+    "thread/backgroundTerminals/list": () => ({ data: [] }),
+    "thread/read": ({ threadId }) => ({
+      thread: {
+        id: threadId,
+        cwd: sender.cwd,
+        ...(threadId === target.threadId
+          ? {
+              parentThreadId: sender.threadId,
+              canAcceptDirectInput: false,
+              status: { type: childStatus },
+            }
+          : { status: { type: "notLoaded" } }),
+      },
+    }),
+  });
+  const { threads } = await manager.observeThreads();
+  assert.deepEqual(
+    threads.map(({ threadId, activities }) => ({
+      threadId,
+      activities,
+    })),
+    [{ threadId: sender.threadId, activities: ["subAgents"] }],
+  );
+  childStatus = "idle";
+  assert.deepEqual((await manager.observeThreads()).threads, []);
+});
+
 test("defers a running recipient and submits an idle recipient at tool authority", async () => {
   let active = true;
   const { manager, calls, resumes, released } = fixture({

@@ -1,7 +1,7 @@
 import { formatConversationMessage } from "../../conversation-manager/message.mjs";
 import { claudeConversationServerName } from "../../conversation-manager/tools.mjs";
 import { nativeProcessesAlive } from "./process-ownership.mjs";
-import { runningBackgroundTask } from "./background-tasks.mjs";
+import { runningBackgroundTask, shellTask } from "./background-tasks.mjs";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -39,9 +39,16 @@ export function claudeConversationAdapter({
   readSession,
   assertReady,
 }) {
-  function status(s) {
-    if ([...questions.values()].some((q) => q.threadId === s.id))
-      return "waitingForInput";
+  function waits(id) {
+    return [...questions.values()]
+      .filter((question) => question.threadId === id)
+      .map(({ permission }) =>
+        permission ? "waitingForApproval" : "waitingForInput",
+      );
+  }
+  function status(s, pending = waits(s.id)) {
+    if (pending.includes("waitingForApproval")) return "waitingForApproval";
+    if (pending.length) return "waitingForInput";
     const process = runtime.queries.get(s.id);
     if (
       runtime.running.has(s.id) ||
@@ -111,17 +118,28 @@ export function claudeConversationAdapter({
       const sessions = (await storage.read()).sessions;
       const threads = Object.values(sessions).flatMap((session) => {
         if (!managed(session)) return [];
-        const state = status(session);
-        return state
+        const activities = waits(session.id);
+        const state = status(session, activities);
+        const tasks = Object.values(session.backgroundTasks || {}).filter(
+          runningBackgroundTask,
+        );
+        if (runtime.running.has(session.id)) activities.push("running");
+        if (session.queue?.some((entry) => entry.status === "queued"))
+          activities.push("queued");
+        if (session.goal?.status === "active") activities.push("goal");
+        if (tasks.some((task) => task.task_type === "local_agent"))
+          activities.push("subAgents");
+        if (compactions.busy(session.id)) activities.push("compacting");
+        if (files.undoing.has(session.id)) activities.push("reverting");
+        return state || activities.length
           ? [
               {
                 ...descriptor(session),
-                status: state,
+                status: state === "background" ? "idle" : (state ?? "idle"),
+                activities,
                 generating:
                   state === "running" && runtime.running.has(session.id),
-                background: Object.values(session.backgroundTasks || {}).some(
-                  runningBackgroundTask,
-                ),
+                background: tasks.some(shellTask),
               },
             ]
           : [];

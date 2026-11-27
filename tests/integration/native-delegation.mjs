@@ -13,6 +13,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createBackendConfiguration } from "../../server/src/backends/configuration.mjs";
 import { createBackendManager } from "../../server/src/backends/manager.mjs";
 import { createConversationManager } from "../../server/src/conversation-manager/manager.mjs";
+import { createDelegationActivity } from "../../server/src/backends/delegation/activity.mjs";
 import { messagesServer } from "../helpers/claude-messages-server.mjs";
 import { shutdownBrowserClaudeWorker } from "../helpers/claude-worker-cleanup.mjs";
 
@@ -52,6 +53,10 @@ const claudePrompt = "CLAUDE_PRESET_PROOF";
 const longClaudeRole =
   "Claude secretary instructions. ".repeat(110) + claudePrompt;
 const proof = { codex: {}, claude: {} };
+const executorGate = {
+  codex: Promise.withResolvers(),
+  claude: Promise.withResolvers(),
+};
 let expectedClaudeRole;
 const source = { codex: "CODEX_SOURCE_PROOF", claude: "CLAUDE_SOURCE_PROOF" };
 const requestArguments = (origin) => ({
@@ -143,6 +148,7 @@ const codex = createServer(async (request, response) => {
       answer = "CODEX_RETURNED_PROOF";
     }
   } else if (prompt.includes("[Claudex delegation step:")) {
+    await executorGate.codex.promise;
     proof.codex.executor = {
       model: body.model,
       effort: body.reasoning?.effort,
@@ -209,7 +215,7 @@ const codex = createServer(async (request, response) => {
 codex.listen(0, "127.0.0.1");
 await once(codex, "listening");
 
-const claude = await messagesServer((body) => {
+const claude = await messagesServer(async (body) => {
   const prompt = JSON.stringify(body.messages);
   const instructions = JSON.stringify(body.system);
   const tool = body.tools?.find(({ name }) => name === toolName);
@@ -259,6 +265,7 @@ const claude = await messagesServer((body) => {
     return [{ type: "text", text: "CLAUDE_RETURNED_PROOF" }];
   }
   if (prompt.includes("[Claudex delegation step:")) {
+    await executorGate.claude.promise;
     proof.claude.executor = {
       model: body.model,
       effort: body.output_config?.effort,
@@ -420,7 +427,11 @@ const replies = new Map();
 let manager;
 let conversations;
 async function start() {
-  conversations = createConversationManager({ configDir: root });
+  conversations = createConversationManager({
+    configDir: root,
+    readRuntime: () => manager.state().params,
+    readDelegations: createDelegationActivity(root, () => false),
+  });
   await conversations.start();
   manager = createBackendManager({
     config,
@@ -574,12 +585,31 @@ try {
       true,
     );
 
-    await rpc("turn/start", {
+    const { turn: delegationTurn } = await rpc("turn/start", {
       threadId: thread.id,
       model,
       ...provider,
       input: [{ type: "text", text: source[origin] }],
     });
+    await until(
+      () =>
+        events.some(
+          ({ method, params }) =>
+            method === "turn/completed" && params.turn.id === delegationTurn.id,
+        ),
+      origin + " 完成派单轮次",
+    );
+    const activity = async () =>
+      (await conversations.listActivity()).activities.find(
+        ({ threadId }) => threadId === thread.id,
+      );
+    const waiting = await until(async () => {
+      const observed = await activity();
+      return observed?.delegating && !observed.generating && observed;
+    }, origin + " 空闲主会话在专家执行期间持续活跃");
+    assert.equal(waiting.status, "delegating");
+    assert.equal(waiting.live, true);
+    executorGate[origin === "codex" ? "claude" : "codex"].resolve();
     await until(() => proof[origin].result, origin + " 收到委派执行结果");
     await until(
       () =>
@@ -593,6 +623,10 @@ try {
             ),
         ),
       origin + " 发起端完成结果回复",
+    );
+    await until(
+      async () => !(await activity())?.live,
+      origin + " 回投完成后退出活动列表",
     );
     assert.equal(
       proof[origin].lookup,
@@ -738,6 +772,7 @@ try {
   console.log(
     "Codex → Claude Code 和 Claude Code → Codex 原生 MCP 双向委派及步骤查询通过",
   );
+  console.log("双向委派发起会话在派单轮次结束后持续活跃，结果回投结算后退出");
   console.log(
     "原生模型请求中的秘书角色、项目说明与常规工具通过核对，Claude Bash 和 Write 均可执行",
   );
@@ -766,6 +801,7 @@ try {
   });
   throw error;
 } finally {
+  for (const gate of Object.values(executorGate)) gate.resolve();
   for (const [threadId, turnId] of Object.entries(
     manager?.state().params.activeTurns || {},
   ))

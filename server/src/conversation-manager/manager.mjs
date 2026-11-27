@@ -6,6 +6,7 @@ import {
   conversationLifecycle,
   createConversationActivity,
   listConversationActivities,
+  createActivitySource,
 } from "./activity.mjs";
 import {
   conversationArguments,
@@ -47,10 +48,6 @@ function decodeAddress(value = "") {
 
 function sameAddress(left, right) {
   return left.runtimeId === right.runtimeId && left.threadId === right.threadId;
-}
-
-function canRoute(senderRuntime, recipientRuntime) {
-  return senderRuntime === recipientRuntime;
 }
 
 function threadInfo(thread, { runtimeId, threadId }) {
@@ -102,12 +99,17 @@ function validateKeys(args, fields) {
 
 export function createConversationManager({
   configDir,
+  readRuntime = () => ({}),
+  readDelegations = async () => [],
   retryMs = 5000,
   reportError = (error) =>
     console.error("Conversation manager:", error.message),
 }) {
   const backends = new Map();
-  const observe = createConversationActivity();
+  const activitySource = createActivitySource(readRuntime, readDelegations);
+  const observe = createConversationActivity((runtimeId) =>
+    store.activity(runtimeId),
+  );
   const processing = new Map();
   const reconciliationDue = new Map();
   let closed = false;
@@ -177,45 +179,35 @@ export function createConversationManager({
       };
     };
     const workspace = project(callerEntry, caller);
-    const sameWorkspace = (candidateRuntime, entry, thread) => {
-      const candidate = project(entry, thread);
+    const sameWorkspace = (thread) => {
+      const candidate = project(callerEntry, thread);
       return (
         (workspace.path && candidate.path === workspace.path) ||
-        (caller.runtimeId === candidateRuntime &&
-          workspace.id &&
-          candidate.id === workspace.id)
+        (workspace.id && candidate.id === workspace.id)
       );
     };
-    const results = await Promise.all(
-      [...backends]
-        .filter(([runtimeId]) => canRoute(caller.runtimeId, runtimeId))
-        .map(async ([runtimeId, entry]) => {
-          const result = await observe(entry);
-          const threads = result.threads
-            .filter(
-              (thread) =>
-                (thread.live || thread.status === "unknown") &&
-                !sameAddress(
-                  { runtimeId, threadId: thread.threadId },
-                  caller,
-                ) &&
-                (scope === "global" ||
-                  sameWorkspace(runtimeId, entry, thread)) &&
-                stringFilter(thread.title, args.title) &&
-                (!directoryFilter || thread.cwd?.includes(directoryFilter)),
-            )
-            .map((thread) => ({
-              ...publicThread({ ...thread, runtimeId }),
-              status: thread.status,
-            }));
-          return { threads, complete: result.complete };
-        }),
-    );
+    const snapshot = await activitySource.snapshot();
+    const { runtimeId } = caller;
+    const result = await observe(callerEntry, runtimeId, snapshot);
+    const threads = result.threads
+      .filter(
+        (thread) =>
+          (thread.live || thread.status === "unknown") &&
+          thread.threadId !== caller.threadId &&
+          (scope === "global" || sameWorkspace(thread)) &&
+          stringFilter(thread.title, args.title) &&
+          (!directoryFilter || thread.cwd?.includes(directoryFilter)),
+      )
+      .map((thread) => ({
+        ...publicThread({ ...thread, runtimeId }),
+        status: thread.status,
+        ...(thread.activities.length > 1 && { activities: thread.activities }),
+      }));
     current(caller.runtimeId, callerEntry);
     return {
       scope,
-      threads: results.flatMap((result) => result.threads),
-      complete: results.every((result) => result.complete),
+      threads,
+      complete: snapshot.complete && result.complete,
     };
   }
 
@@ -224,7 +216,7 @@ export function createConversationManager({
     validateKeys(
       args,
       sending
-        ? ["threadId", "body", "requestId"]
+        ? ["threadId", "body", "requestId", "expectReply"]
         : ["replyTo", "body", "requestId"],
     );
     const requestId = args.requestId ?? callId;
@@ -240,14 +232,15 @@ export function createConversationManager({
     const recipient = sending
       ? decodeAddress(args.threadId)
       : participant(replyTo, sender, true).from;
-    if (!canRoute(sender.runtimeId, recipient.runtimeId))
+    if (sender.runtimeId !== recipient.runtimeId)
       throw new Error("请选择同一后端的会话标识");
     if (sameAddress(sender, recipient)) throw new Error("请选择另一个会话");
     const summarize = (item) => {
       if (
         !sameAddress(item.to, recipient) ||
         item.replyTo !== replyTo ||
-        item.body !== args.body
+        item.body !== args.body ||
+        item.expectReply !== (args.expectReply === true)
       )
         throw new Error("请求 ID 已用于其他消息");
       return {
@@ -267,6 +260,7 @@ export function createConversationManager({
       threadInfo(source, sender),
       threadInfo(recipient, recipient),
       args.body,
+      args.expectReply === true,
     );
     wake(recipient);
     return summarize(item);
@@ -304,6 +298,15 @@ export function createConversationManager({
         ...view(item),
         replies: store.replies(item.id).map(view),
       };
+    }
+    if (args.action === "stop_waiting") {
+      validateKeys(args, ["messageId"]);
+      if (!args.messageId) throw new Error("结束等待须提供消息 ID");
+      const item = participant(args.messageId, actor);
+      if (!sameAddress(item.from, actor))
+        throw new Error("只有发送方可以结束等待");
+      store.stopWaiting(item.id);
+      return { messageId: item.id, waitingForReply: false };
     }
     validateKeys(args, ["cursor", "limit"]);
     const limit = args.limit ?? 20;
@@ -456,8 +459,14 @@ export function createConversationManager({
     wakeThread,
     onNotification: (message) =>
       conversationLifecycle(message, wake, wakeThread),
-    listActivity: (readActiveTurns) =>
-      listConversationActivities(backends, observe, readActiveTurns),
+    trackRevert: activitySource.trackRevert,
+    async listActivity() {
+      return listConversationActivities(
+        backends,
+        observe,
+        await activitySource.snapshot(),
+      );
+    },
     async start() {
       try {
         await gateway.start();

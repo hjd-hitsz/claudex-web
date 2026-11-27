@@ -70,6 +70,7 @@ type WorkerOperations = {
     result: {
       threads: (ConversationThread & {
         status: string;
+        activities?: string[];
         background?: boolean;
         generating?: boolean;
       })[];

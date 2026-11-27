@@ -27,6 +27,15 @@ function activity(status) {
   return "running";
 }
 
+function discoverable(thread) {
+  return (
+    !thread.ephemeral &&
+    thread.canAcceptDirectInput !== false &&
+    !thread.archived &&
+    !thread.path?.split(/[\\/]/).includes("archived_sessions")
+  );
+}
+
 function isDelivery(item, envelope) {
   return (
     item.type === "functionCallOutput" &&
@@ -41,9 +50,12 @@ export function createCodexConversationManager({
   subscriptions,
   busy,
   backgroundActivity,
+  observeNativeWork,
+  requestActivities = /** @type {(threadId: string) => string[]} */ (() => []),
 }) {
   const leases = new Set();
   const reviewingTurns = new Map();
+  const knownWork = new Set();
 
   function release(lease) {
     if (leases.delete(lease)) lease.release();
@@ -69,9 +81,15 @@ export function createCodexConversationManager({
   async function observeThreads() {
     const activitySnapshot = await backgroundActivity();
     const threads = [];
+    const parents = new Set();
+    const observed = new Set();
     let { complete } = activitySnapshot;
     const candidates = [
-      ...new Set([...activitySnapshot.loaded, ...activitySnapshot.running]),
+      ...new Set([
+        ...activitySnapshot.loaded,
+        ...activitySnapshot.running,
+        ...knownWork,
+      ]),
     ];
     for (let offset = 0; offset < candidates.length; offset += 50) {
       const batch = candidates.slice(offset, offset + 50);
@@ -90,20 +108,61 @@ export function createCodexConversationManager({
         }
         const thread = result.value;
         if (
-          !thread ||
-          thread.ephemeral ||
-          thread.canAcceptDirectInput === false ||
-          thread.archived ||
-          thread.path?.split(/[\\/]/).includes("archived_sessions")
+          thread?.parentThreadId &&
+          (thread.status?.type === "active" ||
+            activitySnapshot.running.has(thread.id))
         )
+          parents.add(thread.parentThreadId);
+        if (!thread || !discoverable(thread)) {
+          knownWork.delete(batch[index]);
           continue;
+        }
+        const requests = requestActivities(thread.id);
         threads.push({
           ...conversationIdentity(thread),
-          status: activity(thread.status),
+          status: requests[0] ?? activity(thread.status),
           background: activitySnapshot.running.has(thread.id),
+          ...(requests.length
+            ? { activities: requests }
+            : thread.status?.activeFlags?.includes("waitingOnUserInput") &&
+              thread.status.activeFlags.includes("waitingOnApproval") && {
+                activities: ["waitingForInput"],
+              }),
         });
+        observed.add(thread.id);
       }
     }
+    const missingParents = [...parents].filter((id) => !observed.has(id));
+    for (let offset = 0; offset < missingParents.length; offset += 50) {
+      const entries = await Promise.allSettled(
+        missingParents.slice(offset, offset + 50).map(read),
+      );
+      for (const entry of entries) {
+        if (entry.status === "rejected") complete = false;
+        else if (entry.value && discoverable(entry.value))
+          threads.push({
+            ...conversationIdentity(entry.value),
+            status: activity(entry.value.status),
+          });
+      }
+    }
+    for (let offset = 0; offset < threads.length; offset += 50)
+      await Promise.all(
+        threads.slice(offset, offset + 50).map(async (thread) => {
+          const { threadId } = thread;
+          const details =
+            observeNativeWork && thread.status !== "unknown"
+              ? await observeNativeWork(threadId)
+              : { activities: [], complete: true };
+          complete &&= details.complete;
+          const activities = details.activities;
+          if (activities.length) knownWork.add(threadId);
+          else if (details.complete) knownWork.delete(threadId);
+          if (parents.has(threadId)) activities.push("subAgents");
+          if (activities.length)
+            thread.activities = [...(thread.activities ?? []), ...activities];
+        }),
+      );
     return { threads, complete };
   }
 
@@ -257,7 +316,12 @@ export function createCodexConversationManager({
     observeThreads,
     async readThread(threadId) {
       const thread = await read(threadId);
-      return thread ? conversationIdentity(thread) : null;
+      return thread
+        ? {
+            ...conversationIdentity(thread),
+            ...(!discoverable(thread) && { discoverable: false }),
+          }
+        : null;
     },
     deliver,
     reconcile,
@@ -265,6 +329,8 @@ export function createCodexConversationManager({
     onEvent({ method, params }) {
       const { threadId, turnId, item, turn } = params ?? {};
       if (!threadId) return;
+      if (["thread/queue/changed", "thread/goal/updated"].includes(method))
+        knownWork.add(threadId);
       const closed = [
         "thread/closed",
         "thread/deleted",

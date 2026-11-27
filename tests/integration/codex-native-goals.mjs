@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
+import { createCodexBackgroundActivity } from "../../server/src/backends/codex/background-activity.mjs";
+import { createCodexConversationManager } from "../../server/src/backends/codex/conversation-manager.mjs";
+import { observeCodexWork } from "../../server/src/backends/codex/native-activity.mjs";
 
 // 隔离原生目录；暂停目标验证协议及持久化，不发起模型请求。
 const root = await mkdtemp(join(tmpdir(), "codex-goals-"));
@@ -19,10 +22,19 @@ child.stderr.resume();
 const pending = new Map(),
   events = [];
 let sequence = 0;
+const transport = { ready: true, call };
+const conversations = createCodexConversationManager({
+  transport,
+  backgroundActivity: createCodexBackgroundActivity(transport),
+  observeNativeWork: (threadId) => observeCodexWork(transport, threadId),
+});
 const lines = createInterface({ input: child.stdout });
 lines.on("line", (line) => {
   const message = JSON.parse(line);
-  if (message.method) events.push(message);
+  if (message.method) {
+    events.push(message);
+    conversations.onEvent(message);
+  }
   const request = pending.get(message.id);
   if (!request) return;
   pending.delete(message.id);
@@ -53,6 +65,7 @@ try {
     config: { thread_unload_delay_secs: 0 },
   });
   const threadId = thread.id;
+  const activity = () => observeCodexWork({ call }, threadId);
   assert.equal((await call("thread/goal/get", { threadId })).goal, null);
   const result = await call("thread/goal/set", {
     threadId,
@@ -62,6 +75,7 @@ try {
     tokenBudget: 5000,
   });
   assert.equal(result.goal.status, "paused");
+  assert.deepEqual(await activity(), { activities: [], complete: true });
   assert.equal(
     (await call("thread/goal/get", { threadId })).goal.objective,
     "验证目标持久化",
@@ -88,10 +102,36 @@ try {
   assert(events.some((e) => e.method === "thread/closed"));
   assert.equal((await call("thread/goal/get", { threadId })).goal, null);
   assert(!(await call("thread/loaded/list", {})).data.includes(threadId));
+  const { queuedSubmission } = await call("thread/queue/add", {
+    threadId,
+    clientUserMessageId: "fixture-pending-input",
+    input: [{ type: "text", text: "验证排队输入", text_elements: [] }],
+  });
+  assert.deepEqual(await activity(), {
+    activities: ["queued"],
+    complete: true,
+  });
+  assert.deepEqual(
+    (await conversations.observeThreads()).threads.find(
+      (entry) => entry.threadId === threadId,
+    )?.activities,
+    ["queued"],
+  );
+  await call("thread/queue/delete", {
+    threadId,
+    queuedSubmissionId: queuedSubmission.id,
+  });
+  assert.deepEqual(await activity(), { activities: [], complete: true });
+  assert.equal(
+    (await conversations.observeThreads()).threads.find(
+      (entry) => entry.threadId === threadId,
+    )?.activities,
+    undefined,
+  );
   assert(!events.some((e) => e.method === "turn/started"));
   console.log(
     execFileSync("codex", ["--version"], { encoding: "utf8" }).trim(),
-    "native goal create/edit/read/clear passed; model calls: 0",
+    "native goal create/edit/read/clear and queue activity enter/exit passed; model calls: 0",
   );
 } finally {
   lines.close();

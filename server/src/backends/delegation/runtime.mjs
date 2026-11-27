@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { requestActivity } from "../../conversation-manager/request-activity.mjs";
 import { delegationSummaries } from "./delivery-summary.mjs";
 import { currentResultNotice, executing } from "./delegation-store.mjs";
 import {
@@ -10,15 +11,6 @@ import {
 import { createExecutors, executorLabel } from "./executors.mjs";
 import { readDelegationStep } from "./step-details.mjs";
 import { createDelegationExecution } from "./delegation-execution.mjs";
-
-const requestMethods = new Set([
-  "item/tool/requestUserInput",
-  "item/commandExecution/requestApproval",
-  "item/fileChange/requestApproval",
-  "item/permissions/requestApproval",
-  "mcpServer/elicitation/request",
-  "lan/agy/permission",
-]);
 
 export function createDelegationRuntime({
   store,
@@ -131,7 +123,7 @@ export function createDelegationRuntime({
     for (const event of questions)
       if (
         event.params?.threadId === task.executor.threadId &&
-        requestMethods.has(event.method)
+        requestActivity(event.method, event.params)
       )
         await recordRequest(task, event);
   }
@@ -143,7 +135,8 @@ export function createDelegationRuntime({
     }
     const threadId = event.params?.threadId;
     const history = isDelegationHistoryEvent(event);
-    const request = event.id !== undefined && requestMethods.has(event.method);
+    const request =
+      event.id !== undefined && requestActivity(event.method, event.params);
     const reconcile =
       event.method === "turn/completed" ||
       event.method === "thread/backgroundTerminals/updated";

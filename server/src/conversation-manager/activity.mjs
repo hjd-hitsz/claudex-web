@@ -2,107 +2,215 @@ import {
   resourceId,
   resourceTarget,
 } from "../../../shared/backend-identity.mjs";
+import { isCompacting } from "../../../shared/compaction-state.mjs";
+import { requestActivity } from "./request-activity.mjs";
 
-function projectConversationActivity(thread) {
+const activityOrder = [
+  "waitingForApproval",
+  "waitingForInput",
+  "compacting",
+  "reverting",
+  "running",
+  "queued",
+  "goal",
+  "background",
+  "delegating",
+  "subAgents",
+  "collaborating",
+  "waitingForPeer",
+];
+
+function projectConversationActivity(thread, extra = []) {
   const observed = thread.status ?? "unknown";
-  const background = thread.background ?? observed === "background";
-  const generating = thread.generating ?? observed === "running";
-  const status =
-    background && ["idle", "unknown"].includes(observed)
-      ? "background"
-      : observed;
+  const facts = new Set([...extra, ...(thread.activities ?? [])]);
+  if (activityOrder.includes(observed)) facts.add(observed);
+  if (thread.background) facts.add("background");
+  const activities = activityOrder.filter((activity) => facts.has(activity));
+  const status = activities[0] ?? (observed === "idle" ? "idle" : "unknown");
   return {
     ...thread,
+    activities,
     status,
-    background,
-    generating,
-    live: status !== "idle" && status !== "unknown",
+    generating:
+      !["compacting", "waitingForInput", "waitingForApproval"].some(
+        (activity) => facts.has(activity),
+      ) &&
+      (thread.generating ?? facts.has("running")),
+    background: facts.has("background"),
+    delegating: facts.has("delegating"),
+    live: activities.length > 0,
   };
 }
 
-export function createConversationActivity() {
+function addFact(facts, id, activity) {
+  const entries = facts.get(id) ?? new Set();
+  entries.add(activity);
+  facts.set(id, entries);
+}
+
+function runtimeActivityFacts({
+  activeTurns = {},
+  compactions = {},
+  questions = [],
+  queuedInputs = {},
+}) {
+  const facts = new Map();
+  for (const id of Object.keys(activeTurns)) addFact(facts, id, "running");
+  for (const [id, state] of Object.entries(compactions))
+    if (isCompacting(state)) addFact(facts, id, "compacting");
+  for (const id of Object.keys(queuedInputs)) addFact(facts, id, "queued");
+  for (const { method, params } of questions) {
+    const activity = requestActivity(method, params);
+    if (params?.threadId && activity) addFact(facts, params.threadId, activity);
+  }
+  return facts;
+}
+
+export function createActivitySource(readRuntime, readDelegations) {
+  const reverting = new Map();
+  return {
+    async snapshot() {
+      const [delegations] = await Promise.allSettled([readDelegations()]);
+      const runtime = readRuntime();
+      const facts = runtimeActivityFacts(runtime);
+      for (const id of reverting.keys()) addFact(facts, id, "reverting");
+      return {
+        activeTurns: runtime.activeTurns ?? {},
+        facts,
+        delegations:
+          delegations.status === "fulfilled" ? delegations.value : [],
+        complete: delegations.status === "fulfilled",
+      };
+    },
+    async trackRevert(threadId, execute) {
+      reverting.set(threadId, (reverting.get(threadId) ?? 0) + 1);
+      try {
+        return await execute();
+      } finally {
+        const remaining = reverting.get(threadId) - 1;
+        if (remaining) reverting.set(threadId, remaining);
+        else reverting.delete(threadId);
+      }
+    },
+  };
+}
+
+function backendFacts(entry, runtimeId, snapshot, peers) {
+  const facts = new Map();
+  for (const [resource, activities] of snapshot.facts) {
+    const { backendId, nativeId } = resourceTarget(resource);
+    if (backendId === entry.backendId) facts.set(nativeId, new Set(activities));
+  }
+  for (const { threadId, sourceRuntime } of snapshot.delegations) {
+    const { backendId, nativeId } = resourceTarget(threadId);
+    if (backendId === entry.backendId && sourceRuntime === runtimeId)
+      addFact(facts, nativeId, "delegating");
+  }
+  for (const { threadId, activity } of peers(runtimeId))
+    addFact(facts, threadId, activity);
+  return facts;
+}
+
+export function createConversationActivity(readPeers) {
   const pending = new WeakMap();
-  return async function observe(entry) {
+  return async function observe(entry, runtimeId, snapshot) {
     const adapter = entry.getAdapter();
     if (!adapter) return { threads: [], complete: false };
+    const facts = backendFacts(entry, runtimeId, snapshot, readPeers);
     let observation = pending.get(adapter);
     if (!observation) {
       observation = Promise.resolve()
         .then(() => adapter.observeThreads())
-        .then(({ threads, complete }) => ({
-          threads: threads.map(projectConversationActivity),
-          complete,
-        }))
         .finally(() => pending.delete(adapter));
       pending.set(adapter, observation);
     }
     const result = await observation;
-    return entry.getAdapter() === adapter
-      ? result
-      : { threads: [], complete: false };
+    const records = new Map(
+      result.threads.map((thread) => [thread.threadId, thread]),
+    );
+    let { complete } = result;
+    const missing = [...facts.keys()].filter((id) => !records.has(id));
+    for (let offset = 0; offset < missing.length; offset += 50) {
+      const ids = missing.slice(offset, offset + 50);
+      const identities = await Promise.allSettled(
+        ids.map((id) => adapter.readThread(id)),
+      );
+      for (const [index, identity] of identities.entries()) {
+        if (identity.status === "rejected") {
+          complete = false;
+          continue;
+        }
+        if (identity.value && identity.value.discoverable !== false)
+          records.set(ids[index], { ...identity.value, status: "idle" });
+      }
+    }
+    if (entry.getAdapter() !== adapter) return { threads: [], complete: false };
+    return {
+      complete,
+      threads: [...records.values()].map((record) =>
+        projectConversationActivity(record, facts.get(record.threadId)),
+      ),
+    };
   };
 }
 
-function webConversationActivities(results, activeTurns) {
-  const threads = new Map();
-  for (const [backendId, result] of results)
-    for (const record of result.threads) {
-      const threadId = resourceId(backendId, record.threadId);
-      const { status, generating, background, live } = record;
-      if (live || status === "unknown")
-        threads.set(threadId, {
-          threadId,
-          status,
-          generating,
-          background,
-          live,
-        });
-    }
-  for (const [threadId, turnId] of Object.entries(activeTurns)) {
-    const activity = threads.get(threadId);
-    if (activity?.live && activity.status !== "background")
-      activity.turnId = turnId;
-    else {
-      const { status, live, generating, background } =
-        projectConversationActivity({
-          status: "running",
-          background: activity?.background,
-        });
-      threads.set(threadId, {
-        threadId,
-        status,
-        live,
-        generating,
-        background,
-        turnId,
-      });
-    }
-  }
-  return [...threads.values()].sort((a, b) =>
-    a.threadId.localeCompare(b.threadId),
-  );
-}
-
-export async function listConversationActivities(
-  backends,
-  observe,
-  readActiveTurns,
-) {
+export async function listConversationActivities(backends, observe, snapshot) {
   const entries = [...backends].filter(([, entry]) => entry.enabled);
   const observed = await Promise.allSettled(
-    entries.map(([, entry]) => observe(entry)),
+    entries.map(([runtimeId, entry]) => observe(entry, runtimeId, snapshot)),
   );
-  const results = observed.flatMap((result, index) => {
+  const threads = new Map();
+  let complete = snapshot.complete;
+  for (const [index, result] of observed.entries()) {
     const [runtimeId, entry] = entries[index];
-    return result.status === "fulfilled" && backends.get(runtimeId) === entry
-      ? [[entry.backendId, result.value]]
-      : [];
-  });
+    if (result.status === "rejected" || backends.get(runtimeId) !== entry) {
+      complete = false;
+      continue;
+    }
+    complete &&= result.value.complete;
+    for (const record of result.value.threads)
+      threads.set(resourceId(entry.backendId, record.threadId), record);
+  }
+  // The ACP backend exposes runtime and delegation facts without a peer MCP adapter.
+  for (const [threadId, facts] of snapshot.facts)
+    if (resourceTarget(threadId).backendId === "agy")
+      threads.set(
+        threadId,
+        projectConversationActivity({ status: "idle" }, facts),
+      );
+  for (const { threadId } of snapshot.delegations)
+    if (resourceTarget(threadId).backendId === "agy") {
+      const facts = snapshot.facts.get(threadId) ?? [];
+      threads.set(
+        threadId,
+        projectConversationActivity({ status: "idle" }, [
+          ...facts,
+          "delegating",
+        ]),
+      );
+    }
   return {
-    activities: webConversationActivities(results, readActiveTurns()),
-    complete:
-      results.length === entries.length &&
-      results.every(([, result]) => result.complete),
+    activities: [...threads]
+      .filter(([, record]) => record.live || record.status === "unknown")
+      .map(
+        ([
+          threadId,
+          { status, activities, live, generating, background, delegating },
+        ]) => ({
+          threadId,
+          status,
+          activities,
+          live,
+          generating,
+          background,
+          delegating,
+          ...(snapshot.activeTurns[threadId] && {
+            turnId: snapshot.activeTurns[threadId],
+          }),
+        }),
+      )
+      .sort((a, b) => a.threadId.localeCompare(b.threadId)),
+    complete,
   };
 }
 

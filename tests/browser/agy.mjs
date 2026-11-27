@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
+import { testElicitation } from "./elicitation.mjs";
 import {
   openSettingsPage,
   settingsBackend,
@@ -133,6 +134,7 @@ function fixture() {
     localStorage.setItem("cx-backend", JSON.stringify("agy"));
   }
   window.fixtureRequests = [];
+  window.fixtureConversationActivities = [];
   window.holdAgyCatalogue = restoreDraft;
   const heldCatalogues = [];
   window.releaseAgyCatalogue = () => {
@@ -163,6 +165,12 @@ function fixture() {
     readyState = 1;
     constructor() {
       window.showFixturePermission = () => this.emit(permission);
+      window.showFixtureElicitation = (id, params) =>
+        this.emit({
+          id,
+          method: "mcpServer/elicitation/request",
+          params: { threadId: thread.id, turnId: turn.id, ...params },
+        });
       window.publishAgyCatalogue = () =>
         this.emit({
           method: "lan/agy/models",
@@ -228,8 +236,11 @@ function fixture() {
       if (method === "lan/agy/respond") {
         queueMicrotask(() => {
           if (
-            window.fixtureRequests.filter((r) => r.method === method).length ===
-            1
+            params.requestId === permission.id &&
+            window.fixtureRequests.filter(
+              (r) =>
+                r.method === method && r.params.requestId === permission.id,
+            ).length === 1
           ) {
             this.emit({
               id,
@@ -240,7 +251,7 @@ function fixture() {
           this.emit({ id, result: {} });
           this.emit({
             method: "serverRequest/resolved",
-            params: { requestId: permission.id },
+            params: { requestId: params.requestId },
           });
         });
         return;
@@ -257,6 +268,11 @@ function fixture() {
       if (id !== undefined) queueMicrotask(() => this.emit({ id, result }));
     }
     reply(method, p) {
+      if (method === "lan/conversations/activity")
+        return {
+          activities: window.fixtureConversationActivities,
+          complete: true,
+        };
       if (p.threadId === native.id) {
         if (method === "thread/read") return { thread: native };
         if (method === "thread/turns/list")
@@ -459,6 +475,87 @@ try {
   const delegate = page.getByRole("button", { name: /^本轮委派：/ });
   await delegate.waitFor();
   assert.equal(await delegate.count(), 1);
+  await testElicitation({ page, output });
+  if (process.env.ELICITATION_BROWSER_ONLY) {
+    assert.deepEqual(errors, []);
+    await context.close();
+    listener.close();
+    await rm(profile, { recursive: true, force: true });
+    process.exit(0);
+  }
+  await page.evaluate(() => {
+    window.fixtureConversationActivities = [
+      {
+        threadId: "backend:agy:secretary",
+        status: "delegating",
+        activities: ["delegating"],
+        live: true,
+        generating: false,
+        delegating: true,
+        background: false,
+      },
+    ];
+  });
+  const sourceRow = page
+    .locator(".running-threads .thread-row")
+    .filter({ hasText: "技术报告" });
+  const runningMark = sourceRow.getByRole("img", { name: "进行中" });
+  await runningMark.waitFor();
+  const threadSwitcher = page.getByRole("button", {
+    name: "切换对话，当前为 技术报告",
+  });
+  await threadSwitcher.click();
+  const sourceChoice = page
+    .getByRole("group", { name: "当前分组的对话" })
+    .getByRole("button", { name: "技术报告", exact: true });
+  await sourceChoice.locator(".conversation-switcher-status svg").waitFor();
+  assert.equal(await sourceChoice.getAttribute("aria-description"), "进行中");
+  await page.screenshot({
+    path: new URL("delegation-live-desktop.png", output).pathname,
+    animations: "disabled",
+  });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.screenshot({
+    path: new URL("delegation-live-desktop-dark.png", output).pathname,
+    animations: "disabled",
+  });
+  await threadSwitcher.press("Escape");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const showSidebar = page.getByRole("button", {
+    name: "显示侧栏",
+    exact: true,
+  });
+  await showSidebar.click();
+  await page.waitForFunction(
+    () =>
+      Math.abs(
+        document.querySelector(".sidebar").getBoundingClientRect().left,
+      ) < 1,
+  );
+  await runningMark.waitFor();
+  await page.screenshot({
+    path: new URL("delegation-live-mobile-dark.png", output).pathname,
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
+  await page.waitForFunction(
+    () => !document.activeElement?.closest(".sidebar"),
+  );
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.setViewportSize({ width: 1440, height: 980 });
+  await page.evaluate(() => {
+    window.fixtureConversationActivities = [];
+  });
+  await threadSwitcher.click();
+  await page
+    .locator('.conversation-switcher button[aria-description="已结束"]')
+    .waitFor();
+  assert.equal(await runningMark.count(), 0);
+  await page.screenshot({
+    path: new URL("delegation-ended-desktop.png", output).pathname,
+    animations: "disabled",
+  });
+  await threadSwitcher.press("Escape");
   assert.equal(await delegate.getAttribute("aria-label"), "本轮委派：Codex");
   const agyIcon = page.locator(".topbar .backend-badge[data-backend=agy] img");
   const avatar = page
@@ -527,15 +624,15 @@ try {
     )),
   );
   await page.screenshot({ path: new URL("delegation.png", output).pathname });
-  const process = execution.getByText("工作过程", { exact: true });
-  await process.click();
+  const workProcess = execution.getByText("工作过程", { exact: true });
+  await workProcess.click();
   await execution.getByTitle("nl -ba report.md").click();
   await execution.getByText("1 核对清单", { exact: true }).waitFor();
   await execution.getByText(/退出码 0/).waitFor();
   await page.screenshot({
     path: new URL("delegation-evidence.png", output).pathname,
   });
-  await process.click();
+  await workProcess.click();
   await page.evaluate(() => window.showFixturePermission());
   const allow = page.getByRole("button", { name: "允许一次", exact: true });
   await allow.waitFor();

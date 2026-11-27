@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import {
   resourceId,
   resourceTarget,
@@ -11,6 +10,7 @@ import { noticeResult } from "./call-chain.mjs";
 import { findDelegationTask, traceId } from "./trace-ids.mjs";
 import { executorLabel } from "./executors.mjs";
 import { createDelegationRuntime } from "./runtime.mjs";
+import { nativeDelegationStatePath } from "./activity.mjs";
 import { buildDelegationSelection, delegationBackends } from "./settings.mjs";
 
 const peerBackend = (id) => (id === "codex" ? "claude" : "codex");
@@ -24,14 +24,11 @@ export function createNativeDelegation({
   backendEntry,
   modes,
 }) {
-  const storage = createStorage(
-    join(config.configDir, "delegation", "state.json"),
-    {
-      tasks: {},
-      notices: {},
-      receipts: {},
-    },
-  );
+  const storage = createStorage(nativeDelegationStatePath(config.configDir), {
+    tasks: {},
+    notices: {},
+    receipts: {},
+  });
   const store = {
     ...storage,
     async change(change) {

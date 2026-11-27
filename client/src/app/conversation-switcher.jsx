@@ -3,6 +3,7 @@ import { MessageSquare } from "lucide-react";
 import { openThread, titleOf } from "../store.js";
 import {
   isThreadRunning,
+  runningThreadLabel,
   sidebarProjectGroups,
 } from "../domain/thread-order.js";
 import { resourceTarget } from "../../../shared/backend-identity.mjs";
@@ -36,14 +37,20 @@ export function ConversationSwitcher({ state, path }) {
         );
         return threads.map((thread) => {
           const running = isThreadRunning(thread, state);
+          const description = running
+            ? runningThreadLabel(thread, state)
+            : "已结束";
           return {
             value: thread.id,
             label: titleOf(thread),
-            description: running ? "进行中" : "已结束",
+            description,
             icon: (
               <span className="conversation-switcher-icons">
                 {hasRunning && (
-                  <span className="conversation-switcher-status">
+                  <span
+                    className="conversation-switcher-status"
+                    title={running ? description : undefined}
+                  >
                     {running && <ThreadRunningIcon />}
                   </span>
                 )}

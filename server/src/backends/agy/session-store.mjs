@@ -2,9 +2,10 @@ import { join } from "node:path";
 import { createStorage } from "../storage.mjs";
 
 export const nowSeconds = () => Date.now() / 1000;
+export const agySessionStatePath = (directory) => join(directory, "state.json");
 
 export function createAgyStore(directory) {
-  const storage = createStorage(join(directory, "state.json"), {
+  const storage = createStorage(agySessionStatePath(directory), {
     sessions: {},
     tasks: {},
     receipts: {},

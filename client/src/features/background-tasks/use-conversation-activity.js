@@ -17,7 +17,8 @@ export function useConversationActivity() {
             activity.status !== existing.status ||
             activity.turnId !== existing.turnId ||
             activity.background !== existing.background ||
-            activity.generating !== existing.generating
+            activity.generating !== existing.generating ||
+            activity.activities?.join() !== existing.activities?.join()
           );
         })
       )

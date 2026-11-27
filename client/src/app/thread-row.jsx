@@ -27,6 +27,7 @@ import {
 import {
   isArchivedThread,
   isThreadRunning,
+  runningThreadLabel,
   threadTime,
 } from "../domain/thread-order.js";
 import { isCompacting } from "../domain/compaction.js";
@@ -94,7 +95,7 @@ export function ThreadRow({ thread }) {
   const unread = !!s.unreadCompletions[thread.id];
   const pinned = s.pins.includes(thread.id);
   const status = running
-    ? "进行中"
+    ? runningThreadLabel(thread, s)
     : unread
       ? "已完成，未读"
       : pinned
@@ -165,7 +166,12 @@ export function ThreadRow({ thread }) {
         }}
       >
         {status && (
-          <span className="thread-status" role="img" aria-label={status}>
+          <span
+            className="thread-status"
+            role="img"
+            aria-label={status}
+            title={status}
+          >
             {running ? (
               <ThreadRunningIcon />
             ) : unread ? (

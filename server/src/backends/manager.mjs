@@ -152,6 +152,7 @@ export function createBackendManager({
           ...delegation.snapshot().pending,
         },
         activeTurns: merge("activeTurns"),
+        queuedInputs: merge("queuedInputs"),
         executionStatuses: merge("executionStatuses"),
         compactions: merge("compactions"),
         terminals: { ...merge("terminals"), ...workspace.snapshot() },

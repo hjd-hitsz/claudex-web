@@ -151,7 +151,9 @@ function discover(body) {
     "reply",
     "status",
     "inbox",
+    "stop_waiting",
   ]);
+  assert.equal(chat.input_schema.properties.expectReply.type, "boolean");
   assert.equal(chat.input_schema.properties.body.maxLength, 65536);
   return toolUse(toolNames.list, { scope: "workspace" }, "toolu_discover_b");
 }
@@ -249,6 +251,7 @@ const service = await messagesServer(async (body) => {
         threadId: target.threadId,
         requestId: "fixture-ask",
         body: "Fixture question body",
+        expectReply: true,
       },
       "toolu_send_question",
     );
@@ -470,6 +473,10 @@ const start = (threadId, text) =>
     threadId,
     input: turnText(text),
   });
+const activities = async (id) =>
+  (await bridge.manager.listActivity()).activities.find(
+    ({ threadId }) => threadId === "backend:claude:" + id,
+  )?.activities ?? [];
 const completed = (id) =>
   until(
     () =>
@@ -520,6 +527,7 @@ try {
     "B 忙碌时保留待投递消息",
   );
   assert.equal(native.asks, 0);
+  assert.deepEqual(await activities(a), ["collaborating", "waitingForPeer"]);
   const senderTool = native.calls.find((item) => item.args.action === "send");
   assert.deepEqual(senderTool.context, { threadId: a });
   assert.equal(
@@ -541,6 +549,7 @@ try {
     "问题原生投递",
   );
   await completed(question.messageId);
+  assert.deepEqual(await activities(a), ["waitingForPeer"]);
 
   await bridge.adapter.shutdown();
   bridge.adapter.close();
@@ -553,6 +562,7 @@ try {
   );
   bridge = await connect();
   assert.notEqual(bridge.adapter.workerPid, workerPid);
+  assert.deepEqual(await activities(a), ["waitingForPeer"]);
 
   await completed((await start(b, "Fixture B runs an unrelated turn")).turn.id);
   assert.equal(native.resumedInstruction, true);
@@ -568,6 +578,7 @@ try {
   );
   assert.equal(reply.replyTo, question.messageId);
   await completed(reply.messageId);
+  await until(async () => !(await activities(a)).length, "回复完成后退出活动");
   assert.equal(native.asks, 1);
   assert.equal(native.replies, 1);
   const replyTool = native.calls.find((item) => item.args.action === "reply");
@@ -683,6 +694,7 @@ try {
       sameTurnReplyAfterNativeTool: true,
       activeReplyReadWithoutPolling: true,
       nativePeerRequestAndReplyGuidance: true,
+      peerWaitPersistsUntilReply: true,
     }),
   );
 } finally {

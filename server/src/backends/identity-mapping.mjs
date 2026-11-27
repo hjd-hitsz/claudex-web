@@ -99,6 +99,7 @@ export function mapState(state, backendId) {
     );
   return {
     activeTurns: keyed(state.activeTurns),
+    queuedInputs: keyed(state.queuedInputs),
     executionStatuses: keyed(state.executionStatuses),
     compactions: keyed(state.compactions),
     terminals: keyed(state.terminals),

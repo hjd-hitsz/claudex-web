@@ -423,6 +423,7 @@ export function createAcpSessions({
   async function replace(session, record, input, blocks) {
     const id = session.id;
     pending.set(id, record.id);
+    emit({ method: "lan/turnQueue/updated", params: { threadId: id } });
     cancelActive(id);
     try {
       await active.get(id)?.done;
@@ -476,6 +477,7 @@ export function createAcpSessions({
     replace,
     replay,
     active,
+    pending,
     entries,
     tokens,
     catalogue: catalogue.get,

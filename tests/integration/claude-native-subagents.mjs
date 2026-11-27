@@ -101,7 +101,7 @@ try {
     }),
   );
   const turns = historyTurns(records);
-  const agents = await recoverAgents({ id, cwd }, turns, readSession);
+  const agents = await recoverAgents({ id, cwd }, turns, readSession, ids);
   const key = `agent/${id}/${ids[0]}`;
   assert.equal(agents[key].toolUseId, toolId);
   assert.match(agents[key].prompt, /CHILD_NATIVE_TASK_PROOF/);

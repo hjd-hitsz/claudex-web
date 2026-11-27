@@ -21,9 +21,18 @@ export function isThreadRunning(thread, { active, conversationActivity }) {
   return Boolean(
     active[thread.id] ||
     (observed?.live &&
-      (!observed.turnId || observed.background) &&
+      (!observed.turnId ||
+        observed.background ||
+        observed.activities?.some((activity) => activity !== "running")) &&
       !isArchivedThread(thread)),
   );
+}
+
+export function runningThreadLabel(thread, { conversationActivity }) {
+  const status = conversationActivity?.[thread.id]?.status;
+  if (status === "waitingForInput") return "等待用户输入";
+  if (status === "waitingForApproval") return "等待审批";
+  return "进行中";
 }
 
 export function sortThreads(threads, active = {}, conversationActivity) {
@@ -67,7 +76,7 @@ export function threadGroupPath(thread, projects, directories, root) {
       thread.threadSource,
     ) ||
       // 列表响应可能省略来源标记，通过网页创建者和专用自动目录恢复分类。
-      (thread.threadSource == null &&
+      ((thread.threadSource == null || thread.threadSource === "user") &&
         ["claudex_web", "codex_lan_web"].includes(thread.originator)));
   return directories[thread.id] === thread.cwd || webProjectless
     ? ""

@@ -6,6 +6,7 @@ import {
   questionReply,
 } from "../../domain/question-state.js";
 import { QuestionRecord, UserInputForm } from "./user-input.jsx";
+import { Elicitation } from "./elicitation.jsx";
 
 function raiseFailure(error) {
   throw error;
@@ -61,6 +62,10 @@ export function Question({ request }) {
   const [error, setError] = useState("");
   const input = request.method === "item/tool/requestUserInput";
   const executor = p.executorName;
+  if (request.method === "mcpServer/elicitation/request")
+    return (
+      <Elicitation key={request.id} request={request} connected={s.connected} />
+    );
   if (input)
     return (
       <div>

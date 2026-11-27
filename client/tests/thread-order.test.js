@@ -233,7 +233,7 @@ test("网页新建的无项目对话通过持久来源和独立目录分组，�
 
 test("列表缺少无项目来源时通过网页创建者与自动目录恢复分类，明确归属继续优先", () => {
   const root = "/custom/claudex-web/workspaces";
-  for (const threadSource of [null, undefined]) {
+  for (const threadSource of [null, undefined, "user"]) {
     const thread = {
       id: "web-list",
       cwd: root + "/chat-ABC123",

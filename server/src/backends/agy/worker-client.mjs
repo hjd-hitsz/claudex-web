@@ -60,6 +60,7 @@ export function createAgyWorkerAdapter({
         message.id !== undefined ||
         message.method === "turn/started" ||
         message.method === "turn/completed" ||
+        message.method === "lan/turnQueue/updated" ||
         message.method === "serverRequest/resolved" ||
         (message.method === "item/completed" &&
           message.params?.item?.delegation) ||

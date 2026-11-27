@@ -15,6 +15,10 @@ import { shutdownBrowserClaudeWorker } from "../helpers/claude-worker-cleanup.mj
 import { messagesServer } from "../helpers/claude-messages-server.mjs";
 import { taskRequest } from "../../packages/background-terminal/client.mjs";
 import { traceId } from "../../server/src/backends/delegation/trace-ids.mjs";
+import { createDelegationActivity } from "../../server/src/backends/delegation/activity.mjs";
+import { createActivitySource } from "../../server/src/conversation-manager/activity.mjs";
+import { mapState } from "../../server/src/backends/identity-mapping.mjs";
+import { resourceId } from "../../shared/backend-identity.mjs";
 
 const root = await mkdtemp(join(tmpdir(), "claudex-agy-delegation-"));
 const cwd = join(root, "workspace");
@@ -377,6 +381,10 @@ try {
     "原 agy 结束轮次",
   );
   assert.equal(Object.keys((await saved()).tasks).length, 1);
+  const delegationActivity = createDelegationActivity(root, () => true);
+  assert.deepEqual(await delegationActivity(), [
+    { threadId: "backend:agy:" + thread.id, sourceRuntime: undefined },
+  ]);
   worker.close();
   gate.resolve();
   worker = connect();
@@ -389,6 +397,11 @@ try {
     "秘书文档写入",
   );
   const after = (await saved()).tasks[task.id];
+  await until(
+    async () => !(await delegationActivity()).length,
+    "agy 结果回投结算后退出活动状态",
+  );
+  console.log("agy 主会话在专家执行期间保持委派活动，重连并回投结算后退出");
   assert.equal(worker.state().params.questions?.length, 0);
   const delegated = await rpc("thread/read", {
     threadId: "delegation/" + task.id,
@@ -472,6 +485,14 @@ try {
     "Claude 原生问题回到 agy",
   );
   assert.equal(question.params.executorName, "Claude Code");
+  const activity = createActivitySource(
+    () => mapState(worker.state().params, "agy"),
+    delegationActivity,
+  );
+  const mainWait = async () =>
+    (await activity.snapshot()).facts.get(resourceId("agy", thread.id));
+  assert.equal((await mainWait()).has("waitingForInput"), true);
+  assert.equal((await mainWait()).has("waitingForApproval"), false);
   assert.ok(
     executorPrompts.claude.some((prompt) =>
       prompt.includes("检查并报告具体证据"),
@@ -512,6 +533,11 @@ try {
     requestId: question.id,
     result: { answers: { 0: { answers: ["确认"] } } },
   });
+  await until(
+    async () => !(await mainWait())?.has("waitingForInput"),
+    "主会话退出输入等待",
+  );
+  console.log("PASS Claude 原生提问在秘书主会话归入等待输入，答复后清除");
   const claudeTask = await until(
     async () =>
       Object.values((await saved()).tasks).find(

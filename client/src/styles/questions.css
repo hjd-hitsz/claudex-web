@@ -92,6 +92,94 @@
   flex-wrap: wrap;
   align-items: center;
 }
+.elicitation-card {
+  font-size: var(--chat-font-size);
+  line-height: var(--chat-line-height);
+}
+.elicitation-card .request-title {
+  margin-bottom: 0.538462rem;
+  overflow-wrap: anywhere;
+}
+.elicitation-card .request-title svg,
+.elicitation-destination svg {
+  flex: none;
+}
+.elicitation-message {
+  margin: 0 0 1rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.elicitation-fields,
+.elicitation-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.elicitation-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 0.923077rem 1rem;
+}
+.elicitation-field > label,
+.elicitation-field > legend {
+  display: block;
+  margin: 0;
+  padding: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.elicitation-field > small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.923077rem;
+  line-height: var(--aux-line-height);
+  overflow-wrap: anywhere;
+}
+.elicitation-field > small[role="alert"] {
+  color: var(--red);
+}
+.elicitation-field > input,
+.elicitation-field > select {
+  width: 100%;
+  min-width: 0;
+  margin-top: 0.307692rem;
+  min-height: 2.615385rem;
+  padding: 0.384615rem 0.615385rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font: inherit;
+}
+.elicitation-field > [aria-invalid="true"] {
+  border-color: var(--red);
+}
+.elicitation-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.307692rem 0.923077rem;
+}
+.elicitation-choices label {
+  display: inline-flex;
+  gap: 0.384615rem;
+  align-items: center;
+  min-height: 2.307692rem;
+  overflow-wrap: anywhere;
+}
+.elicitation-destination {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.615385rem;
+  max-width: 100%;
+  padding: 0.384615rem 0.615385rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.elicitation-card .request-actions {
+  margin-top: 1rem;
+}
 .request-hint {
   color: var(--muted);
   font-size: 0.923077rem;

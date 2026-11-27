@@ -167,7 +167,10 @@ export function createUpstream({
               title: "Claudex Web",
               version: version.displayVersion,
             },
-            capabilities: { experimentalApi: true },
+            capabilities: {
+              experimentalApi: true,
+              extensions: { "openai/standard-form-input": {} },
+            },
           },
         }),
       ),

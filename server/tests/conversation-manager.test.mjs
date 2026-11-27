@@ -48,8 +48,12 @@ async function fixture(t, retryMs = 10) {
   });
   return {
     configDir,
-    create() {
-      const manager = createConversationManager({ configDir, retryMs });
+    create(options = {}) {
+      const manager = createConversationManager({
+        configDir,
+        retryMs,
+        ...options,
+      });
       managers.push(manager);
       return manager;
     },
@@ -86,7 +90,9 @@ async function eventually(check) {
 
 test("网页与 MCP 由同一会话活动判断区分后台任务和轮次", async (t) => {
   const context = await fixture(t);
-  const manager = context.create();
+  const manager = context.create({
+    readRuntime: () => ({ activeTurns: { a: "turn-a" } }),
+  });
   await manager.start();
   const terminal = {
     threadId: "b",
@@ -106,14 +112,15 @@ test("网页与 MCP 由同一会话活动判断区分后台任务和轮次", asy
     }),
   );
   manager.bindBackend({ ...profile("claude"), enabled: false }, () => null);
-  const readActiveTurns = () => ({ a: "turn-a" });
-  const { activities, complete } = await manager.listActivity(readActiveTurns);
+  const { activities, complete } = await manager.listActivity();
   assert.equal(complete, true);
   assert.deepEqual(activities, [
     {
       threadId: "a",
       turnId: "turn-a",
       status: "running",
+      activities: ["running"],
+      delegating: false,
       generating: true,
       background: false,
       live: true,
@@ -121,6 +128,8 @@ test("网页与 MCP 由同一会话活动判断区分后台任务和轮次", asy
     {
       threadId: "b",
       status: "background",
+      activities: ["background"],
+      delegating: false,
       generating: false,
       background: true,
       live: true,
@@ -132,7 +141,7 @@ test("网页与 MCP 由同一会话活动判断区分后台任务和轮次", asy
     [["后台终端", "background"]],
   );
   manager.bindBackend({ ...profile("claude"), enabled: true }, () => null);
-  assert.deepEqual(await manager.listActivity(readActiveTurns), {
+  assert.deepEqual(await manager.listActivity(), {
     activities,
     complete: false,
   });

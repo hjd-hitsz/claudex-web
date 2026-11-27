@@ -7,6 +7,7 @@ import { createHttpHandler } from "./http/router.mjs";
 import { createBusinessHttpHandler } from "./http/business.mjs";
 import { createBackendManager } from "./backends/manager.mjs";
 import { createConversationManager } from "./conversation-manager/manager.mjs";
+import { createDelegationActivity } from "./backends/delegation/activity.mjs";
 import { sendRpcText } from "./rpc-transport.mjs";
 import {
   createP2pService,
@@ -25,6 +26,12 @@ export function createWebApplication({
   let closing = false;
   const conversations = createConversationManager({
     configDir: config.configDir,
+    readRuntime: () => state().params,
+    readDelegations: createDelegationActivity(config.configDir, () =>
+      state().params.backends.some(
+        ({ id, enabled }) => id === "agy" && enabled,
+      ),
+    ),
   });
   const maintenance = createServiceMaintenance({
     config,
@@ -213,12 +220,20 @@ export function createWebApplication({
     });
   }
   async function receive(client, message) {
-    if (message.method !== "lan/conversations/activity")
+    if (message.method === "lan/conversations/activity") {
+      const result = await conversations.listActivity();
+      return send(client, { id: message.id, result });
+    }
+    const threadId = message.params?.threadId;
+    if (
+      message.method !== "lan/files/undo" ||
+      typeof threadId !== "string" ||
+      !threadId
+    )
       return bridge.receive(client, message);
-    const result = await conversations.listActivity(
-      () => state().params.activeTurns,
+    return conversations.trackRevert(threadId, () =>
+      bridge.receive(client, message),
     );
-    send(client, { id: message.id, result });
   }
   const heartbeat = setInterval(() => {
     for (const client of clients.clients) {

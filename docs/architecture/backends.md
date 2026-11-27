@@ -108,42 +108,35 @@ interface BackendAdapter {
 
 ### 3.1 会话活动状态机与多源归并 (`activity.mjs`)
 
-为根除多端状态割裂，管理器抽象出统一的状态投影函数 `projectConversationActivity(thread)`：
+`projectConversationActivity` 将各事实所有者提供的当前状态按会话合并。每项事实都独立进入 `activities`，数组有值时 `live` 为 `true`。单值 `status` 使用以下顺序中首项活动，活动清空后返回 `idle` 或保留来源的 `unknown`。
 
-```javascript
-const status =
-  background && ["idle", "unknown"].includes(observed)
-    ? "background"
-    : observed;
+| `activities` 优先顺序                   | 事实与退出条件                                                       |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `waitingForApproval`、`waitingForInput` | 原生或桥接交互请求仍待答复                                           |
+| `compacting`、`reverting`               | 上下文整理或文件撤销的运行生命周期                                   |
+| `running`、`queued`                     | 原生交互轮次或等待处理的运行时输入                                   |
+| `goal`                                  | 原生目标处于自动执行的 `active` 状态                                 |
+| `background`                            | 原生后台终端、Claude 后台命令或后台任务服务确认进程运行中            |
+| `delegating`                            | 主会话存在已接收、启动中、运行中、等待输入的委派，或委派结果正在回投 |
+| `subAgents`                             | 运行中的 Codex 子会话或 Claude 本地代理任务                          |
+| `collaborating`、`waitingForPeer`       | 合作消息仍在投递或核对，或发起方明确登记的回复等待尚未结束           |
 
-return {
-  ...thread,
-  status,
-  background,
-  generating,
-  live: status !== "idle" && status !== "unknown",
-};
-```
+生成、后台和委派事实分别以 `generating`、`background` 和 `delegating` 字段公开。审批、输入与整理期间可以保留进行中轮次，同时暂停 `generating` 指示。桥接保留 `turnId` 供网页跟踪实际轮次结束。
 
-#### 状态投影与流转规则：
+原会话与委派主会话采用同一请求分类。模型提问和普通 MCP elicitation 进入 `waitingForInput`，命令、文件、额外权限和明确标记为工具审批的请求进入 `waitingForApproval`。Codex 桥接声明 `openai/standard-form-input`，由原生运行时决定是否上报表单或 URL 请求。`approvalPolicy: "never"` 允许向符合条件的用户根会话下发表单，URL 请求仍受原生审批策略控制。
 
-1. **状态分类**：
-   - `generating`：底层运行时正在执行模型生成或流式输出；
-   - `background`：当前无活跃轮次（原生处于 `idle` 或 `unknown`），但存在关联的后台活跃终端/任务；
-   - `live`：只要 `status` 既非 `idle` 也非 `unknown`，即判定为 `live: true`；
-2. **卸载（Unloaded）会话事实找回机制（Codex 链路）**：
-   - Codex 适配器读取原生已加载会话列表（调用 `thread/backgroundTerminals/list`）；
-   - 后台任务服务通过任务持久化日志（`job-<UUID>.json`）的反查机制：根据文件变更发现记录并提取 `threadId`，向后台服务核实是否存在状态为 `running` 的实际任务；
-   - 确认有运行任务后，即使该会话在原生 app-server 中已被卸载（状态为 `notLoaded`），适配器仍通过 `thread/read { includeTurns: false }` 读取元数据，将其投影为 `status: "background"` 且 `live: true`；
-3. **网页活动快照发布 (`lan/conversations/activity`)**：
-   - 前端定时（页面可见且每轮读取结束后隔 3 秒）调用此接口获取 `{ activities, complete }`；
-   - 快照将底层各后端的活动事实与桥接当前跟踪的 `activeTurns` 进行合并，补齐 `turnId`，供侧栏与顶部切换器驱动展示。
+Codex 通过 `thread/loaded/list`、`thread/backgroundTerminals/list` 和 `thread/read` 组合原生会话及子会话元数据，通过 `thread/goal/get` 和 `thread/queue/list` 查询已加载、已发现或收到原生状态事件的会话。后台任务服务按落盘任务记录反查所属 `threadId`，向实际任务服务核实进程状态，再读取已卸载会话的元数据。委派投影按原生运行时和主会话 ID 索引持久化 `tasks` 与 `notices`，执行结果回投进入 `queued` 或 `submitting` 时继续保持活跃，直到回投结算。
+
+Claude Worker 提供运行中轮次、权限和输入等待、持久化输入队列、目标、整理、文件撤销和后台任务状态。Antigravity Worker 提供 ACP 轮次、替换旧轮次时等待提交的新输入、问题与整理事实，管理器从秘书状态文件读取持久化委派。网页交互终端按工作目录和终端进程 ID 寻址，独立于以会话 ID 挂载的后台工作。
+
+网页通过 `lan/conversations/activity` 获取跨已启用后端的 `{ activities, complete }` 快照。`list_active_threads` 使用同一投影查询调用者所在运行时的会话，返回 `status`，并为同时具有多种活动的会话返回 `activities`。
 
 ### 3.2 跨会话协作与通信账本 (`store.mjs` & `manager.mjs`)
 
 管理器通过内置的 SQLite 账本（`<configDir>/conversation-manager/messages.sqlite`）提供安全的会话间通信（`thread_chat`）：
 
 - **数据结构与去重**：`messages` 表以 `(sender_runtime, sender, request)` 为唯一键，防止重复派发；
+- **回复等待**：发起方调用 `thread_chat` 的 `send` 时可传 `expectReply: true`。管理器在账本中持久化等待状态，收到成功投递的关联回复、原消息投递失败或发起方调用 `stop_waiting` 时结束等待。`reply` 使用原消息 ID 关联；
 - **状态流转与退避重试**：
   - 投递调度经历 `accepted` $\rightarrow$ `dispatching` $\rightarrow$ `delivered` / `failed`；
   - 若提交中断或服务重启，残留的 `dispatching` 重置为 `unknown` 并进入回执核对；
