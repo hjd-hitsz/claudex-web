@@ -21,8 +21,8 @@ npm 全局命令所在目录需在 `PATH` 中，目标电脑的防火墙需允�
 从[目标版本 Release](https://github.com/hjd-hitsz/claudex-web/releases) 下载 `.tgz` 和同名 `.sha256` 文件，将两者放在同一目录，然后执行以下命令。
 
 ```bash
-sha256sum -c claudex-web-4.2.3.tgz.sha256
-npm install -g ./claudex-web-4.2.3.tgz
+sha256sum -c claudex-web-4.3.0.tgz.sha256
+npm install -g ./claudex-web-4.3.0.tgz
 ```
 
 仓库安装命令按 Git 标签选择最新稳定版源码；Release 的 `.tgz` 包含预构建网页资源，可用于固定版本安装。两种方式均通过 npm 获取运行依赖。
@@ -236,11 +236,11 @@ claudex-web service install
 claudex-web service restart-when-idle
 ```
 
-最后一个命令等待网页服务观察到的任务和上下文整理结束后自动重启，等待期间保持命令运行。Claude Code 独立执行服务继续保留后台任务，代码及配置更新在该服务完全空闲后完成。打开或隐藏的网页终端不会阻塞更新，等待程序只重启网页服务。切换 Node.js 版本或 npm prefix 后，也需重新安装服务并重启，以更新服务中的安装路径。
+最后一个命令提交空闲重启后返回，由独立的 systemd 用户单元等待网页服务观察到的任务和上下文整理结束，再重启网页服务。Claude Code 独立执行服务继续保留后台任务，代码及配置更新在该服务完全空闲后完成。打开或隐藏的网页终端不会阻塞更新。切换 Node.js 版本或 npm prefix 后，也需重新安装服务并重启，以更新服务中的安装路径。
 
 4.1.0、4.1.1 的网页更新若报 `spawn npm ENOENT`，在安装程序的服务账户下执行上述终端升级命令，安装 4.1.2 或后续版本并完成服务重启。新版本的网页更新任务会沿用服务的 Node.js/npm 路径及网络环境。
 
-日志显示实际等待的任务与上下文整理数量；执行重启后继续检查 `/healthz`，连接就绪时报告实际运行版本，重启或健康检查失败时保留失败状态。
+通过 `journalctl --user -u claudex-web-restart-when-idle.service` 查看等待进度和重启结果。单元在网页服务重启后检查 `/healthz`，连接就绪时报告实际运行版本，重启或健康检查失败时记录错误。
 
 升级后刷新网页，在“设置 → 更新与重启”核对产品版本。`claudex-web version --json` 查看当前磁盘安装包，`/healthz` 中的 `version` 查看实际运行的服务，便于确认重启是否生效。
 
