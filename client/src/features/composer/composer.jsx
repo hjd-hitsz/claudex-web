@@ -55,7 +55,7 @@ import { ComposerSurface } from "./composer-surface.jsx";
 import { SecretaryUpgrade } from "./secretary-upgrade.jsx";
 import { CodeFileAttachments } from "./code-file-attachments.jsx";
 import { ComposerActivity } from "./composer-activity.jsx";
-import { AgyContextUsage } from "./agy-context-usage.jsx";
+import { ContextUsage } from "./context-usage.jsx";
 import { sameDraftText } from "../../domain/code-line-reference.js";
 export function Composer({ inputRef }) {
   const [preview, setPreview] = useState(null);
@@ -121,8 +121,8 @@ export function Composer({ inputRef }) {
     );
   }
   const token = s.tokenUsage[s.current?.id];
-  const usage = token?.last?.totalTokens;
-  const windowSize = token?.modelContextWindow;
+  const turns = s.turns[s.current?.id];
+  const compactCount = s.current ? s.compactCounts[s.current.id] : 0;
   const access = s.threadAccess;
   const archived = access?.status === "archived";
   const checking = s.loading || access?.status === "checking";
@@ -453,28 +453,31 @@ export function Composer({ inputRef }) {
           <span>{s.projectless ? "未分类" : basename(s.cwd)}</span>
           <ChevronDown size={11} />
         </button>
-        {!matching && s.backendId === "agy" && token ? (
-          <AgyContextUsage
-            key={s.current?.id}
-            token={token}
-            turns={s.turns[s.current?.id]}
-          />
-        ) : (
-          <span className="context-info" role={matching ? "status" : undefined}>
-            {matching ? (
-              "正在匹配代码文件…"
-            ) : usage != null ? (
-              <>
-                上下文 {usage.toLocaleString()} /{" "}
-                {windowSize?.toLocaleString() ?? "—"} tokens
-                {windowSize > 0 &&
-                  `（${Math.round((usage / windowSize) * 100)}%）`}
-              </>
-            ) : unavailable ? null : (
-              "Ctrl + Enter 发送"
-            )}
-          </span>
-        )}
+        <div className="composer-context">
+          {!matching && (token || turns?.some((turn) => turn.tokenUsage)) ? (
+            <ContextUsage
+              key={s.current?.id}
+              threadId={s.current?.id}
+              activeId={s.active[s.current?.id]}
+              token={token}
+              turns={turns}
+            />
+          ) : (
+            <span
+              className="context-info"
+              role={matching ? "status" : undefined}
+            >
+              {matching
+                ? "正在匹配代码文件…"
+                : unavailable
+                  ? null
+                  : "Ctrl + Enter 发送"}
+            </span>
+          )}
+          {compactCount != null && (
+            <span className="context-compaction-count">{`压缩 ${compactCount} 次`}</span>
+          )}
+        </div>
       </div>
     </ComposerSurface>
   );

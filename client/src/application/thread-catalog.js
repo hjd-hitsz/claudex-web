@@ -243,6 +243,7 @@ export function createThreadCatalog({
       "turnDiffs",
       "plans",
       "tokenUsage",
+      "compactCounts",
     ]) {
       patch[key] = { ...get()[key] };
       delete patch[key][id];

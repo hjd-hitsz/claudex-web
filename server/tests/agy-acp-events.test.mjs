@@ -185,3 +185,39 @@ test("旧 Antigravity 历史摘要沿用原记录并支持展开长正文", () =
   ]);
   assert.equal(item.expandableSummary, undefined);
 });
+
+test("有效的 ACP 占用立即解除等待，重复计数不会抢占轮末明细", () => {
+  const activity = {
+    turn: { id: "turn", items: [] },
+    session: {
+      tokenUsage: { awaitingMeasurement: true, modelContextWindow: 4096 },
+    },
+  };
+  const events = [];
+  const measure = (used, size) =>
+    applyAcpUpdate(
+      activity,
+      { sessionUpdate: "usage_update", used, size },
+      (method, params) => events.push({ method, ...params }),
+    );
+  measure(undefined, 4096);
+  measure(42, 4096);
+  measure(42, 4096);
+  measure(-1, 4096);
+  measure(57);
+  assert.deepEqual(
+    events,
+    [42, 57].map((totalTokens) => ({
+      method: "thread/tokenUsage/updated",
+      turnId: "turn",
+      tokenUsage: {
+        turnId: "turn",
+        last: { totalTokens },
+        modelContextWindow: 4096,
+        round: {},
+      },
+    })),
+  );
+  assert.equal(activity.turn.tokenUsage, undefined);
+  assert.deepEqual(activity.liveTokenUsage, events[1].tokenUsage);
+});

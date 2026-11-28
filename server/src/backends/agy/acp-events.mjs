@@ -1,6 +1,7 @@
 import { acpFileChanges } from "./acp-files.mjs";
 import { visibleAcpMessage } from "./acp-messages.mjs";
 import { randomUUID } from "node:crypto";
+import { measureAgyUsage } from "./context-usage.mjs";
 
 export function acpCommands(update) {
   if (update?.sessionUpdate !== "available_commands_update") return;
@@ -115,7 +116,9 @@ export function applyAcpUpdate(activity, update, emit) {
     return;
   }
   if (kind === "usage_update") {
-    activity.usage = update;
+    const tokenUsage = measureAgyUsage(activity, update);
+    if (tokenUsage)
+      emit("thread/tokenUsage/updated", { turnId: turn.id, tokenUsage });
     return;
   }
   if (

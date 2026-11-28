@@ -1,6 +1,7 @@
 import { readPromptSections } from "../../prompts.mjs";
 import { createClaudeAccount } from "./account.mjs";
 import { configuredTokenUsage } from "./token-usage.mjs";
+import { isClaudeCompaction } from "./compaction-count.mjs";
 import { createClaudeCatalogue } from "./catalogue.mjs";
 import { createClaudeSessions } from "./sessions.mjs";
 import { createProductMethods } from "../../bridge/product-methods.mjs";
@@ -44,6 +45,19 @@ export function createClaudeAdapter({
     broadcast,
     compactions,
     questions,
+    async observeMessage(threadId, message) {
+      if (!isClaudeCompaction(message)) return;
+      try {
+        const compactCount = await sessions.compactCount(threadId);
+        notify("thread/tokenUsage/updated", {
+          threadId,
+          turnId: runtime.running.get(threadId)?.turn.id,
+          compactCount,
+        });
+      } catch (error) {
+        console.error("读取 Claude 上下文压缩次数失败", error.message);
+      }
+    },
     readSubagentSettings,
     readSecretaryRole,
     readLegacyDelegationMode,

@@ -5,6 +5,7 @@ import type { createCompactions } from "../../compaction.mjs";
 import type { NativeEvent, RpcMessage } from "./native-protocol.d.mts";
 import type { createStreamingMessages } from "./streaming-messages.mjs";
 import type { createSubscriptions } from "./subscriptions.mjs";
+import type { createCodexTurnUsage } from "./turn-usage.mjs";
 import type { CodexClient, ForwardedRequest } from "./upstream.mjs";
 
 type Goal = { status?: string };
@@ -29,6 +30,7 @@ type BridgeDependencies = Pick<
   terminals: Map<string, { buffer: string; running: boolean }>;
   compactions: ReturnType<typeof createCompactions>;
   streamingMessages: Pick<ReturnType<typeof createStreamingMessages>, "read">;
+  turnUsage?: ReturnType<typeof createCodexTurnUsage>;
   threadNaming: {
     cancel(threadId?: string): void;
     schedule(
@@ -71,6 +73,7 @@ export function createBridgeEvents({
   updateGoal,
   compactions,
   streamingMessages,
+  turnUsage,
   threadNaming,
   send,
   broadcast,
@@ -177,6 +180,20 @@ export function createBridgeEvents({
       broadcast(state());
     }
     broadcast(message);
+    if (
+      method === "item/completed" &&
+      p.item?.type === "contextCompaction" &&
+      threadId
+    )
+      void turnUsage?.compactionCount(threadId).then(
+        (compactCount) =>
+          broadcast({
+            method: "thread/tokenUsage/updated",
+            params: { threadId, turnId: p.turnId, compactCount },
+          }),
+        (error) =>
+          console.error("读取 Codex 上下文压缩次数失败", error.message),
+      );
     compactions.event(message.method, p);
     releaseUnusedThreads();
     if (message.method === "turn/completed" && threadId)
@@ -242,14 +259,19 @@ export function createBridgeEvents({
         request.includeStreaming && request.threadId
           ? streamingMessages.read(request.threadId)
           : [];
-      send(request.client, {
-        ...message,
-        id: request.id,
-        ...(result &&
-          request.includeStreaming && {
-            result: { ...result, streamingMessages: streamed },
+      const respond = (result?: ResponseFields) =>
+        send(request.client, {
+          ...message,
+          id: request.id,
+          ...(result && {
+            result: request.includeStreaming
+              ? { ...result, streamingMessages: streamed }
+              : result,
           }),
-      });
+        });
+      if (request.method === "thread/turns/list" && turnUsage && result)
+        void turnUsage.project(request.threadId, result).then(respond);
+      else respond(result);
     }
     releaseUnusedThreads();
     if (!message.error && !request.timedOut && !request.client?.readOnly) {

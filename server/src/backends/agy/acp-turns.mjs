@@ -1,6 +1,6 @@
 import { flushAcpMessage } from "./acp-events.mjs";
 import { applyAcpSelection } from "./acp-models.mjs";
-import { agyTokenUsage } from "./context-usage.mjs";
+import { agyTokenUsage, countAgyCompactions } from "./context-usage.mjs";
 import { nowSeconds } from "./session-store.mjs";
 import { currentResultNotice } from "../delegation/delegation-store.mjs";
 import { compileAgyPrompt } from "./acp-prompt.mjs";
@@ -24,6 +24,7 @@ export function createAgyTurns({
     if (active.has(session.id)) throw new Error("agy 会话已有正在执行的轮次");
     const turn = {
       id: record.id,
+      turnNumber: session.turns.length + 1,
       status: "inProgress",
       startedAt: nowSeconds(),
       items: record.items,
@@ -152,7 +153,7 @@ export function createAgyTurns({
           turn.completedAt = nowSeconds();
           const compaction = activity.compaction.finish();
           const tokenUsage = (turn.tokenUsage = agyTokenUsage(activity));
-          await store.change((data) => {
+          const compactCount = await store.change((data) => {
             const s = store.session(data, session.id);
             const index = s.turns.findIndex(({ id }) => id === turn.id);
             if (index === -1) s.turns.push(turn);
@@ -164,6 +165,8 @@ export function createAgyTurns({
               s.contextCheckpoint.pending = false;
             if (!s.name && activity.title) s.name = activity.title;
             s.tokenUsage = tokenUsage;
+            if (compaction?.status === "completed")
+              return countAgyCompactions(s.turns);
           });
           for (const item of turn.items)
             if (!activity.announced.has(item.id))
@@ -174,6 +177,7 @@ export function createAgyTurns({
           notify("thread/tokenUsage/updated", {
             turnId: turn.id,
             tokenUsage,
+            ...(compactCount != null && { compactCount }),
           });
           notify("turn/completed", { turn });
         }

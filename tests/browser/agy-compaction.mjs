@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { authenticationFixture } from "../helpers/auth.mjs";
+import { formatTokenCount } from "../../client/src/domain/token-format.js";
 
 const before = Boolean(process.env.AGY_BEFORE_ROOT);
 const project = resolve(process.env.AGY_BEFORE_ROOT || ".");
@@ -275,7 +276,7 @@ try {
         Object.fromEntries(
           nodes.map((node) => [
             node.querySelector("dt").textContent,
-            Number(node.querySelector("dd").textContent.replaceAll(",", "")),
+            node.querySelector("dd").textContent,
           ]),
         ),
       );
@@ -289,17 +290,24 @@ try {
     };
     return {
       ...Object.fromEntries(
-        Object.entries(round).map(([key, value]) => [labels[key], value]),
+        Object.entries(round)
+          .filter(
+            ([key, value]) => key !== "reasoningOutputTokens" || value > 0,
+          )
+          .map(([key, value]) => [labels[key], formatTokenCount(value)]),
       ),
-      模型窗口上限: 1048576,
+      模型窗口上限: "1048.6K",
     };
   };
   async function inspectUsage(label, expected, selectPrevious = false) {
+    await page
+      .getByRole("button", { name: "停止任务", exact: true })
+      .waitFor({ state: "hidden" });
     await usageButton.click();
     if (selectPrevious)
       await usageDetails
         .getByRole("combobox")
-        .selectOption({ label: "上一轮" });
+        .selectOption((await state()).turns.at(-2).id);
     const rows = await usageRows();
     const usage = selectPrevious
       ? (await state()).turns.at(-2).tokenUsage
@@ -318,13 +326,22 @@ try {
   }
   async function inspectHistory(label, takeScreenshots = false) {
     const turns = (await state()).turns.toReversed();
-    const [current, ...historical] = turns.filter((turn) => turn.tokenUsage);
+    const current = turns.find(({ tokenUsage }) => tokenUsage);
+    const hasUsage = ({ tokenUsage }) =>
+      tokenUsage?.last || Object.keys(tokenUsage?.round ?? {}).length;
+    const historical = turns.filter(
+      (turn) => turn !== current && hasUsage(turn),
+    );
     assert(current && historical.length >= 2);
     await usageButton.click();
     const select = usageDetails.getByRole("combobox", { name: "选择用量轮次" });
     const options = select.locator("option");
     await options
-      .filter({ hasText: /^上一轮$/ })
+      .filter({
+        hasText: new RegExp(
+          `^#${turns.length - turns.indexOf(historical[0])}$`,
+        ),
+      })
       .waitFor({ state: "attached" });
     const available = await options.evaluateAll((nodes) =>
       nodes.map(({ value, textContent, title }) => ({
@@ -335,22 +352,20 @@ try {
     );
     assert.deepEqual(
       available.map(({ value }) => value),
-      ["", ...historical.map(({ id }) => id)],
+      [current.id, ...historical.map(({ id }) => id)],
     );
     assert.deepEqual(
       available.map(({ label }) => label),
-      [
-        "本轮",
-        "上一轮",
-        ...historical.slice(1).map((_, index) => `更早 · ${index + 2} 轮前`),
-      ],
+      [current, ...historical].map((turn) =>
+        hasUsage(turn) ? `#${turns.length - turns.indexOf(turn)}` : "本轮",
+      ),
     );
     const timestamps = await page.evaluate(
       (times) => times.map((time) => new Date(time * 1000).toLocaleString()),
-      historical.map(({ startedAt }) => startedAt),
+      [current, ...historical].map(({ startedAt }) => startedAt),
     );
     assert.deepEqual(
-      available.slice(1).map(({ title }) => title),
+      available.map(({ title }) => title),
       timestamps,
     );
     const displayed = [];
@@ -382,7 +397,7 @@ try {
           element.after(probe);
           const requiredWidth = probe.getBoundingClientRect().width;
           probe.remove();
-          const panel = element.closest(".agy-context-details");
+          const panel = element.closest(".context-usage-details");
           return {
             viewport: innerWidth,
             dpr: devicePixelRatio,
@@ -411,7 +426,7 @@ try {
     if (takeScreenshots)
       assert.deepEqual(
         displayed.map(({ rows }) => rows["本轮总量"]),
-        [1426, 400013, 713],
+        ["1.4K", "400K", "713"],
       );
     historyEvidence.push({ label, options: available, displayed });
     await page.keyboard.press("Escape");
@@ -451,6 +466,7 @@ try {
             assert(Math.abs(geometry.viewport - width / scale) <= 1);
             assert(
               geometry.left >= 0 && geometry.right <= geometry.viewport + 1,
+              JSON.stringify({ width, colorScheme, scale, ...geometry }),
             );
             assert(geometry.top >= 0 && geometry.bottom <= geometry.height + 1);
             assert(geometry.horizontalOverflow <= 1);
@@ -573,7 +589,7 @@ try {
     );
     assert(!JSON.stringify(summaryRequest.contents).includes("/plan "));
     assert.match(await contextInfo.innerText(), /整理后用量/);
-    assert.match(await contextInfo.getAttribute("title"), /1,048,576/);
+    assert.match(await contextInfo.getAttribute("title"), /1048\.6K/);
     await inspectUsage("manual-summary", summaryUsage);
   }
   assert.equal(
@@ -602,7 +618,7 @@ try {
   assert.equal(followupContents.includes(original), before);
   await screenshot("manual-continued");
   if (!before) {
-    await page.getByText(/713 tokens/).waitFor();
+    await page.getByText(/上下文 713 \/ 1048\.6K/).waitFor();
     await inspectUsage("after-manual", {
       inputTokens: 673,
       cachedInputTokens: 27,
@@ -613,11 +629,11 @@ try {
     await inspectUsage("previous-round", summaryUsage, true);
     await send(heavy);
     await page.getByText("已记录高占用量。", { exact: true }).waitFor();
-    await page.getByText(/400,013 tokens/).waitFor();
+    await page.getByText(/上下文 400K \/ 1048\.6K/).waitFor();
     await send(automaticFollowup);
     await page.getByText("已在自动检查点后继续。", { exact: true }).waitFor();
     await page.getByText("已自动整理上下文", { exact: true }).waitFor();
-    assert.match(await contextInfo.innerText(), /713 tokens/);
+    assert.match(await contextInfo.innerText(), /上下文 713 \/ 1048\.6K/);
     const automaticUsage = Object.fromEntries(
       Object.keys(normalUsage).map((key) => [
         key,

@@ -1,5 +1,6 @@
 import { executionError } from "./execution-errors.mjs";
 import { delegationResultItem } from "../../conversation-manager/message.mjs";
+import { historicalClaudeUsage, mergeClaudeUsage } from "./token-usage.mjs";
 
 function imageUrl(block) {
   return block.source?.type === "base64"
@@ -283,6 +284,8 @@ export function historyTurns(
   const turns = [],
     tools = new Map(),
     blockOffsets = new Map();
+  const usageByTurn = new Map();
+  const usageOwners = new Map();
   const anchors = new Map(
     Object.values(savedTurns).flatMap((saved) =>
       [saved.nativeAnchorId, ...(saved.nativeMessageIds || [])]
@@ -373,6 +376,24 @@ export function historyTurns(
       turn.completedAt = Date.parse(message.timestamp) / 1000;
     const messageId = message.message?.id || message.uuid;
     const blockOffset = blockOffsets.get(messageId) || 0;
+    if (
+      message.type === "assistant" &&
+      !message.isSidechain &&
+      !message.parent_tool_use_id &&
+      !message.isApiErrorMessage &&
+      !message.error &&
+      messageId &&
+      message.message?.usage
+    ) {
+      const owner = usageOwners.get(messageId) ?? turn;
+      usageOwners.set(messageId, owner);
+      if (!usageByTurn.has(owner)) usageByTurn.set(owner, new Map());
+      const counts = usageByTurn.get(owner);
+      counts.set(
+        messageId,
+        mergeClaudeUsage(counts.get(messageId), message.message.usage),
+      );
+    }
     if (message.type === "assistant")
       blockOffsets.set(messageId, blockOffset + contentBlocks(message).length);
     for (const item of converted) {
@@ -391,6 +412,12 @@ export function historyTurns(
       if (existing >= 0) turn.items[existing] = item;
       else turn.items.push(item);
     }
+  }
+  for (const [turn, messages] of usageByTurn) {
+    if (turn.tokenUsage?.round) continue;
+    const tokenUsage = historicalClaudeUsage(messages);
+    if (Object.keys(tokenUsage.round).length)
+      turn.tokenUsage = { ...tokenUsage, turnId: turn.id };
   }
   return turns;
 }

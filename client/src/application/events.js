@@ -262,7 +262,23 @@ export function createEvents({
       records.updateThreadName(p.threadId, p.threadName ?? p.name ?? null);
     }
     if (method === "thread/tokenUsage/updated")
-      set({ tokenUsage: { ...get().tokenUsage, [p.threadId]: p.tokenUsage } });
+      set({
+        ...(Object.hasOwn(p, "tokenUsage") && {
+          tokenUsage: {
+            ...get().tokenUsage,
+            [p.threadId]:
+              p.tokenUsage && p.turnId
+                ? { ...p.tokenUsage, turnId: p.turnId }
+                : p.tokenUsage,
+          },
+        }),
+        ...(Number.isSafeInteger(p.compactCount) && {
+          compactCounts: {
+            ...get().compactCounts,
+            [p.threadId]: p.compactCount,
+          },
+        }),
+      });
     if (method === "turn/diff/updated")
       set({
         diffs: { ...get().diffs, [p.threadId]: p.diff },

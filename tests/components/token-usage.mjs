@@ -31,8 +31,8 @@ export async function testTokenUsage(app, fixture) {
       await app.openThread(thread.id);
     });
     assert.equal(app.get().tokenUsage[thread.id].last.totalTokens, 118863);
-    assert(JSON.stringify(view.toJSON()).includes("118,863"));
-    assert(JSON.stringify(view.toJSON()).includes("475,000"));
+    assert(JSON.stringify(view.toJSON()).includes("118.9K"));
+    assert(JSON.stringify(view.toJSON()).includes("475K"));
 
     await act(async () => {
       app.set({ tokenUsage: {} });

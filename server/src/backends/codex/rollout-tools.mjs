@@ -44,13 +44,8 @@ function fileChanges(changes) {
   }));
 }
 
-async function scan(
-  path,
-  threadId,
-  turnIds,
-  onlyCallId,
-  { callsOnly, outputMatches },
-) {
+async function scan(path, threadId, turnIds, onlyCallId, options) {
+  const { callsOnly, outputMatches, usage, endByteOffset } = options;
   const matches =
     typeof onlyCallId === "function" ? onlyCallId : (id) => id === onlyCallId;
   const source = createReadStream(path);
@@ -64,9 +59,12 @@ async function scan(
   let identified = false;
   let sequence = 0;
   let time = 0;
+  let bytes = 0;
   let context = { compactCount: 0 };
   try {
     for await (const line of lines) {
+      bytes += Buffer.byteLength(line) + 1;
+      if (endByteOffset != null && bytes > endByteOffset) break;
       sequence++;
       let record;
       try {
@@ -80,9 +78,14 @@ async function scan(
       const timestamp = Date.parse(record.timestamp);
       if (Number.isFinite(timestamp)) time = timestamp;
       if (!identified) {
-        if (type !== "session_meta" || payload.id !== threadId)
+        if (type !== "session_meta" || payload.id !== threadId) {
+          if (usage) throw new Error("Codex rollout 与对话标识不一致");
           return new Map();
+        }
         identified = true;
+        if (usage && payload.history_base)
+          for (const [id, trace] of await usage.readBase(payload.history_base))
+            turns.set(id, trace);
         continue;
       }
       if (
@@ -95,15 +98,13 @@ async function scan(
           totalTokens: context.totalTokens,
           compactCount: context.compactCount + 1,
         };
-      if (type === "event_msg" && payload.type === "token_count") {
-        const { tokenUsage } = codexRolloutUsage(record);
-        if (tokenUsage)
-          context = {
-            ...context,
-            usedTokens: tokenUsage.last.totalTokens,
-            totalTokens: tokenUsage.modelContextWindow ?? context.totalTokens,
-          };
-      }
+      const { tokenUsage } = codexRolloutUsage(record);
+      if (tokenUsage && !usage)
+        context = {
+          ...context,
+          usedTokens: tokenUsage.last.totalTokens,
+          totalTokens: tokenUsage.modelContextWindow ?? context.totalTokens,
+        };
       if (
         type === "event_msg" &&
         ["task_complete", "turn_aborted"].includes(payload.type)
@@ -113,6 +114,14 @@ async function scan(
         payload.internal_chat_message_metadata_passthrough?.turn_id ??
         payload.turn_id ??
         turnId;
+      if (usage) {
+        if (type === "compacted") usage.compacted(owner);
+        if (type === "event_msg" && payload.type === "thread_rolled_back")
+          for (const id of usage.rollback(payload.num_turns)) turns.delete(id);
+        const snapshot = usage.observe(owner, tokenUsage);
+        if (turnIds.has(owner)) turns.set(owner, snapshot);
+        continue;
+      }
       if (!turnIds.has(owner)) continue;
       if (!turns.has(owner))
         turns.set(owner, {
@@ -206,7 +215,10 @@ async function scan(
 }
 
 export async function readRolloutTrace(thread, turnIds, callId, options = {}) {
-  if (!thread.path) return new Map();
+  if (!thread.path) {
+    if (options.usage) throw new Error("Codex 对话没有原生 rollout 路径");
+    return new Map();
+  }
   try {
     return await scan(thread.path, thread.id, turnIds, callId, options);
   } catch (error) {
@@ -219,9 +231,10 @@ export async function readRolloutTrace(thread, turnIds, callId, options = {}) {
         callId,
         options,
       ).catch((error) => {
-        if (error.code !== "ENOENT") throw error;
+        if (error.code !== "ENOENT" || options.usage) throw error;
         return new Map();
       });
+    if (options.usage) throw error;
     return new Map();
   }
 }

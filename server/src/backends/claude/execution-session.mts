@@ -280,7 +280,7 @@ export async function createExecutionSession({
       for await (const message of process.query) {
         await process.ownerReady;
         if (process.ownerError) throw process.ownerError;
-        observeMessage?.(threadId, message);
+        await observeMessage?.(threadId, message);
         if (
           "user_message_uuids" in message &&
           message.user_message_uuids?.some((id) => current()?.inputIds.has(id))
@@ -335,7 +335,7 @@ export async function createExecutionSession({
         )
           await beginActivity(message);
         await goals.observe(threadId, message, process);
-        await usage(message, process);
+        await usage(message, process, current()?.turn);
         if (message.type === "system" && message.subtype === "init") {
           process.terminalCommands = message.terminal_slash_commands || [];
           await save(threadId, (s) => ({

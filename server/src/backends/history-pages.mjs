@@ -4,7 +4,7 @@ const maximumSnapshots = 8;
 const idleTimeout = 30000;
 const snapshotCursor = /^history:([\da-f-]{36}):(\d+)$/;
 
-export function createHistoryPages(readTurns, page) {
+export function createHistoryPages(readHistory, page) {
   const snapshots = new Map();
   let closed = false;
 
@@ -40,21 +40,27 @@ export function createHistoryPages(readTurns, page) {
         threadId,
         method,
         sortDirection,
-        records: Promise.resolve(readTurns(threadId)).then((turns) =>
-          method === "thread/items/list"
-            ? turns.flatMap((turn) =>
-                (turn.items || []).map((item) => ({ turnId: turn.id, item })),
-              )
-            : turns,
-        ),
+        history: Promise.resolve(readHistory(threadId)).then((history) => {
+          const { turns, compactCount } = Array.isArray(history)
+            ? { turns: history }
+            : history;
+          return method === "thread/items/list"
+            ? {
+                records: turns.flatMap((turn) =>
+                  (turn.items || []).map((item) => ({ turnId: turn.id, item })),
+                ),
+              }
+            : { records: turns, compactCount };
+        }),
       };
       if (!cached) id = randomUUID();
       retain(id, snapshot);
       try {
-        const result = page(await snapshot.records, {
-          ...params,
-          cursor: cursor?.[2] ?? params.cursor,
-        });
+        const { records, compactCount } = await snapshot.history;
+        const result = {
+          ...page(records, { ...params, cursor: cursor?.[2] ?? params.cursor }),
+          ...(compactCount != null && { compactCount }),
+        };
         if (result.nextCursor)
           return {
             ...result,

@@ -15,7 +15,7 @@ export async function testContextTimer({
   const elapsed = () => page.locator(".process-duration").last();
   await elapsed().filter({ hasText: "已用时" }).waitFor();
   await page.waitForFunction(() =>
-    /65,536/.test(document.querySelector(".context-info")?.textContent),
+    /65\.5K/.test(document.querySelector(".context-info")?.textContent),
   );
   const start = await elapsed().getAttribute("datetime");
   await page.waitForFunction((start) => {

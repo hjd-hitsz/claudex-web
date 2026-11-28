@@ -5,7 +5,10 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAgyCompactions } from "../src/backends/agy/compactions.mjs";
-import { agyTokenUsage } from "../src/backends/agy/context-usage.mjs";
+import {
+  agyTokenUsage,
+  countAgyCompactions,
+} from "../src/backends/agy/context-usage.mjs";
 import { readAgyCheckpoint } from "../src/backends/agy/tmp_function/compaction-checkpoint.mjs";
 import { createAgyAdapter } from "../src/backends/agy/adapter.mjs";
 import { createAgyStore } from "../src/backends/agy/session-store.mjs";
@@ -27,6 +30,17 @@ function fixture(manual, checkpoint) {
   tracker.prepare("native");
   return { tracker, activity, events, emit };
 }
+
+test("AG 仅累计已确认的网页压缩记录", () => {
+  const turns = [
+    {},
+    ...["running", "completed", "failed", "interrupted", "unconfirmed"].map(
+      (status) => ({ compaction: { status } }),
+    ),
+  ];
+  assert.equal(countAgyCompactions([]), 0);
+  assert.equal(countAgyCompactions(turns), 1);
+});
 
 test("手动整理保存新会话后完成并清除旧用量", () => {
   const { tracker, activity, events } = fixture(true, () => null);
@@ -147,6 +161,10 @@ test("读取版本匹配的原生已完成检查点，忽略普通和未完成�
     assert.equal(readAgyCheckpoint("../elsewhere", agent, directory), null);
     assert.equal(
       readAgyCheckpoint(id, { ...agent, version: "1.5.19" }, directory),
+      3,
+    );
+    assert.equal(
+      readAgyCheckpoint(id, { ...agent, version: "1.5.20" }, directory),
       null,
     );
   } finally {

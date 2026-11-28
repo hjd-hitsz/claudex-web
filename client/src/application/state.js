@@ -74,6 +74,7 @@ export function createAppState() {
     usageLoading: false,
     usageError: "",
     tokenUsage: {},
+    compactCounts: {},
     diffs: {},
     turnDiffs: {},
     undoneFiles: saved("cx-undone-files", {}),

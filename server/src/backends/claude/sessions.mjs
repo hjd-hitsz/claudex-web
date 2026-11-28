@@ -19,6 +19,7 @@ import {
   secretaryHistoryVersion,
 } from "./secretary-policy.mjs";
 import { historyTurns, visibleSessionMessages } from "./messages.mjs";
+import { countClaudeCompactions } from "./compaction-count.mjs";
 import { conversationMethods } from "../../../../shared/product-contract.mjs";
 
 export function createClaudeSessions({
@@ -33,7 +34,7 @@ export function createClaudeSessions({
   readTokenUsage = async (session) => session.tokenUsage,
 }) {
   runtime.mutating ||= new Set();
-  const history = createHistoryPages(turns, page);
+  const history = createHistoryPages(readHistory, page);
   async function update(id, patch) {
     await storage.update((data) => ({
       ...data,
@@ -80,26 +81,33 @@ export function createClaudeSessions({
       preview: s.name || "新对话",
     };
   }
-  async function turns(id) {
+  function nativeMessages(s, dir = s.historySearchAll ? undefined : s.cwd) {
+    return s.initialized
+      ? readSession("getSessionMessages", s.nativeSessionId || s.id, {
+          dir,
+          includeSystemMessages: true,
+          includeCompactedHistory: true,
+        })
+      : [];
+  }
+  async function readHistory(id) {
     let s = await session(id);
     const dir = s.historySearchAll ? undefined : s.cwd;
     if (s.agentId)
-      return agentTurns(
-        await readSession(
-          "getSubagentMessages",
-          s.parentNativeId || s.parentId,
-          s.agentId,
-          { dir },
+      return {
+        turns: agentTurns(
+          await readSession(
+            "getSubagentMessages",
+            s.parentNativeId || s.parentId,
+            s.agentId,
+            { dir },
+          ),
         ),
-      );
+      };
     const nativeId = s.nativeSessionId || id;
     const [messages, agentIds] = s.initialized
       ? await Promise.all([
-          readSession("getSessionMessages", nativeId, {
-            dir,
-            includeSystemMessages: true,
-            includeCompactedHistory: true,
-          }),
+          nativeMessages(s, dir),
           readSession("listSubagents", nativeId, { dir }),
         ])
       : [[], []];
@@ -166,8 +174,12 @@ export function createClaudeSessions({
           };
         });
     }
-    return records;
+    return {
+      turns: records.map((turn, index) => ({ ...turn, turnNumber: index + 1 })),
+      compactCount: countClaudeCompactions(messages),
+    };
   }
+  const turns = async (id) => (await readHistory(id)).turns;
   const revert = createHistoryActions({
     session,
     turns,
@@ -479,6 +491,8 @@ export function createClaudeSessions({
     handles: (method) => methods.has(method),
     session,
     turns,
+    compactCount: async (id) =>
+      countClaudeCompactions(await nativeMessages(await session(id))),
     update,
   };
 }

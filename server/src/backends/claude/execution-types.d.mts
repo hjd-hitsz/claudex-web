@@ -225,7 +225,10 @@ export type SessionDependencies = {
     params: Record<string, unknown>;
   }) => void;
   questions: Map<string, PendingQuestion>;
-  observeMessage?: (threadId: string, message: SDKMessage) => void;
+  observeMessage?: (
+    threadId: string,
+    message: SDKMessage,
+  ) => void | Promise<void>;
   callConversationTool?: ConversationTool;
   goals: {
     beforeTool(threadId: string): ReturnType<HookCallback>;

@@ -177,6 +177,7 @@ function fixture(data) {
         result = { thread, cwd: thread.cwd };
       if (m.method === "thread/turns/list")
         result = {
+          compactCount: 0,
           data: [
             {
               id: "demo-turn",
@@ -442,6 +443,7 @@ try {
     assert.equal(layout.errors.length, 0, name + " 无错误提示");
     assert(layout.send.bottom <= layout.height, name + " 发送按钮在视口内");
     assert(layout.text.includes("已编辑文件"), name + " 包含变更汇总");
+    assert(layout.text.includes("压缩 0 次"), name + " 显示会话压缩次数");
     assert.equal(layout.quotaExpanded, "false", name + " 额度默认折叠");
     assert.deepEqual(
       layout.remaining,

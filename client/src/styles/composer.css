@@ -293,20 +293,31 @@ select option {
   max-width: 100%;
   text-align: right;
 }
-.agy-context-usage {
+.composer-context {
   position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+  column-gap: 0.461538rem;
+  min-width: 0;
 }
-.agy-context-usage > button {
+.context-compaction-count {
+  font-size: 0.846154rem;
+  white-space: nowrap;
+}
+.context-usage > button {
   color: inherit;
   min-height: 1.846154rem;
   padding: 0 0.384615rem;
   gap: 0.307692rem;
   text-align: right;
 }
-.agy-context-usage > button svg {
+.context-usage > button svg {
   flex-shrink: 0;
 }
-.agy-context-details {
+.context-usage-details {
   position: absolute;
   z-index: 5;
   inset-inline-end: 0;
@@ -323,19 +334,19 @@ select option {
   font-size: 0.923077rem;
   text-align: start;
 }
-.agy-context-heading,
-.agy-context-details dl > div {
+.context-usage-heading,
+.context-usage-details dl > div {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 0.461538rem;
 }
-.agy-context-heading span,
-.agy-context-details p,
-.agy-context-details dt {
+.context-usage-heading span,
+.context-usage-details p,
+.context-usage-details dt {
   color: var(--muted);
 }
-.agy-context-heading select {
+.context-usage-heading select {
   min-width: 0;
   max-width: 76%;
   padding: 0.076923rem 0.307692rem;
@@ -345,22 +356,22 @@ select option {
   background: var(--composer);
 }
 @media (max-width: 220px) {
-  .agy-context-heading select {
+  .context-usage-heading select {
     max-width: 100%;
   }
-  .agy-context-heading select + span {
+  .context-usage-heading select + span {
     display: none;
   }
 }
-.agy-context-details dl {
+.context-usage-details dl {
   display: grid;
   gap: 0.153846rem;
 }
-.agy-context-details dl,
-.agy-context-details p {
+.context-usage-details dl,
+.context-usage-details p {
   margin: 0.384615rem 0 0;
 }
-.agy-context-details dd {
+.context-usage-details dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
 }

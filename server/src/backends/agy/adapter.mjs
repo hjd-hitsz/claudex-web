@@ -15,6 +15,7 @@ import {
 import { agyBackgroundMethods } from "./tmp_function/background-tasks.mjs";
 import { agyPluginMethods } from "./tmp_function/plugin-status.mjs";
 import { createAcpSessions } from "./acp-session.mjs";
+import { countAgyCompactions } from "./context-usage.mjs";
 import { createDelegations } from "./delegations.mjs";
 import {
   currentResultNotice,
@@ -82,8 +83,12 @@ export function createAgyAdapter({
   const active = sessions.busy;
   const thread = (s) => agyThread(s, active(s.id));
   const notify = (method, params) => emit({ method, params });
-  const history = createHistoryPages(readTurns, (items, params) =>
-    agyPage(items, params, params.sortDirection !== "asc"),
+  const history = createHistoryPages(
+    async (id) => {
+      const turns = await readTurns(id);
+      return { turns, compactCount: countAgyCompactions(turns) };
+    },
+    (items, params) => agyPage(items, params, params.sortDirection !== "asc"),
   );
   const { files, offline, online } = createProductMethods({
     config,
@@ -158,8 +163,9 @@ export function createAgyAdapter({
     const tasks = Object.values(state.tasks).filter(
       ({ parentId }) => parentId === id,
     );
-    return allTurns.map((turn) => ({
+    return allTurns.map((turn, index) => ({
       ...turn,
+      turnNumber: index + 1,
       items: [
         ...visibleAgyItems(turn.items),
         ...tasks
@@ -194,8 +200,9 @@ export function createAgyAdapter({
   }
 
   function threadSettings(s) {
+    const liveUsage = sessions.active.get(s.id)?.liveTokenUsage;
     return {
-      thread: thread(s),
+      thread: { ...thread(s), ...(liveUsage && { tokenUsage: liveUsage }) },
       cwd: s.cwd,
       model: s.model,
       reasoningEffort: s.effort,

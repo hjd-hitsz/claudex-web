@@ -1,12 +1,14 @@
 // ACP 缺口：agy 1.5.18 的 session/compact 返回 -32601。session/prompt 的
 // /compact 会生成原生检查点，手动和自动整理均未发出 compaction_update。
-// 探测证据：隔离 Gemini 端点收到摘要请求，下一轮使用已持久化的
+// agy 1.5.18 和 1.5.19 的隔离 Gemini 会话均持久化成功检查点
 // CORTEX_STEP_TYPE_CHECKPOINT（23，DONE = 3）。本模块只读取检查点序号。
 // 切换条件：ACP 发出同一会话的整理生命周期和整理后用量时，移除此读取。
 // 登记见 docs/future_plan.md#缺口登记。
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+
+const supportedVersions = new Set(["1.5.18", "1.5.19"]);
 
 export function readAgyCheckpoint(
   nativeId,
@@ -15,7 +17,7 @@ export function readAgyCheckpoint(
 ) {
   if (
     agent?.name !== "Antigravity ACP Server" ||
-    agent.version !== "1.5.18" ||
+    !supportedVersions.has(agent.version) ||
     !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(nativeId)
   )
     return null;

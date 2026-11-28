@@ -192,6 +192,9 @@ test("Claude 压缩整理历史沿原生轮次恢复，隐藏未登记的整理�
     ...params,
     cursor: latest.nextCursor,
   });
+  assert.equal(latest.compactCount, 2);
+  assert.equal(previous.compactCount, 2);
+  assert.equal(await sessions.compactCount(sessionId), 2);
   assert.deepEqual(
     latest.data.map(({ id }) => id),
     [next, followup],

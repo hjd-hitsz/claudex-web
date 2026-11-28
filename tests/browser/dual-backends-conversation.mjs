@@ -67,7 +67,7 @@ export async function testDualConversation({
   releaseReply();
   await page.getByText("双后端验证通过", { exact: true }).first().waitFor();
   await page.waitForFunction(() =>
-    /196,608/.test(document.querySelector(".context-info")?.textContent),
+    /196\.6K/.test(document.querySelector(".context-info")?.textContent),
   );
   const verifyThinking = async () => {
     const process = page.locator(".process-history").first();

@@ -7,6 +7,23 @@ const promptFields = {
   totalTokens: "totalTokens",
 };
 
+export function countAgyCompactions(turns) {
+  return turns.filter(({ compaction }) => compaction?.status === "completed")
+    .length;
+}
+
+export function measureAgyUsage(activity, update) {
+  if (!validCount(update.used)) return;
+  const previous = activity.usage;
+  activity.usage = {
+    used: update.used,
+    size:
+      validCount(update.size) && update.size > 0 ? update.size : previous?.size,
+  };
+  if (previous?.used !== update.used)
+    return (activity.liveTokenUsage = agyTokenUsage(activity));
+}
+
 export function agyTokenUsage(activity) {
   const { session, turn, usage, promptUsage, contextChanged } = activity;
   const manual = turn.compaction?.source === "manual";

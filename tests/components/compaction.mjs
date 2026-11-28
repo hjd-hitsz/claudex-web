@@ -171,7 +171,15 @@ export async function testCompaction(app, requests, setResponse, emit) {
       {},
       "整理结束后清理恢复记录",
     );
-    assert(text().includes("2,000"));
+    assert(text().includes("上下文 2K / 100K（2%）"));
+    await act(async () =>
+      emit("thread/tokenUsage/updated", {
+        threadId: thread.id,
+        compactCount: 1,
+      }),
+    );
+    assert(text().includes("上下文 2K / 100K（2%）"));
+    assert(text().includes("压缩 1 次"));
     assert.equal(send().props.disabled, false);
     assert.equal(app.get().draft, "整理期间保留的草稿");
     assert.deepEqual(app.get().attachments, [attachment]);

@@ -26,6 +26,7 @@ import { createBridgeEvents } from "./events.mjs";
 import { createRequestHandler } from "./requests.mjs";
 import { createProductMethods } from "../../bridge/product-methods.mjs";
 import { readCodexTokenUsage } from "./token-usage.mjs";
+import { createCodexTurnUsage } from "./turn-usage.mjs";
 import { createStreamingMessages } from "./streaming-messages.mjs";
 import type { readConfig } from "../../config.mjs";
 import type { createBackgroundService } from "./background-service.mjs";
@@ -43,7 +44,6 @@ import {
   checkWebResearchAccess,
   researchSessionParams,
 } from "./research-policy.mjs";
-
 const conversationUserRequests = new Set([
   "item/commandExecution/requestApproval",
   "item/fileChange/requestApproval",
@@ -59,7 +59,6 @@ const conversationWrites = new Set([
   "thread/rollback",
   "review/start",
 ]);
-
 type SubagentSettings = Parameters<typeof subagentModelParams>[2];
 type CodexAdapterOptions = {
   backend: SubagentSettings & {
@@ -318,6 +317,7 @@ export function createCodexAdapter({
       ),
   });
   const events = createBridgeEvents({
+    turnUsage: createCodexTurnUsage(transport.call),
     questions,
     activeTurns,
     executionStatuses,

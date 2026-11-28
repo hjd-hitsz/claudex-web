@@ -12,7 +12,7 @@ import { acpContent } from "../acp-events.mjs";
 import { applyAcpSelection, updateAcpConfiguration } from "../acp-models.mjs";
 import { visibleAgyItems, visibleAcpMessage } from "../acp-messages.mjs";
 import { writePrivateFile } from "../../../private-file.mjs";
-import { agyTokenUsage } from "../context-usage.mjs";
+import { agyTokenUsage, countAgyCompactions } from "../context-usage.mjs";
 import { nowSeconds } from "../session-store.mjs";
 
 const prompts = readPromptSections("secretary/compaction.md");
@@ -226,6 +226,7 @@ export function createAgySessionCompaction({
     const threadId = session.id;
     const turn = {
       id,
+      turnNumber: session.turns.length + 1,
       status: "inProgress",
       startedAt: nowSeconds(),
       items: [],
@@ -276,7 +277,7 @@ export function createAgySessionCompaction({
         candidate = undefined;
       }
       turn.completedAt = nowSeconds();
-      const tokenUsage = await store.change((data) => {
+      const usage = await store.change((data) => {
         const saved = store.session(data, threadId);
         if (
           candidate &&
@@ -299,10 +300,15 @@ export function createAgySessionCompaction({
         if (index < 0) saved.turns.push(turn);
         else saved.turns[index] = turn;
         saved.updatedAt = turn.completedAt;
-        return saved.tokenUsage;
+        return {
+          tokenUsage: saved.tokenUsage,
+          ...(turn.compaction?.status === "completed" && {
+            compactCount: countAgyCompactions(saved.turns),
+          }),
+        };
       });
       if (candidate) discard(threadId);
-      notify("thread/tokenUsage/updated", { turnId: id, tokenUsage });
+      notify("thread/tokenUsage/updated", { turnId: id, ...usage });
       tracking.publish();
       for (const item of turn.items)
         notify("item/completed", { turnId: id, item });

@@ -335,8 +335,9 @@ export function createThreadNavigation({
       });
     }
     const access = get().threadAccess;
+    const oldCount = get().compactCounts[id];
     rpc("thread/turns/list", { threadId: id, limit: 20, itemsView: "summary" })
-      .then((page) => {
+      .then(({ data, compactCount }) => {
         if (
           epoch !== opening ||
           connection !== transport.connection ||
@@ -346,12 +347,12 @@ export function createThreadNavigation({
         )
           return;
         const active = { ...get().active };
-        const running = page.data.find((t) => t.status === "inProgress");
+        const running = data.find((t) => t.status === "inProgress");
         const unchanged = records.turnRevisions.get(id) === turnRevision;
         if (unchanged) {
           if (resumed && running) active[id] = running.id;
           else if (
-            page.data.some(
+            data.some(
               (turn) => turn.id === active[id] && turn.status !== "inProgress",
             )
           )
@@ -360,11 +361,15 @@ export function createThreadNavigation({
         const live = get().turns[id] || [];
         const liveIds = new Set(live.map((turn) => turn.id));
         set({
+          ...(compactCount != null &&
+            get().compactCounts[id] === oldCount && {
+              compactCounts: { ...get().compactCounts, [id]: compactCount },
+            }),
           turns: {
             ...get().turns,
             [id]: unchanged
-              ? page.data
-              : [...live, ...page.data.filter((turn) => !liveIds.has(turn.id))],
+              ? data
+              : [...live, ...data.filter((turn) => !liveIds.has(turn.id))],
           },
           active,
         });
@@ -470,6 +475,7 @@ export function createThreadNavigation({
     assignNewThread(r.thread.id);
     set({
       current: r.thread,
+      compactCounts: { ...get().compactCounts, [r.thread.id]: 0 },
       mode: get().mode,
       delegationMode: r.thread.delegationMode === true,
     });
