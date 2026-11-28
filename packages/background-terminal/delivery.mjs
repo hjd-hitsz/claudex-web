@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { BACKGROUND_TURN_CONTEXT } from "./background-protocol.mjs";
 import { mcpConfig } from "./client.mjs";
 import { withCodex } from "./codex.mjs";
+import { backgroundResumeParams, readOnlyTurn } from "./thread-policy.mjs";
 
 const notificationName = (batch) =>
   batch.checkpoints ? "background_check_due" : "background_completed";
@@ -40,7 +41,12 @@ export async function received(call, batch) {
   return false;
 }
 
-export function createDelivery(directory, url, jobs) {
+export function createDelivery(
+  directory,
+  url,
+  jobs,
+  isResearchThread = async () => false,
+) {
   const owner = randomUUID();
   const active = new Map();
   const retryAt = new Map();
@@ -75,11 +81,14 @@ export function createDelivery(directory, url, jobs) {
           if (thread.status?.type === "active" || closed) return;
           batch = await jobs.claim(threadId, owner);
           if (!batch) return;
-          const resumed = await call("thread/resume", {
-            threadId,
-            excludeTurns: true,
-            config: mcpConfig(directory, url),
-          });
+          const research = await isResearchThread(threadId);
+          const resume = backgroundResumeParams(threadId, research);
+          const resumed = await call(
+            "thread/resume",
+            research
+              ? resume
+              : { ...resume, config: mcpConfig(directory, url) },
+          );
           if (resumed.thread.status?.type === "active" || closed) {
             await jobs.updateBatch({ id: batch.id, owner, status: "pending" });
             return;
@@ -126,8 +135,9 @@ export function createDelivery(directory, url, jobs) {
             threadId,
             input: [],
             turnTrigger: "background_task",
+            ...(research && readOnlyTurn),
             additionalContext: {
-              ...BACKGROUND_TURN_CONTEXT,
+              ...(!research && BACKGROUND_TURN_CONTEXT),
               claudex_background_update: {
                 kind: "application",
                 value: batch.checkpoints

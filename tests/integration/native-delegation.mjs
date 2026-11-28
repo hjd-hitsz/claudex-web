@@ -62,12 +62,30 @@ const source = { codex: "CODEX_SOURCE_PROOF", claude: "CLAUDE_SOURCE_PROOF" };
 const requestArguments = (origin) => ({
   request: "Return the fixture evidence for " + origin,
   request_id: "native-" + origin,
+  scope: "research",
+});
+const scopePrompt = "DELEGATION_SCOPE_CONFLICT";
+const scopeError =
+  "委派续问失败：原任务范围为 research，本次请求范围为 implementation。请用 implementation 新建委派任务，或改用 research 续问。";
+const followUpArguments = (task_id) => ({
+  request: "修改测试内容",
+  request_id: "scope-conflict",
+  task_id,
   scope: "implementation",
 });
+const followUpTasks = {};
+const scopeProof = {};
 const directPrompt = "SECRETARY_DIRECT_PROOF";
 const localPrompt = "SECRETARY_LOCAL_TOOL_PROOF";
 const standardPrompt = "STANDARD_ASSISTANT_PROOF";
 const offPrompt = "DISABLED_SECRETARY_PROOF";
+const scopeProbe = (prompt) =>
+  prompt.lastIndexOf(scopePrompt) >
+  Math.max(
+    prompt.lastIndexOf(offPrompt),
+    prompt.lastIndexOf(localPrompt),
+    prompt.lastIndexOf(directPrompt),
+  );
 function lookupInput(messages) {
   const text = messages
     .flatMap(({ content, output }) => {
@@ -111,7 +129,24 @@ const codex = createServer(async (request, response) => {
   let call;
   if (body.text?.format?.type === "json_schema")
     answer = '{"title":"Delegation proof"}';
-  else if (
+  else if (scopeProbe(prompt)) {
+    const returned = body.input.find(
+      ({ type, call_id }) =>
+        type === "function_call_output" && call_id === "scope-codex",
+    );
+    if (returned) scopeProof.codex = returned.output;
+    else {
+      const tool = tools.find(({ name }) => name === "delegate_task");
+      assert(tool);
+      call = {
+        type: "function_call",
+        name: tool.name,
+        namespace: tool.namespace,
+        call_id: "scope-codex",
+        arguments: JSON.stringify(followUpArguments(followUpTasks.codex)),
+      };
+    }
+  } else if (
     prompt.includes(offPrompt) ||
     (prompt.includes(standardPrompt) && !prompt.includes(directPrompt))
   ) {
@@ -218,6 +253,24 @@ const claude = await messagesServer(async (body) => {
   const prompt = JSON.stringify(body.messages);
   const instructions = JSON.stringify(body.system);
   const tool = body.tools?.find(({ name }) => name === toolName);
+  if (scopeProbe(prompt)) {
+    if (!tool) return [{ type: "text", text: "Delegation proof" }];
+    const returned = body.messages
+      .flatMap(({ content }) => (Array.isArray(content) ? content : []))
+      .find(({ tool_use_id }) => tool_use_id === "toolu_scope_claude");
+    if (returned) {
+      scopeProof.claude = returned;
+      return [{ type: "text", text: "SCOPE_CONFLICT_PROOF" }];
+    }
+    return [
+      {
+        type: "tool_use",
+        id: "toolu_scope_claude",
+        name: toolName,
+        input: followUpArguments(followUpTasks.claude),
+      },
+    ];
+  }
   if (
     prompt.includes(offPrompt) ||
     (prompt.includes(standardPrompt) && !prompt.includes(directPrompt))
@@ -640,6 +693,13 @@ try {
     assert.equal(items.length, 1);
     const agent = items[0];
     assert.equal(agent.agentStatus, "completed");
+    followUpTasks[origin] = agent.delegation.taskId;
+    const successTool = events.find(
+      ({ method, params }) =>
+        method === "item/completed" &&
+        params.turnId === delegationTurn.id &&
+        params.item?.arguments?.request_id === "native-" + origin,
+    )?.params.item;
     const { thread: detail } = await rpc("thread/read", {
       threadId: agent.agentThreadId,
       includeTurns: true,
@@ -654,6 +714,28 @@ try {
       () => !manager.state().params.activeTurns[thread.id],
       origin + " 回投轮次结束",
     );
+    await directTurn(origin, params, scopePrompt);
+    assert(JSON.stringify(scopeProof[origin])?.includes(scopeError));
+    if (origin === "claude") assert.equal(scopeProof.claude.is_error, true);
+    const rejectedTool = events.findLast(
+      ({ method, params }) =>
+        method === "item/completed" &&
+        params.threadId === thread.id &&
+        params.item?.arguments?.request_id === "scope-conflict",
+    )?.params.item;
+    assert(rejectedTool);
+    assert(successTool);
+    assert(
+      rejectedTool.status === "failed" || rejectedTool.result?.isError,
+      JSON.stringify(rejectedTool),
+    );
+    if (origin === "claude") assert.equal(rejectedTool.result, null);
+    if (process.env.DELEGATION_TOOL_PROOF_DIR)
+      await writeFile(
+        join(process.env.DELEGATION_TOOL_PROOF_DIR, origin + "-tools.json"),
+        JSON.stringify({ success: successTool, failure: rejectedTool }),
+      );
+    console.log(origin + " 原生委派续问失败", JSON.stringify(rejectedTool));
     await rpc("lan/delegation/mode/set", {
       threadId: thread.id,
       delegationMode: false,

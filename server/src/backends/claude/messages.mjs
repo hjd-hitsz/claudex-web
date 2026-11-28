@@ -109,28 +109,29 @@ export function convertMessage(
     for (const block of blocks.filter((b) => b.type === "tool_result")) {
       const prior = tools.get(block.tool_use_id);
       if (prior) {
-        const text =
+        const contentItems =
           typeof block.content === "string"
-            ? block.content
-            : JSON.stringify(block.content || []);
+            ? [{ type: "text", text: block.content }]
+            : (block.content || []).map((content) =>
+                content.type === "image"
+                  ? { ...content, url: imageUrl(content) }
+                  : content,
+              );
         const item = {
           ...prior,
           nativeOutputId: message.uuid,
           status: block.is_error ? "failed" : "completed",
           ...(prior.type === "commandExecution"
-            ? { aggregatedOutput: text, exitCode: block.is_error ? 1 : 0 }
-            : {
-                result: block.content,
-                contentItems:
+            ? {
+                aggregatedOutput:
                   typeof block.content === "string"
-                    ? [{ type: "text", text: block.content }]
-                    : (block.content || []).map((content) =>
-                        content.type === "image"
-                          ? { ...content, url: imageUrl(content) }
-                          : content,
-                      ),
-                error: block.is_error ? text : null,
-              }),
+                    ? block.content
+                    : JSON.stringify(block.content || []),
+                exitCode: block.is_error ? 1 : 0,
+              }
+            : block.is_error
+              ? { result: null, contentItems: [], error: contentItems }
+              : { result: block.content, contentItems, error: null }),
         };
         tools.set(item.id, item);
         items.push(item);

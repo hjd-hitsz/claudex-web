@@ -3,6 +3,11 @@ import { finishDelegation } from "./delegation-store.mjs";
 import { turnCalls } from "./call-chain.mjs";
 import { shellTask } from "../claude/background-tasks.mjs";
 import { delegationContext } from "./context.mjs";
+import { deliveryAnswer } from "./delivery-summary.mjs";
+import {
+  delegationSnippet,
+  deliverySnippet,
+} from "../../../../shared/delivery-summary.mjs";
 
 const terminal = new Set(["completed", "failed", "interrupted"]);
 export const traceVersion = 2;
@@ -68,15 +73,36 @@ function claudeTriggers(turn, tasks) {
   }));
 }
 
-function label({ triggers }, index) {
-  if (!index) return "当前委派";
-  if (!triggers.length) return "原生续跑 · 第 " + (index + 1) + " 轮";
-  return triggers
-    .map(
-      ({ kind, id, title, runId }) =>
-        `${kind === "check" ? "后台终端软检查" : "后台终端完成"} · ${title || "终端"}（ID ${id}${runId ? `，运行 ID ${runId}` : ""}）`,
-    )
-    .join("、");
+function triggerDetails({ id, title, runId }) {
+  return `${title || "终端"}（ID ${id}${runId ? `，运行 ID ${runId}` : ""}）`;
+}
+
+function stageSection({ triggers }, index, answer, dispatchTitle) {
+  if (!index) return `## ${dispatchTitle}\n\n${answer}`;
+  if (!triggers.length) return `## 原生续跑 · 第 ${index + 1} 轮\n\n${answer}`;
+  const count = triggers.length;
+  const checks = triggers.filter(({ kind }) => kind === "check").length;
+  const kind = checks === count ? "软检查" : checks === 0 ? "完成" : "";
+  if (count === 1)
+    return `## 后台终端${kind} · ${triggerDetails(triggers[0])}\n\n${answer}`;
+  const details = triggers
+    .map((trigger) => {
+      const prefix = kind
+        ? ""
+        : trigger.kind === "check"
+          ? "软检查 · "
+          : "完成 · ";
+      const detail = triggerDetails(trigger)
+        .replace(/[\r\n]+/g, " ")
+        .trimStart()
+        .replace(
+          /[\\`*_\[\]<>~&$]/g,
+          (character) => `&#${character.charCodeAt(0)};`,
+        );
+      return `- ${prefix}${detail}`;
+    })
+    .join("\n");
+  return `## 后台终端${kind} · ${count} 项\n\n${details}\n\n${answer}`;
 }
 
 export function delegationStage(turn, triggers, target, trace) {
@@ -179,9 +205,13 @@ export function summarizeDelegationStages(stages) {
     stages.length === 1
       ? stages[0].answer
       : stages
-          .map(
-            (stage, index) =>
-              `## ${label(stage, index)}\n\n${stage.answer || "（本轮无文字回复）"}`,
+          .map((stage, index) =>
+            stageSection(
+              stage,
+              index,
+              stage.answer || "（本轮无文字回复）",
+              "当前委派",
+            ),
           )
           .join("\n\n");
   const errors = stages.map(({ error }) => error).filter(Boolean);
@@ -204,6 +234,28 @@ export function summarizeDelegationStages(stages) {
   };
 }
 
+function delegationDelivery(stages) {
+  const sections = stages.flatMap((stage, index) => {
+    const answer = deliveryAnswer(stage);
+    if (!answer) return [];
+    return [{ answer, stage, index }];
+  });
+  const first = sections[0]?.answer;
+  return {
+    deliveryAnswer:
+      sections.length > 1
+        ? sections
+            .map(({ answer, stage, index }) =>
+              stageSection(stage, index, answer, "派单轮答复"),
+            )
+            .join("\n\n")
+        : (first ?? null),
+    deliveryPreview: first
+      ? delegationSnippet(first) || deliverySnippet(first)
+      : "",
+  };
+}
+
 export function saveDelegationResults(
   data,
   task,
@@ -219,6 +271,7 @@ export function saveDelegationResults(
   step.turnId = stages[0].turnId;
   finishDelegation(data, task, status, {
     ...summarizeDelegationStages(stages),
+    ...delegationDelivery(stages),
     ...(context && { context }),
   });
 }

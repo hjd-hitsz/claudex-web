@@ -179,6 +179,10 @@ button.delivery-summary:hover .delivery-summary-arrow {
   display: block;
   margin-bottom: 0.2em;
 }
+.tool-section-error > small,
+.activity-summary > [aria-label="执行失败"] {
+  color: var(--red);
+}
 .tool-web-details p,
 .tool-fields .markdown > :first-child,
 .tool-fields .markdown > :last-child {

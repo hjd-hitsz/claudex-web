@@ -1,8 +1,14 @@
 import { connectCodex } from "./codex.mjs";
+import { backgroundResumeParams } from "./thread-policy.mjs";
 
 const key = (turnId, itemId) => JSON.stringify([turnId, itemId]);
 
-export function createNativeWatches(url, jobs, connect = connectCodex) {
+export function createNativeWatches(
+  url,
+  jobs,
+  connect = connectCodex,
+  isResearchThread = async () => false,
+) {
   const threads = new Map();
   let closing = false;
 
@@ -87,10 +93,10 @@ export function createNativeWatches(url, jobs, connect = connectCodex) {
       },
     }).then(async (connection) => {
       entry.connection = connection;
-      const { thread } = await connection.call("thread/resume", {
-        threadId,
-        excludeTurns: true,
-      });
+      const { thread } = await connection.call(
+        "thread/resume",
+        backgroundResumeParams(threadId, await isResearchThread(threadId)),
+      );
       if (thread.ephemeral || thread.path?.includes("/archived_sessions/"))
         throw new Error("原生后台终端需要未归档的持久对话");
       return connection;

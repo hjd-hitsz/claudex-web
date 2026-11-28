@@ -5,6 +5,13 @@ import {
 } from "../../../../shared/delivery-summary.mjs";
 import { traceId } from "./trace-ids.mjs";
 
+export function deliveryAnswer({ deliveryAnswer, conclusion, answer }) {
+  if (deliveryAnswer !== undefined) return deliveryAnswer;
+  if (conclusion?.trim()) return conclusion;
+  if (answer?.trim()) return answer;
+  return null;
+}
+
 export function delegationSummaries(steps) {
   return Object.fromEntries(
     steps
@@ -21,9 +28,10 @@ export function delegationSummaries(steps) {
           {
             title: deliverySnippet(taskSummary || topic || ""),
             preview:
-              result.conclusion === undefined
-                ? delegationPreview(result.answer)
-                : delegationSnippet(result.conclusion),
+              result.deliveryPreview ??
+              (result.conclusion?.trim()
+                ? delegationSnippet(result.conclusion)
+                : delegationPreview(deliveryAnswer(result))),
           },
         ];
       }),

@@ -33,7 +33,7 @@ type RequestDependencies = Pick<
   backgroundCall?:
     false | ((method: string, params?: NativeParams) => Promise<unknown>);
   waitForBackgroundHandoff: (threadId: string) => Promise<unknown>;
-  includeBackground: () => boolean;
+  includeBackground: (threadId: string) => boolean;
   offline: LocalHandlers;
   online: LocalHandlers;
   send: (client: CodexClient, message: RpcMessage) => void;
@@ -180,7 +180,7 @@ export function createRequestHandler({
         backgroundCall &&
         threadId &&
         terminalMethods.has(message.method) &&
-        includeBackground()
+        includeBackground(threadId)
       ) {
         const release = retainThread(threadId);
         try {

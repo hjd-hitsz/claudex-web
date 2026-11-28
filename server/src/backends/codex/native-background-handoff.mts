@@ -19,7 +19,7 @@ export function createNativeBackgroundHandoff({
   background?: Pick<ReturnType<typeof createBackgroundService>, "available"> & {
     ensure(): Promise<string>;
   };
-  enabled: () => boolean;
+  enabled: (threadId: string) => boolean;
   upstream: string;
   onSettled: () => void;
 }) {
@@ -33,7 +33,7 @@ export function createNativeBackgroundHandoff({
   function event({ method, params }: NativeEvent) {
     const { threadId, turnId, item, turn } = params ?? {};
     if (!threadId) return;
-    if (method === "item/started" && turnId && enabled()) {
+    if (method === "item/started" && turnId && enabled(threadId)) {
       if (
         item?.type !== "commandExecution" ||
         item.source !== "unifiedExecStartup" ||
@@ -62,7 +62,7 @@ export function createNativeBackgroundHandoff({
         !background ||
         !record?.items.size ||
         turn.status !== "completed" ||
-        !enabled()
+        !enabled(threadId)
       )
         return;
       const requests = pending.get(threadId) ?? new Set<Promise<unknown>>();

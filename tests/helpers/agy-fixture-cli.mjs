@@ -242,7 +242,7 @@ async function handle({ method, params: p }) {
   }
   if (content.includes("[Claudex delegation notice:")) {
     const payload = JSON.parse(content.split("\n").at(-1));
-    const background = /^(codex|claude)_STAGE_5$/i.exec(payload.answer);
+    const background = /^(codex|claude)_STAGE_3$/i.exec(payload.preview);
     if (background) {
       const { tools } = await session.mcp.ready;
       const name = "read_delegation_step";

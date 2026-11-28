@@ -82,7 +82,7 @@ test("原生委派通过请求与调用回执去重，模型参数不携带宿�
         ...args,
         input: { ...input, request_id: "changed" },
       }),
-    /请求标识/,
+    /委派失败.*请求 ID/,
   );
   assert.equal(Object.keys(data.tasks).length, 1);
   assert.equal(data.tasks[result.task_id].steps.length, 1);

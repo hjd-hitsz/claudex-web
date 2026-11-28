@@ -59,6 +59,11 @@ test("软检查及未结算的完成续跑保持沉默，最终结果标注两�
     ],
   });
   const check = wake("check", "background_check_due", "completed");
+  check.items.push({
+    type: "agentMessage",
+    phase: "final_answer",
+    text: "仍在运行，已安排下次检查。",
+  });
   const finished = wake("finish", "background_completed", "completed");
   const background = {
     terminals: [],
@@ -103,7 +108,13 @@ test("软检查及未结算的完成续跑保持沉默，最终结果标注两�
   saveDelegationResults(data, task, result);
   const [notice] = Object.values(data.notices);
   assert.equal(notice.kind, "result");
-  assert.equal(notice.payload.answer, result.stages[2].conclusion);
+  assert.equal(result.stages[2].conclusion, "");
+  assert.equal(
+    notice.payload.answer,
+    "## 派单轮答复\n\n已启动终端\n\n## 后台终端软检查 · 项目检查（ID job）\n\n仍在运行，已安排下次检查。",
+  );
+  assert.equal(notice.payload.preview, "已启动终端");
+  assert.equal(task.steps[0].result.conclusion, "");
   assert.match(
     task.steps[0].result.answer,
     /后台终端软检查 · 项目检查（ID job）[\s\S]*后台终端完成 · 项目检查（ID job）/,
@@ -181,7 +192,7 @@ const assignment = {
   input: { request: "首次需求", request_id: "first" },
 };
 
-test("149 次调用的回投载荷只携带最终答复和状态，任务保留完整调用索引", () => {
+test("149 次调用的回投载荷保留答复与状态，调用证据通过步骤索引查阅", () => {
   const items = Array.from({ length: 148 }, (_, index) => ({
     id: String(index),
     type: index < 143 ? "commandExecution" : "mcpToolCall",
@@ -220,6 +231,7 @@ test("149 次调用的回投载荷只携带最终答复和状态，任务保留�
     status: "failed",
     context: { compactCount: 0 },
     answer,
+    preview: answer,
     error: turn.error.message,
   };
   assert.deepEqual(notice.payload, expected);
@@ -237,14 +249,16 @@ test("149 次调用的回投载荷只携带最终答复和状态，任务保留�
   ]);
   assert.deepEqual(step.result.artifacts, artifacts);
 
+  const { deliveryAnswer, deliveryPreview, ...oldResult } = step.result;
   const legacy = {
     ...notice,
-    payload: { status: task.status, ...step.result },
+    payload: { status: task.status, ...oldResult },
   };
+  const legacyTask = { ...task, steps: [{ ...step, result: oldResult }] };
   assert(Buffer.byteLength(JSON.stringify(legacy.payload)) > 600000);
-  const [{ text }] = delegationNotice(legacy, task).prompt;
+  const [{ text }] = delegationNotice(legacy, legacyTask).prompt;
   assert.deepEqual(
-    delegationNotice(legacy, task).items[0].context,
+    delegationNotice(legacy, legacyTask).items[0].context,
     expected.context,
   );
   assert(text.startsWith(noticeMarker(notice.id)));
@@ -252,13 +266,17 @@ test("149 次调用的回投载荷只携带最终答复和状态，任务保留�
   assert(!text.includes(step.id));
   assert.deepEqual(JSON.parse(text.split("\n").at(-1)), {
     taskId: traceId(task.id),
-    ...expected,
+    stepId: expected.stepId,
+    status: expected.status,
+    context: expected.context,
+    answer: expected.answer,
+    error: expected.error,
   });
   assert(Buffer.byteLength(text) < 1000);
   assert.equal(legacy.payload.evidence.length, items.length);
 });
 
-test("末轮最终答复逐字回投，阶段说明和调用证据完整保存在步骤中", () => {
+test("续跑答复较长时仍按轮次逐字回投，步骤保留阶段说明和调用证据", () => {
   const paths = Array.from(
     { length: 120 },
     (_, index) => `src/file-${index}.mjs`,
@@ -311,13 +329,19 @@ test("末轮最终答复逐字回投，阶段说明和调用证据完整保存�
   assert.deepEqual(notice.payload, {
     stepId: "step",
     status: task.status,
-    answer: final,
+    answer: `## 派单轮答复\n\n${stages[0].answer}\n\n## 原生续跑 · 第 2 轮\n\n${final}`,
+    preview:
+      "已修改 120 个文件 src/file-0.mjs src/file-1.mjs src/file-2.mjs src/file-3.mjs src...",
   });
-  for (const record of [
-    notice,
-    { ...notice, payload: { status: task.status, ...result } },
-  ]) {
-    const [{ text }] = delegationNotice(record, task).prompt;
+  assert.equal(result.deliveryAnswer, notice.payload.answer);
+  assert.equal(result.conclusion, final);
+  const updated = structuredClone(task);
+  Object.assign(updated.steps[0].result, {
+    deliveryAnswer: "迟到更新",
+    deliveryPreview: "迟到预览",
+  });
+  for (const source of [task, updated]) {
+    const [{ text }] = delegationNotice(notice, source).prompt;
     assert(text.startsWith(noticeMarker(notice.id)));
     assert.deepEqual(
       JSON.parse(text.split("\n").at(-1)),
@@ -576,7 +600,7 @@ test("委派受理去重，终态和通知绑定原任务，补问沿用会话",
   assert.deepEqual(acceptDelegation(data, args), accepted);
   assert.throws(
     () => acceptDelegation(data, { ...args, target: "claude" }),
-    /请求标识/,
+    /委派失败.*请求 ID/,
   );
   const task = data.tasks[accepted.task_id];
   assert.deepEqual(task.original, args.turn.original);
@@ -590,8 +614,21 @@ test("委派受理去重，终态和通知绑定原任务，补问沿用会话",
   };
   assert.throws(
     () => acceptDelegation(data, { ...follow, parent: { id: "other" } }),
-    /无法继续/,
+    /续问失败.*当前会话与接收端/,
   );
+  const beforeConflict = structuredClone(data);
+  assert.throws(
+    () =>
+      acceptDelegation(data, {
+        ...follow,
+        input: { ...follow.input, scope: "implementation" },
+      }),
+    {
+      message:
+        "委派续问失败：原任务范围为 research，本次请求范围为 implementation。请用 implementation 新建委派任务，或改用 research 续问。",
+    },
+  );
+  assert.deepEqual(data, beforeConflict);
   assert.equal(acceptDelegation(data, follow).task_id, task.id);
   assert.equal(task.executor.threadId, "native");
   assert.equal(task.selection.effort, "high");

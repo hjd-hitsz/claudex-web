@@ -45,6 +45,9 @@ export function createDelegationExecution({
           entry,
           "thread/start",
           executor.startParams(task),
+          {
+            researchStart: task.target === "codex" && task.scope === "research",
+          },
         );
         if (!thread?.id) throw new Error("执行端未返回会话 ID");
         // Reuse the newly allocated session even when its original step was replaced.

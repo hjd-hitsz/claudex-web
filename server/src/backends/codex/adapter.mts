@@ -34,6 +34,13 @@ import type {
 } from "./native-protocol.d.mts";
 import type { CodexClient } from "./upstream.mjs";
 import { requestActivity } from "../../conversation-manager/request-activity.mjs";
+import { runtimeIdentity } from "../../conversation-manager/address.mjs";
+import { delegationStatePaths } from "../delegation/delegated-threads.mjs";
+import { createResearchThreadLookup } from "../../../../packages/background-terminal/delegation-records.mjs";
+import {
+  checkWebResearchAccess,
+  researchSessionParams,
+} from "./research-policy.mjs";
 
 const conversationUserRequests = new Set([
   "item/commandExecution/requestApproval",
@@ -53,13 +60,19 @@ const conversationWrites = new Set([
 
 type SubagentSettings = Parameters<typeof subagentModelParams>[2];
 type CodexAdapterOptions = {
-  backend: SubagentSettings & { url: string; dataDir: string };
+  backend: SubagentSettings & {
+    id: string;
+    type: string;
+    url: string;
+    dataDir: string;
+  };
   config: ReturnType<typeof readConfig>;
   version: { displayVersion: string };
   send: (client: CodexClient, message: RpcMessage) => void;
   broadcast: (message: RpcMessage) => void;
   background?: ReturnType<typeof createBackgroundService>;
   backgroundEnabled?: () => boolean;
+  delegationExecutor?: boolean;
   readSubagentSettings?: () => Promise<SubagentSettings>;
   conversationToolEndpoint?: Parameters<typeof codexConversationToolParams>[2];
   readSecretaryRole?: (
@@ -76,11 +89,17 @@ export function createCodexAdapter({
   broadcast,
   background,
   backgroundEnabled = () => false,
+  delegationExecutor = false,
   readSubagentSettings = async () => backend,
   conversationToolEndpoint,
   readSecretaryRole,
 }: CodexAdapterOptions) {
   config = { ...config, upstreamUrl: backend.url, codexHome: backend.dataDir };
+  const isResearchThread = createResearchThreadLookup({
+    paths: delegationStatePaths(config.configDir),
+    runtimeId: runtimeIdentity(backend),
+  });
+  const researchThreads = new Set<string>();
   const questions = new Map<string, RpcMessage>();
   const activeTurns = new Map<string, string>();
   const executionStatuses = new Map<
@@ -93,7 +112,11 @@ export function createCodexAdapter({
   const streamingMessages = createStreamingMessages();
   const handoff = createNativeBackgroundHandoff({
     background,
-    enabled: () => Boolean(background?.available && backgroundEnabled()),
+    enabled: (threadId) =>
+      Boolean(
+        background?.available &&
+        (researchThreads.has(threadId) || backgroundEnabled()),
+      ),
     upstream: config.upstreamUrl,
     onSettled: () => subscriptions.releaseUnusedThreads(),
   });
@@ -118,8 +141,10 @@ export function createCodexAdapter({
           checkCompaction(threadId).catch(() => {});
     },
     onEvent(message) {
-      if (message.method === "thread/closed" && message.params?.threadId)
+      if (message.method === "thread/closed" && message.params?.threadId) {
+        researchThreads.delete(message.params.threadId);
         subscriptions.closedThread(message.params.threadId);
+      }
       conversationManager.onEvent(message);
       handoff.event(message);
       const discardedStreamingMessageIds = streamingMessages.event(message);
@@ -152,6 +177,7 @@ export function createCodexAdapter({
       activeTurns.clear();
       executionStatuses.clear();
       activeThreads.clear();
+      researchThreads.clear();
       streamingMessages.clear();
       handoff.disconnected();
       subscriptions.reset();
@@ -163,8 +189,16 @@ export function createCodexAdapter({
     method: string,
     params: NativeParams,
     role?: string,
+    research?: boolean,
+    web = false,
   ): Promise<NativeParams> {
-    const enabled = Boolean(background && backgroundEnabled());
+    research ??=
+      (threadMethods.has(method) || method === "turn/start") &&
+      (await isResearchThread(params.threadId));
+    if (research && params.threadId) researchThreads.add(params.threadId);
+    if (research && (threadMethods.has(method) || method === "turn/start"))
+      params = researchSessionParams(method, params, web);
+    const enabled = !research && Boolean(background && backgroundEnabled());
     if (!threadMethods.has(method)) {
       return enabled ? backgroundTurnParams(method, params) : params;
     }
@@ -183,7 +217,7 @@ export function createCodexAdapter({
           method,
           referenceToolParams(method, params, config),
           conversationToolEndpoint,
-          Boolean(role),
+          !research && Boolean(role),
         ),
         enabled ? await background?.ensure() : null,
         config.upstreamUrl,
@@ -297,8 +331,11 @@ export function createCodexAdapter({
       ...methods.online,
       ...backgroundTaskViews(background, config.upstreamUrl),
     ]),
-    includeBackground: () =>
-      backgroundEnabled() || Boolean(background?.listening()),
+    includeBackground: (threadId) =>
+      Boolean(background?.listening()) ||
+      (researchThreads.has(threadId)
+        ? handoff.pending(threadId)
+        : backgroundEnabled()),
     waitForBackgroundHandoff: handoff.wait,
     backgroundCall:
       background?.available &&
@@ -334,23 +371,50 @@ export function createCodexAdapter({
     workspaceOwner: "backend",
     conversationManager,
     state,
-    async receive(client: CodexClient, message: RpcMessage) {
-      if (!message.method) return receive(client, message);
+    async receive(
+      client: CodexClient,
+      message: RpcMessage,
+      researchStart = false,
+    ) {
+      if (!message.method) {
+        const request = questions.get(String(message.id));
+        if (
+          !delegationExecutor &&
+          (await isResearchThread(request?.params?.threadId))
+        )
+          throw new Error("请从发起会话回应 Codex 研究委派。");
+        return receive(client, message);
+      }
       const { providerId, delegationMode, ...params } = message.params || {};
       if (providerId) throw new Error("Codex 使用现有账户与模型配置");
-      const role = threadMethods.has(message.method)
-        ? await readSecretaryRole?.(
-            message.method === "thread/resume" ? params.threadId : undefined,
-            message.method === "thread/start"
-              ? delegationMode === true
-              : undefined,
-          )
-        : undefined;
+      const research =
+        (delegationExecutor &&
+          researchStart &&
+          message.method === "thread/start") ||
+        (await isResearchThread(params.threadId));
+      if (research && params.threadId) researchThreads.add(params.threadId);
+      if (!delegationExecutor)
+        checkWebResearchAccess(message.method, params, research);
+      const role =
+        !research && threadMethods.has(message.method)
+          ? await readSecretaryRole?.(
+              message.method === "thread/resume" ? params.threadId : undefined,
+              message.method === "thread/start"
+                ? delegationMode === true
+                : undefined,
+            )
+          : undefined;
       return receive(
         client,
         {
           ...message,
-          params: await sessionParams(message.method, params, role),
+          params: await sessionParams(
+            message.method,
+            params,
+            role,
+            research,
+            !delegationExecutor,
+          ),
         },
         role,
       );

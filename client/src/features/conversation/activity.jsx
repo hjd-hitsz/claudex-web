@@ -19,7 +19,11 @@ import { DiffBlock } from "../../ui/diff-block.jsx";
 import { reasoningSummaries } from "../../domain/reasoning-summary.js";
 import { useSummaryTranslation } from "./use-summary-translation.js";
 import { ActivityContent } from "./activity-content.jsx";
-import { activityLabel, activityHasImage } from "../../domain/activity.js";
+import {
+  activityLabel,
+  activityFailed,
+  activityHasImage,
+} from "../../domain/activity.js";
 import { RichText } from "../markdown/rich-text.jsx";
 import {
   isSubAgentItem,
@@ -30,11 +34,7 @@ export function Activity({ item, cwd }) {
   const [expanded, setOpen] = useState(null);
   const open = expanded ?? activityHasImage(item);
   const working = ["inProgress", "running"].includes(item.status);
-  const failed =
-    ["failed", "declined"].includes(item.status) ||
-    item.success === false ||
-    Boolean(item.error) ||
-    item.result?.isError === true;
+  const failed = activityFailed(item);
   if (isSubAgentItem(item)) {
     const agents = subAgents([item]);
     return (

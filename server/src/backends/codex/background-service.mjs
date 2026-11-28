@@ -12,6 +12,10 @@ import {
 } from "../../../../packages/background-terminal/client.mjs";
 import { supportsBackgroundTerminal } from "../../config.mjs";
 import { spawnDetached } from "../../service-maintenance-process.mjs";
+import { runtimeIdentity } from "../../conversation-manager/address.mjs";
+import { delegationStatePaths } from "../delegation/delegated-threads.mjs";
+import { delegationRecordsPath } from "../../../../packages/background-terminal/delegation-records.mjs";
+import { writePrivateFile } from "../../private-file.mjs";
 
 async function runsInWebUserUnit() {
   if (process.platform !== "linux") return false;
@@ -30,7 +34,27 @@ export function createBackgroundService(config) {
     config.backgroundTaskDir || join(config.configDir, "background-terminal");
   const upstream = new URL(config.upstreamUrl).href;
   const available = supportsBackgroundTerminal(upstream);
+  const listening = () => existsSync(join(directory, "service.sock"));
   let checking;
+  async function bindDelegations() {
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const path = delegationRecordsPath(await privateDirectory(directory));
+    const binding =
+      JSON.stringify({
+        paths: delegationStatePaths(config.configDir),
+        runtimeId: runtimeIdentity({
+          id: "codex",
+          type: "codex",
+          url: upstream,
+          dataDir: config.codexHome,
+        }),
+      }) + "\n";
+    const previous = await readFile(path, "utf8").catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (previous !== binding) await writePrivateFile(path, binding);
+  }
   async function responding() {
     try {
       await taskRequest(directory, "health", { expectedUpstream: upstream });
@@ -43,6 +67,7 @@ export function createBackgroundService(config) {
   async function start() {
     if (!available)
       throw new Error("后台终端 MCP 需要同机 Codex 回环 WebSocket 连接");
+    await bindDelegations();
     if (await responding()) return directory;
     const entry = fileURLToPath(
       new URL(
@@ -98,7 +123,10 @@ export function createBackgroundService(config) {
   return {
     available,
     directory,
-    listening: () => existsSync(join(directory, "service.sock")),
+    async bindExistingTasks() {
+      if (available && listening()) await bindDelegations();
+    },
+    listening,
     ensure() {
       checking ??= start().finally(() => {
         checking = null;

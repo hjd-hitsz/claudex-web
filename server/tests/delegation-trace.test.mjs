@@ -695,7 +695,7 @@ test("补问接受同一会话的短任务 ID 并保留原任务", () => {
         ...follow,
         parent: { ...assignment.parent, sourceRuntime: "other" },
       }),
-    /无法继续/,
+    /续问失败.*当前会话与接收端/,
   );
   assert.equal(acceptDelegation(data, follow).task_id, id);
   assert.equal(acceptDelegation(data, follow).task_id, id);

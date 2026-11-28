@@ -225,7 +225,7 @@ export function createBackendManager({
     }
   }
   async function connect() {
-    await folders.read();
+    await Promise.all([folders.read(), background.bindExistingTasks()]);
     const data = await configuration.read();
     await Promise.all(data.backends.map(install));
     await delegation.start();

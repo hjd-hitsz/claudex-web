@@ -27,6 +27,7 @@ packages/translation-engine/bin/tokenizer-linux-*
 /server/src/backends/claude/input-stream.mjs
 /server/src/backends/claude/native-commands.mjs
 /server/src/backends/codex/resume-lifecycle.mjs
+/server/src/backends/codex/research-policy.mjs
 /server/src/backends/codex/secretary-mode.mjs
 /server/src/backends/codex/subagent-model.mjs
 /server/src/backends/codex/upstream.mjs

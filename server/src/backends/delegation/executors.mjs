@@ -8,6 +8,10 @@ import { runtimeIdentity } from "../../conversation-manager/address.mjs";
 import { createBackgroundService } from "../codex/background-service.mjs";
 import { codexFullAccess } from "../codex/subscriptions.mjs";
 import { taskRequest } from "../../../../packages/background-terminal/client.mjs";
+import {
+  readOnlyThread,
+  readOnlyTurn,
+} from "../../../../packages/background-terminal/thread-policy.mjs";
 import { traceItems, traceOrder } from "./turn-trace.mjs";
 
 const executorPrompt = readPromptSections("delegation/workflow.md");
@@ -56,6 +60,13 @@ export function delegationTurnParams(task) {
     ...(model && { model }),
     ...(effort && { effort }),
     ...(providerId && { providerId }),
+    ...(task.target === "codex" &&
+      (task.scope === "research"
+        ? readOnlyTurn
+        : {
+            approvalPolicy: "never",
+            sandboxPolicy: { type: "dangerFullAccess" },
+          })),
     ...(task.target === "claude" && {
       delegation: task.scope,
       collaborationMode: {
@@ -88,6 +99,7 @@ export function createExecutors({ config, version, onEvent }) {
       version,
       backend,
       background,
+      delegationExecutor: true,
       backgroundEnabled: () =>
         backend.backgroundTerminalEnabled && background.available,
       readSubagentSettings: () =>
@@ -134,7 +146,7 @@ export function createExecutors({ config, version, onEvent }) {
     return entry;
   }
 
-  async function call(entry, method, params) {
+  async function call(entry, method, params, { researchStart = false } = {}) {
     if (!entry.adapter.ready)
       throw new Error(`${executorLabel(entry.backend.id)} 正在连接`);
     const id = randomUUID();
@@ -156,7 +168,11 @@ export function createExecutors({ config, version, onEvent }) {
         });
         Promise.resolve()
           .then(() =>
-            entry.adapter.receive(entry.client, { id, method, params }),
+            entry.adapter.receive(
+              entry.client,
+              { id, method, params },
+              researchStart,
+            ),
           )
           .catch(reject);
       });
@@ -181,21 +197,11 @@ export function createExecutors({ config, version, onEvent }) {
     }
     return call(entry, method, params);
   }
-  function startParams(task) {
-    const { model, providerId } = task.selection;
-    return {
-      cwd: task.cwd,
-      ...(model && { model }),
-      ...(providerId && { providerId }),
-      ...(task.target === "codex" && codexFullAccess),
-    };
-  }
-
   async function attach(entry, task) {
     const threadId = task.executor.threadId;
     if (task.target !== "codex" || entry.subscriptions.has(threadId)) return;
     await call(entry, "thread/resume", {
-      ...startParams(task),
+      ...delegationStartParams(task),
       threadId,
       excludeTurns: true,
     });
@@ -298,7 +304,7 @@ export function createExecutors({ config, version, onEvent }) {
     resolve: resolveExecutor,
     call,
     readHistory,
-    startParams,
+    startParams: delegationStartParams,
     turnParams: delegationTurnParams,
     takeover,
     async stop(entry, task) {
@@ -330,6 +336,17 @@ export function createExecutors({ config, version, onEvent }) {
     close() {
       for (const entry of adapters.values()) entry.adapter.close();
     },
+  };
+}
+
+export function delegationStartParams(task) {
+  const { model, providerId } = task.selection;
+  return {
+    cwd: task.cwd,
+    ...(model && { model }),
+    ...(providerId && { providerId }),
+    ...(task.target === "codex" &&
+      (task.scope === "research" ? readOnlyThread : codexFullAccess)),
   };
 }
 

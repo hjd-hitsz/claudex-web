@@ -585,8 +585,20 @@ try {
     const replyInHistory = async (suffix) => {
       const task = await backgroundTask();
       if (!task?.steps[0].turnId) return false;
+      const threadId = "delegation/" + task.id;
+      // 原生完成事件到达后，再核对首轮历史已落盘。
+      if (
+        suffix === 3 &&
+        !events.some(
+          ({ method, params }) =>
+            method === "turn/completed" &&
+            params.threadId === threadId &&
+            params.turn.id === task.steps[0].turnId,
+        )
+      )
+        return false;
       const { thread } = await rpc("thread/read", {
-        threadId: "delegation/" + task.id,
+        threadId,
         includeTurns: true,
       });
       return thread.turns.some(
@@ -639,10 +651,18 @@ try {
     assert.equal(final.status, "completed");
     const prefix =
       target === "codex" ? "agy-background-" : "toolu_agy_background_";
-    assert.equal(final.answer, target.toUpperCase() + "_STAGE_5");
+    const stage = target.toUpperCase() + "_STAGE_";
+    assert.match(
+      final.answer,
+      new RegExp(
+        `^## 派单轮答复\\n\\n${stage}3\\n\\n## 后台终端完成 · [^\\n]+terminal 1[^\\n]*\\n\\n${stage}4\\n\\n## 后台终端完成 · [^\\n]+terminal 2[^\\n]*\\n\\n${stage}5$`,
+      ),
+    );
+    assert.equal(final.preview, stage + "3");
     assert.deepEqual(Object.keys(final).sort(), [
       "answer",
       "context",
+      "preview",
       "status",
       "stepId",
     ]);
@@ -676,6 +696,8 @@ try {
         " 秘书 MCP 按终端命令筛出两个调用，凭调用 ID 读取原生输入和输出。",
     );
     const historyResult = (await backgroundTask()).steps[0].result;
+    assert.equal(historyResult.deliveryAnswer, final.answer);
+    assert.equal(historyResult.conclusion, stage + "5");
     assert.equal(
       historyResult.turns.length,
       3,
@@ -709,7 +731,7 @@ try {
     assert.equal((await backgroundTask()).status, "completed");
     assert.equal((await notices()).length, 1);
     console.log(
-      target + " 两个终端分批退出，全部结束后回投末轮答复，历史保留三轮来源。",
+      target + " 两个终端分批退出，全部结束后按顺序回投派单轮和两次续跑答复。",
     );
   }
   for (const [target, mode] of [

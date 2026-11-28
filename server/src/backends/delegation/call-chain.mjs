@@ -1,6 +1,7 @@
 import { execScript } from "./exec-script.mjs";
 import { traceId } from "./trace-ids.mjs";
 import { traceItems, traceOrder } from "./turn-trace.mjs";
+import { deliveryAnswer } from "./delivery-summary.mjs";
 import { contextMetrics } from "../../../../shared/delegation-context.mjs";
 
 const toolTypes = {
@@ -183,12 +184,14 @@ export function traceCall({
 }
 
 export function resultNoticePayload(result) {
-  const { stepId, status, conclusion, answer, error } = result;
+  const { stepId, status, deliveryPreview, error } = result;
+  const answer = deliveryAnswer(result);
   const context = contextMetrics(result.context);
   return {
     stepId: traceId(stepId),
     status,
-    answer: conclusion ?? answer,
+    ...(answer && { answer }),
+    ...(deliveryPreview && { preview: deliveryPreview }),
     ...(context && { context }),
     ...(error && { error }),
   };
@@ -197,5 +200,6 @@ export function resultNoticePayload(result) {
 export function noticeResult(notice, task) {
   const stepId = notice.stepId ?? notice.id.slice(0, -":result".length);
   const result = task.steps?.find(({ id }) => id === stepId)?.result;
+  if (result?.deliveryAnswer !== undefined) return notice.payload;
   return resultNoticePayload({ ...notice.payload, ...result, stepId });
 }

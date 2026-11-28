@@ -30,6 +30,7 @@ export function delegationNotice(notice, task) {
         stepId: result.stepId,
         target: task.target,
         status: result.status,
+        ...(result.preview && { preview: result.preview }),
         ...(result.context && { context: result.context }),
       },
     ],

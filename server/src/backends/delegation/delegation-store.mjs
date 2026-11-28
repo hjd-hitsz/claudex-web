@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { resultNoticePayload } from "./call-chain.mjs";
+import { deliveryAnswer } from "./delivery-summary.mjs";
 import { findDelegationTask } from "./trace-ids.mjs";
 
 export const executing = new Set([
@@ -44,7 +45,9 @@ export function acceptDelegation(
         !input.taskSummary.trim() ||
         input.taskSummary.length > 80))
   )
-    throw new Error("委派要求、请求标识或任务范围无效");
+    throw new Error(
+      "委派失败，参数无效。请按工具参数说明检查任务要求、请求 ID、任务 ID、执行范围和任务标题后重试。",
+    );
   const key = JSON.stringify([parent.id, input.request_id]);
   const callKey =
     callId &&
@@ -52,9 +55,13 @@ export function acceptDelegation(
   const previous = (callKey && data.receipts[callKey]) || data.receipts[key];
   if (previous) {
     if (previous.target !== target || !isDeepStrictEqual(previous.input, input))
-      throw new Error("请求标识已用于另一项委派");
+      throw new Error(
+        "委派失败，请求 ID 已用于不同的委派参数。请用新的请求 ID 提交本次请求。",
+      );
     if (data.tasks[previous.taskId]?.sourceRuntime !== parent.sourceRuntime)
-      throw new Error("委派发起后端实例已更换");
+      throw new Error(
+        "委派失败，当前后端实例与原请求所属实例不同。请切回原实例重试，或用新的请求 ID 新建委派任务。",
+      );
     if (callKey) data.receipts[callKey] = previous;
     return { task_id: previous.taskId, status: "accepted" };
   }
@@ -65,9 +72,13 @@ export function acceptDelegation(
   );
   if (input.task_id) {
     if (!task || task.parentId !== parent.id || task.target !== target)
-      throw new Error("当前会话无法继续此委派任务");
+      throw new Error(
+        "委派续问失败，当前会话与接收端找不到该任务。请核对任务 ID，并在原会话中使用原接收端续问。",
+      );
     if (input.scope && input.scope !== task.scope)
-      throw new Error("续问沿用原任务的执行范围");
+      throw new Error(
+        `委派续问失败：原任务范围为 ${task.scope}，本次请求范围为 ${input.scope}。请用 ${input.scope} 新建委派任务，或改用 ${task.scope} 续问。`,
+      );
     const prior = task.steps.at(-1);
     if (executing.has(task.status) || task.status === "unknown") {
       prior.supersededAt = Date.now();
@@ -79,7 +90,10 @@ export function acceptDelegation(
       if (notice.taskId === task.id && notice.status === "queued")
         notice.status = "superseded";
   } else {
-    if (!snapshot) throw new Error("请启用委派接收端");
+    if (!snapshot)
+      throw new Error(
+        `委派失败，接收端 ${target} 未启用或未选中。请启用并选择该接收端后重试。`,
+      );
     task = {
       id: randomUUID(),
       parentId: parent.id,
@@ -138,16 +152,17 @@ export function currentResultNotice(data, notice) {
 }
 
 export function finishDelegation(data, task, status, result) {
+  const settled = { ...result, deliveryAnswer: deliveryAnswer(result) };
   task.status = status;
   task.request = null;
   Object.assign(task.steps.at(-1), {
-    result,
+    result: settled,
     completedAt: Date.now(),
   });
   queueNotice(
     data,
     task,
     "result",
-    resultNoticePayload({ ...result, status, stepId: task.steps.at(-1).id }),
+    resultNoticePayload({ ...settled, status, stepId: task.steps.at(-1).id }),
   );
 }

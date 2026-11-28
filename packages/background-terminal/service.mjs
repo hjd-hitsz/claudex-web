@@ -16,6 +16,7 @@ import { privateDirectory, socketPath } from "./client.mjs";
 import { createDelivery } from "./delivery.mjs";
 import { createNativeWatches } from "./native-watches.mjs";
 import { withCodex } from "./codex.mjs";
+import { createBackgroundResearchLookup } from "./delegation-records.mjs";
 
 export async function serve(location, upstream) {
   const url = new URL(upstream);
@@ -26,6 +27,7 @@ export async function serve(location, upstream) {
     throw new Error("任务服务须与 Codex 工作区同机，请指定回环 WebSocket 地址");
   await mkdir(location, { recursive: true, mode: 0o700 });
   const directory = await privateDirectory(location);
+  const isResearchThread = createBackgroundResearchLookup(directory);
   const path = socketPath(directory);
   // The kernel releases the abstract lock on exit. Only its owner removes a stale filesystem socket.
   const lock = net.createServer((socket) => socket.destroy());
@@ -59,9 +61,17 @@ export async function serve(location, upstream) {
         return reply(200, {
           upstream: url.href,
           nativeWatch: true,
+          researchPolicy: true,
           pid: process.pid,
         });
-      if (method === "tool") return reply(200, await jobs.tool(params));
+      if (method === "tool") {
+        if (
+          params?.name === "background_start" &&
+          (await isResearchThread(params.threadId))
+        )
+          throw new Error("Codex 研究委派只允许原生只读命令。");
+        return reply(200, await jobs.tool(params));
+      }
       if (method === "watchNative")
         return reply(200, await nativeWatches.watch(params));
       throw new Error("未知操作");
@@ -106,11 +116,11 @@ export async function serve(location, upstream) {
           return session.thread;
         }),
     });
-    nativeWatches = createNativeWatches(url, jobs);
+    nativeWatches = createNativeWatches(url, jobs, undefined, isResearchThread);
     server.listen(path);
     await once(server, "listening");
     await chmod(path, 0o600);
-    const stopDelivery = createDelivery(directory, url, jobs);
+    const stopDelivery = createDelivery(directory, url, jobs, isResearchThread);
     const stop = async () => {
       if (closing) return;
       closing = true;

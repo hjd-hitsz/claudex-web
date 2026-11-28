@@ -1,7 +1,12 @@
 import React from "react";
 import { defaultUrlTransform } from "react-markdown";
 import { RichText } from "../markdown/rich-text.jsx";
-import { labels, queries, activityLabel } from "../../domain/activity.js";
+import {
+  labels,
+  queries,
+  activityFailed,
+  activityLabel,
+} from "../../domain/activity.js";
 
 import {
   statuses,
@@ -122,24 +127,30 @@ export function ActivityContent({ item, cwd }) {
       output !== null &&
       output !== undefined &&
       (!Array.isArray(output) || output.length > 0);
+    const failed = activityFailed(item);
+    // Antigravity reports a command's exit code separately from its output.
+    const commandOutput = item.server === "agy" && item.error && hasOutput;
+    const error =
+      Array.isArray(item.error) && !item.error.length ? null : item.error;
     return (
       <>
         <Section title="参数" value={item.arguments} cwd={cwd} />
-        {hasOutput ? (
+        {commandOutput && <Section title="输出" value={output} cwd={cwd} />}
+        {failed ? (
+          <Section
+            title="错误"
+            value={error || (hasOutput ? output : "工具执行失败")}
+            cwd={cwd}
+          />
+        ) : hasOutput ? (
           <Section title="结果" value={output} cwd={cwd} />
         ) : (
-          !item.error && (
-            <p>
-              {["inProgress", "running"].includes(item.status)
-                ? "正在执行…"
-                : item.success === false ||
-                    ["failed", "declined"].includes(item.status)
-                  ? "工具执行失败"
-                  : "暂无返回内容"}
-            </p>
-          )
+          <p>
+            {["inProgress", "running"].includes(item.status)
+              ? "正在执行…"
+              : "暂无返回内容"}
+          </p>
         )}
-        <Section title="错误" value={item.error} cwd={cwd} />
       </>
     );
   }

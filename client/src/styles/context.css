@@ -270,6 +270,13 @@
 .subagent-history .message {
   margin-bottom: 0.615385rem;
 }
+.subagent-history .process-content {
+  padding-inline-start: min(1.384615rem, 8%);
+}
+.subagent-history .activity-body {
+  margin-inline-start: min(1.692308rem, 10%);
+  padding-inline-start: min(1.076923rem, 8%);
+}
 .subagent-notice {
   color: var(--muted);
   font-size: 0.923077rem;

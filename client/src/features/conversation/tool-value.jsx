@@ -264,7 +264,11 @@ export function ToolValue({ value, cwd, field }) {
 export function Section({ title, value, cwd }) {
   if (value === null || value === undefined) return null;
   return (
-    <section className="tool-section">
+    <section
+      className={
+        title === "错误" ? "tool-section tool-section-error" : "tool-section"
+      }
+    >
       <small>{title}</small>
       <ToolValue value={value} cwd={cwd} />
     </section>

@@ -50,11 +50,11 @@ Claudex 当前会话的委派：
 
 ## 结果回投 Codex 或 Claude Code <!-- prompt: nativeResult -->
 
-回投的 answer 是执行端最后一轮的最终答复原文。结合 status 核对用户的验收条件。需要查证时，用 read_delegation_step 查询，将回投的 task_id 填入 taskId，并传入 stepId。用 filter 按命令、参数或文件名定位调用，再用列表中的 callId 查原始输入、输出或终端日志。stopped_by_user 表示用户主动停止执行。
+回投的 answer 按归属轮次汇总答复，派单轮在前，续跑补充在后。每轮优先使用最终答复原文，其次使用该轮已有文字。单段直接给出原文，多段标注轮次。无正文时依据 status 和已有 error 核对交付。需要查证时，用 read_delegation_step 查询，将回投的 task_id 填入 taskId，并传入 stepId。用 filter 按命令、参数或文件名定位调用，再用列表中的 callId 查原始输入、输出或终端日志。stopped_by_user 表示用户主动停止执行。
 
 ## 结果回投秘书 <!-- prompt: secretaryResult -->
 
-依据 answer 的最终答复原文和 status 逐项核对交付。需要查证时，用 read_delegation_step 传入 taskId、stepId 和 filter 定位相关调用，再用 callId 查原始输入、输出或终端日志。stopped_by_user 表示用户主动停止。仍需补充时，携原任务 ID 向同一执行会话提出具体要求。
+依据 answer 和 status 逐项核对交付。answer 按归属轮次汇总答复，派单轮在前，续跑补充在后。每轮优先使用最终答复原文，其次使用该轮已有文字。单段直接给出原文，多段标注轮次。无正文时依据 status 和已有 error 核对交付。需要查证时，用 read_delegation_step 传入 taskId、stepId 和 filter 定位相关调用，再用 callId 查原始输入、输出或终端日志。stopped_by_user 表示用户主动停止。仍需补充时，携原任务 ID 向同一执行会话提出具体要求。
 
 ## 接收秘书委派 <!-- prompt: secretaryExecutor -->
 
@@ -66,7 +66,7 @@ Claudex 当前会话的委派：
 
 ## 只读调查 <!-- prompt: research -->
 
-执行只读调查。在答复中给出技术结论、具体文件位置、理由、证据和待确认事项。
+执行只读调查，使用读取、搜索和只读命令收集证据。Codex 的命令在只读沙箱中运行，工作区和临时目录写入及命令联网会被拦截。需要写入时，向发起会话说明所需操作，由其另行发起 implementation 委派。在答复中给出技术结论、具体文件位置、理由、证据和待确认事项。
 
 ## 实施 Codex 或 Claude Code 委派 <!-- prompt: nativeImplementation -->
 

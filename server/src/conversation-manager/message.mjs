@@ -63,7 +63,10 @@ export function delegationResultItem(item, text, messageId) {
     type: "delegationResult",
     taskId: payload.task_id.slice(0, 8),
     stepId: payload.stepId.slice(0, 8),
-    preview: delegationPreview(payload.answer),
+    preview:
+      typeof payload.preview === "string"
+        ? payload.preview
+        : delegationPreview(payload.answer),
     target: header[2] === "Codex" ? "codex" : "claude",
     status: payload.status,
     ...(context && { context }),

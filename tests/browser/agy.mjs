@@ -8,12 +8,16 @@ import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { testElicitation } from "./elicitation.mjs";
 import { testDelegationList } from "./agy-delegation-list.mjs";
 import {
+  delegationResultFixture,
+  testDelegationResult,
+} from "./agy-delegation-result.mjs";
+import {
   openSettingsPage,
   settingsBackend,
   switchComposerBackend,
 } from "../helpers/settings-navigation.mjs";
 
-function fixture() {
+function fixture(delivery) {
   const cwd = "/demo/report";
   const thread = {
     id: "backend:agy:secretary",
@@ -41,16 +45,7 @@ function fixture() {
       status: "stopped_by_user",
       executorThreadId: "native-demo",
       taskSummary: "核对报告的技术依据",
-      summaries: {
-        "step-one": {
-          title: "核对报告的技术依据",
-          preview: "已核对原生文件内容。",
-        },
-      },
-      result: {
-        answer: "已核对技术证据，供秘书写入文档。",
-        artifacts: [{ path: "report.md", kind: { type: "add" } }],
-      },
+      summaries: delivery.summaries,
     },
   };
   const extraTasks = [
@@ -105,15 +100,7 @@ function fixture() {
       },
       task,
       ...extraTasks.map(({ item }) => item),
-      {
-        id: "step-one:result",
-        type: "delegationResult",
-        taskId: "demo",
-        stepId: "step-one",
-        target: "codex",
-        status: "stopped_by_user",
-        context: { usedTokens: 120, totalTokens: 200, compactCount: 1 },
-      },
+      delivery.item,
       {
         id: "answer",
         type: "agentMessage",
@@ -147,13 +134,37 @@ function fixture() {
         aggregatedOutput: "1 核对清单",
       },
       {
+        id: "fixture-return-markdown",
+        type: "functionCallOutput",
+        name: "委派回投正文",
+        status: "completed",
+        output: delivery.payload.answer,
+      },
+      {
         id: "native-reply",
         type: "agentMessage",
         phase: "final_answer",
-        text: "Codex 核对了原生文件内容。",
+        text: delivery.dispatch,
       },
     ],
   };
+  const nativeTurns = [
+    nativeTurn,
+    {
+      ...nativeTurn,
+      id: "native-follow-up",
+      startedAt: 13,
+      completedAt: 14,
+      items: [
+        {
+          id: "native-follow-up-reply",
+          type: "agentMessage",
+          phase: "final_answer",
+          text: delivery.followUp,
+        },
+      ],
+    },
+  ];
   const delegates = {
     codex: {
       enabled: true,
@@ -333,13 +344,12 @@ function fixture() {
       if (p.threadId === native.id) {
         if (method === "thread/read") return { thread: native };
         if (method === "thread/turns/list")
-          return { data: [nativeTurn], nextCursor: null };
+          return { data: nativeTurns.toReversed(), nextCursor: null };
         if (method === "thread/items/list")
           return {
-            data: nativeTurn.items.map((item) => ({
-              item,
-              turnId: nativeTurn.id,
-            })),
+            data: nativeTurns.flatMap(({ id, items }) =>
+              items.map((item) => ({ item, turnId: id })),
+            ),
             nextCursor: null,
           };
       }
@@ -487,6 +497,7 @@ const output = process.env.AGY_BROWSER_OUTPUT_DIR
   ? pathToFileURL(process.env.AGY_BROWSER_OUTPUT_DIR.replace(/\/$/, "") + "/")
   : new URL("../../.cache/agy-browser/", import.meta.url);
 await mkdir(output, { recursive: true });
+const delivery = delegationResultFixture();
 const listener = createServer(async (req, res) => {
   if (serveDemoSession(req, res)) return;
   try {
@@ -496,7 +507,10 @@ const listener = createServer(async (req, res) => {
     if (path === "/")
       bytes = bytes
         .toString()
-        .replace("<head>", `<head><script>(${fixture.toString()})();</script>`);
+        .replace(
+          "<head>",
+          `<head><script>(${fixture.toString()})(${JSON.stringify(delivery)});</script>`,
+        );
     res
       .writeHead(200, {
         "content-type":
@@ -675,13 +689,13 @@ try {
   if (await detailButton.isVisible()) await detailButton.click();
   const resultCard = page.locator(".delegation-result");
   await resultCard.getByText("Codex · 已停止").waitFor();
-  await resultCard.getByText("已核对原生文件内容。").waitFor();
+  await resultCard.getByText(delivery.dispatch).waitFor();
   await page.screenshot({
     path: new URL("delegation-result-card.png", output).pathname,
   });
   await resultCard.getByRole("button", { name: "查看执行记录" }).click();
   const execution = page.getByRole("region", { name: "Codex 委派对话" });
-  await execution.getByText("Codex 核对了原生文件内容。").waitFor();
+  await execution.getByText(delivery.dispatch).waitFor();
   assert.equal(
     await execution.getByRole("button", { name: "查看执行会话" }).count(),
     0,
@@ -709,7 +723,15 @@ try {
     path: new URL("delegation-evidence.png", output).pathname,
   });
   await workProcess.click();
+  await testDelegationResult({ page, context, output, delivery });
   await testDelegationList({ page, context, output });
+  if (process.env.AGY_DELEGATION_BROWSER_ONLY) {
+    assert.deepEqual(errors, []);
+    await context.close();
+    listener.close();
+    await rm(profile, { recursive: true, force: true });
+    process.exit(0);
+  }
   await page.evaluate(() => window.showFixturePermission());
   const allow = page.getByRole("button", { name: "允许一次", exact: true });
   await allow.waitFor();

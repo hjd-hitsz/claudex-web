@@ -20,6 +20,7 @@ import { answerAcpPermission } from "../../server/src/backends/agy/acp-permissio
 import { savedAgyAgent } from "../../server/src/backends/agy/native-agent.mjs";
 import { findCli } from "../../server/src/backends/cli-installation.mjs";
 import { traceId } from "../../server/src/backends/delegation/trace-ids.mjs";
+import { acceptDelegation } from "../../server/src/backends/delegation/delegation-store.mjs";
 import {
   readAgyRole,
   saveAgyRole,
@@ -60,6 +61,9 @@ const resultRequests = [];
 const evidenceMarker = "FIXTURE_DELEGATION_LOG";
 const mcpCalls = [];
 const mcpMethods = [];
+const delegation = { tasks: {}, receipts: {}, notices: {} };
+let accepted;
+let rejected;
 const clients = new Set();
 const mcp = createNetServer((socket) => {
   clients.add(socket);
@@ -79,10 +83,22 @@ const mcp = createNetServer((socket) => {
     }
     if (method === "mcp/call") {
       mcpCalls.push(params);
-      result =
-        params.tool === "read_delegation_step"
-          ? { raw: { outputs: ["FIXTURE_NATIVE_STEP_OUTPUT"] } }
-          : { task_id: "native-fixture", status: "accepted" };
+      if (params.tool === "read_delegation_step")
+        result = { raw: { outputs: ["FIXTURE_NATIVE_STEP_OUTPUT"] } };
+      else {
+        try {
+          result = acceptDelegation(delegation, {
+            parent: { id: entry.id, cwd },
+            turn: { id: "fixture-turn" },
+            target: "codex",
+            input: params.input,
+            snapshot: { model: "fixture" },
+          });
+          accepted = result;
+        } catch (error) {
+          return sendIpc(socket, { id, error: error.message });
+        }
+      }
     }
     sendIpc(socket, { id, result });
   });
@@ -128,11 +144,8 @@ const proxy = createServer(async (request, response) => {
       request: requests.length + 1,
       direct: initialMessage.parts.includes(resultPart),
       answer: result.answer === "FIXTURE_DELEGATION_ANSWER",
-      artifacts: result.artifacts ?? [],
+      hasStepId: result.stepId === traceId("fixture-step"),
       evidence: JSON.stringify(result).includes(evidenceMarker),
-      chain: result.callChain.some(
-        ({ callId }) => callId === traceId("fixture-call"),
-      ),
     });
   }
   const instruction = JSON.stringify(body.systemInstruction || "");
@@ -156,6 +169,14 @@ const proxy = createServer(async (request, response) => {
   const target = tools.find(
     ({ name }) => name === "mcp_claudex_delegation_ask_codex",
   );
+  const follow = initialMessage?.parts?.some(({ text }) =>
+    text?.includes("AGY_NATIVE_SCOPE_CONFLICT"),
+  );
+  const followResult = initialMessage?.parts?.find(({ functionResponse }) =>
+    functionResponse?.name?.includes("ask_codex"),
+  );
+  if (serialized.includes("AGY_NATIVE_SCOPE_CONFLICT") && followResult)
+    rejected = followResult.functionResponse;
   const lookup = tools.find(
     ({ name }) => name === "mcp_claudex_delegation_read_delegation_step",
   );
@@ -180,23 +201,41 @@ const proxy = createServer(async (request, response) => {
                 toolSummary: "核对执行记录",
                 taskId: result.taskId,
                 stepId: result.stepId,
-                callId: result.callChain[0].callId,
               },
             },
           }
-        : initial && !called && target
+        : follow && target
           ? {
               functionCall: {
                 name: target.name,
                 args: {
-                  toolSummary: "交给 Codex 核对证据",
-                  request: "核对测试内容",
-                  request_id: "native-probe",
-                  scope: "research",
+                  toolSummary: "尝试以 implementation 续问",
+                  request: "修改测试内容",
+                  request_id: "native-scope-conflict",
+                  task_id: accepted.task_id,
+                  scope: "implementation",
                 },
               },
             }
-          : { text: called ? "原生委派已受理" : "原生秘书回复" };
+          : initial && !called && target
+            ? {
+                functionCall: {
+                  name: target.name,
+                  args: {
+                    toolSummary: "交给 Codex 核对证据",
+                    request: "核对测试内容",
+                    request_id: "native-probe",
+                    scope: "research",
+                  },
+                },
+              }
+            : {
+                text: followResult
+                  ? "已收到续问失败的原因。"
+                  : called
+                    ? "原生委派已受理"
+                    : "原生秘书回复",
+              };
   const answer = {
     responseId: "agy-fixture-" + ++sequence,
     candidates: [
@@ -325,6 +364,34 @@ try {
     "request_id",
     "scope",
   ]);
+  session = store.session(await store.read(), id);
+  const followUp = await sessions.prompt(
+    session,
+    { id: "scope-conflict", items: [] },
+    { delegateTo: "codex", model: alternate.model },
+    [{ type: "text", text: "AGY_NATIVE_SCOPE_CONFLICT" }],
+  );
+  const scopeError =
+    "委派续问失败：原任务范围为 research，本次请求范围为 implementation。请用 implementation 新建委派任务，或改用 research 续问。";
+  const scopeItem = followUp.turn.items.find(
+    ({ type }) => type === "mcpToolCall",
+  );
+  assert(JSON.stringify(rejected)?.includes(scopeError));
+  assert.equal(delegation.tasks[accepted.task_id].steps.length, 1);
+  assert.equal(scopeItem.status, "failed");
+  assert.deepEqual(scopeItem.result.content, [
+    { type: "text", text: scopeError },
+  ]);
+  assert.equal(scopeItem.error, undefined);
+  if (process.env.DELEGATION_TOOL_PROOF_DIR)
+    await writeFile(
+      join(process.env.DELEGATION_TOOL_PROOF_DIR, "agy-tools.json"),
+      JSON.stringify({
+        success: first.turn.items.find(({ type }) => type === "mcpToolCall"),
+        failure: scopeItem,
+      }),
+    );
+  console.log("Antigravity 续问工具投影", JSON.stringify(scopeItem));
   assert(requests.some(({ role, image }) => role && image));
   assert(
     requests.some(
@@ -616,9 +683,8 @@ try {
       result,
       {
         answer: true,
-        artifacts: notice.payload.artifacts,
+        hasStepId: true,
         evidence: false,
-        chain: true,
       },
       `模型请求 ${request}（${direct ? "首次回投" : "工具结果续接"}）`,
     );
@@ -629,11 +695,10 @@ try {
     {
       taskId: traceId("fixture-task"),
       stepId: traceId("fixture-step"),
-      callId: traceId("fixture-call"),
     },
   );
   console.log(JSON.stringify({ resultRequests }));
-  console.log("原生 ACP 从回投取得调用 ID，并调用 MCP 读取步骤详情。");
+  console.log("原生 ACP 从回投取得步骤 ID，并调用 MCP 读取步骤记录。");
   console.log(
     `agy ${version} 原生 ACP 已验证 MCP、历史回放、默认角色更新、Antigravity 独立发起预设及打断后在同一会话执行新要求`,
   );

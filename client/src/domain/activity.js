@@ -79,9 +79,19 @@ export function activityLabel(item) {
     return `等待 ${Number((item.durationMs / 1000).toFixed(2))} 秒`;
   return labels[item.type] || "工具记录";
 }
+export function activityFailed(item) {
+  return (
+    ["failed", "declined"].includes(item.status) ||
+    item.success === false ||
+    Boolean(item.error) ||
+    item.result?.isError === true
+  );
+}
 export function activityHasImage(item) {
   if (["imageView", "imageGeneration"].includes(item.type)) return true;
-  const content = item.contentItems || item.result?.content || item.output;
+  const content = Array.isArray(item.error)
+    ? item.error
+    : item.contentItems || item.result?.content || item.output;
   return (
     Array.isArray(content) &&
     content.some(
