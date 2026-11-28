@@ -5,10 +5,11 @@
 // steps 表的工具记录保留同一 toolCallId 和提交给模型的输出。
 // 切换条件：原生分叉和回退保留工具上下文，或 ACP 事件提供完整工具结果。
 // 登记见 docs/future_plan.md#缺口登记。
-import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { nativePath } from "./native-history-index.mjs";
+import { nativeHistoryRoot } from "./native-history-transaction.mjs";
 
 const nativeIdPattern = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -54,41 +55,28 @@ function bytesAt(message, field) {
   return new Uint8Array();
 }
 
-export function restoreAgyToolResults(
-  turns,
+export function findAgyToolResults(
+  callIds,
   nativeIds,
   agentInfo,
-  home = homedir(),
+  { home = homedir(), limit = Infinity } = {},
 ) {
+  const results = new Map();
   if (
     agentInfo?.name !== "Antigravity ACP Server" ||
     agentInfo.version !== "1.5.18"
   )
-    return;
-  const missing = new Map(
-    turns.flatMap(({ items }) =>
-      items
-        .filter(
-          (item) =>
-            item.type === "mcpToolCall" &&
-            item.status === "completed" &&
-            !item.result,
-        )
-        .map((item) => [item.id, item]),
-    ),
-  );
+    return results;
+  const missing = new Set(callIds);
+  const directory = join(home, ".gemini", "antigravity-cli");
   for (const id of new Set(nativeIds)) {
     if (!missing.size || !nativeIdPattern.test(id)) continue;
-    const path = join(
-      home,
-      ".gemini",
-      "antigravity-cli",
-      "conversations",
-      id + ".db",
-    );
-    if (!existsSync(path)) continue;
     let db;
     try {
+      const path =
+        nativePath(directory, "conversations/" + id + ".db") ??
+        nativePath(directory, nativeHistoryRoot + "/archived/" + id + ".db");
+      if (!path) continue;
       db = new DatabaseSync(path, { readOnly: true });
       // step_type 132 stores generic tool results. Metadata field 4 holds the
       // native call, and the tool response text is at payload fields 140/2/1.
@@ -101,22 +89,20 @@ export function restoreAgyToolResults(
         if (!metadata || !step_payload) continue;
         const call = bytesAt(metadata, 4);
         const callId = utf8.decode(bytesAt(call, 1));
-        const item = missing.get(callId);
-        if (!item) continue;
+        if (!missing.has(callId)) continue;
         const tool = utf8.decode(bytesAt(call, 2));
         const text = utf8.decode(
           bytesAt(bytesAt(bytesAt(step_payload, 140), 2), 1),
         );
         if (text) {
-          item.result = {
-            content: [
-              {
-                type: "text",
-                text: text.length > 4000 ? text.slice(0, 4000) + "…" : text,
-              },
-            ],
-          };
-          item.nativeTool = tool;
+          results.set(callId, {
+            nativeId: id,
+            tool,
+            text:
+              text.length > limit
+                ? text.slice(0, limit).toWellFormed() + "…"
+                : text,
+          });
           missing.delete(callId);
         }
         if (!missing.size) break;
@@ -128,5 +114,33 @@ export function restoreAgyToolResults(
     } finally {
       db?.close();
     }
+  }
+  return results;
+}
+
+export function restoreAgyToolResults(turns, nativeIds, agentInfo, home) {
+  const items = turns.flatMap(({ items }) =>
+    items.filter(
+      (item) =>
+        item.type === "mcpToolCall" &&
+        item.status === "completed" &&
+        !item.result,
+    ),
+  );
+  const results = findAgyToolResults(
+    items.map(({ id }) => id),
+    nativeIds,
+    agentInfo,
+    { home, limit: 4000 },
+  );
+  for (const item of items) {
+    const result = results.get(item.id);
+    if (!result) continue;
+    const { nativeId, tool, text } = result;
+    item.result = {
+      content: [{ type: "text", text }],
+    };
+    item.nativeTool = tool;
+    item.resultArchive = nativeId;
   }
 }

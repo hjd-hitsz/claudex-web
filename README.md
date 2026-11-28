@@ -92,7 +92,7 @@ claude auth login
 
 ### 使用自定义供应商和模型
 
-在网页「设置 → 模型服务商」中点击「添加供应商」。
+在网页「设置 → 模型服务商」中点击「添加供应商」。默认选用原生「Message API」。端点要求将系统消息放在请求顶部时，选择「Message API（兼容）」。[供应商配置说明](docs/deployment.md#claude-code-与模型配置)
 
 DeepSeek 和 OpenCode Go 等预置供应商直接填写 API Key。可在各供应商的编辑表单选择显示的模型，Claude 订阅的原生模型在「设置 → 后端 → Claude Code」中选择。
 

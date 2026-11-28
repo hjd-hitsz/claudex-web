@@ -48,7 +48,7 @@ const backend = {
 };
 const provider = {
   id: "fixture",
-  protocol: "messages",
+  protocol: "messages_compatible",
   baseUrl: service.url,
   apiKey: "test-token",
   models: ["fixture-model"],

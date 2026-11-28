@@ -129,7 +129,7 @@ await createProviders(settings).save({
   id: "fixture",
   backendId: "claude",
   name: "隔离模型",
-  protocol: "messages",
+  protocol: "messages_compatible",
   baseUrl: model.url,
   apiKey: "fixture-token",
   models: ["fixture-model"],

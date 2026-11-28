@@ -55,7 +55,7 @@ export async function createProviderTransport(
         }
         if (selected)
           input = messagesRequest(input, {
-            standard: (selected.protocol || "messages") === "messages",
+            standard: selected.protocol === "messages_compatible",
             secretaryRole: target ? undefined : secretaryRole,
           });
         body = JSON.stringify(input);

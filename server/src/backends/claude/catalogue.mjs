@@ -144,7 +144,7 @@ export function createClaudeCatalogue({
       const records = provider
         ? provider.models.map((value) => {
             const metadata = {
-              ...((provider.protocol || "messages") === "anthropic"
+              ...((provider.protocol || "messages") === "messages"
                 ? models.find(
                     (model) =>
                       model.value === value || model.resolvedModel === value,

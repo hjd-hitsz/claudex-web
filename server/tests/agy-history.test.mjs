@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { DatabaseSync } from "node:sqlite";
 import { createAcpSessions } from "../src/backends/agy/acp-session.mjs";
 import { createAgyStore } from "../src/backends/agy/session-store.mjs";
+import { readArchivedToolOutput } from "../src/backends/agy/archived-tool-output.mjs";
+import {
+  findAgyToolResults,
+  restoreAgyToolResults,
+} from "../src/backends/agy/tmp_function/history-tool-results.mjs";
 import {
   agyHistoryPrompt,
+  agyHistoryRecords,
   assertAgyHistoryIdle,
   createAgyHistoryActions,
   retainedAgyTurns,
@@ -75,6 +82,128 @@ test("保留分叉轮次与编辑前缀，重放记录将工具调用编码成�
     }),
     undefined,
   );
+});
+
+test("历史重放缩短工具输出并去重回投，仍可按调用 ID 读取原文", async () => {
+  const output = "长工具输出🧪\n".repeat(1000);
+  const item = {
+    id: "call-large",
+    type: "mcpToolCall",
+    status: "completed",
+    tool: "Read",
+    result: output,
+  };
+  const result = {
+    type: "delegationResult",
+    taskId: "same-task",
+    stepId: "step-one",
+    status: "completed",
+  };
+  const sessions = {
+    main: {
+      id: "main",
+      turns: [
+        turn("first", [item, result]),
+        turn("second", [result, { ...result, stepId: "step-two" }]),
+      ],
+    },
+    other: { id: "other", turns: [] },
+  };
+  const saved = JSON.stringify(sessions);
+  const records = agyHistoryRecords(sessions.main.turns).flat();
+  assert.equal(records[0].archivedCallId, item.id);
+  assert.ok(records[0].result.length <= 257);
+  assert.deepEqual(
+    records.slice(1).map(({ stepId }) => stepId),
+    ["step-one", "step-two"],
+  );
+
+  const store = {
+    read: async () => ({ sessions }),
+    session: (data, id) => data.sessions[id],
+  };
+  const read = (offset) =>
+    readArchivedToolOutput(store, "main", { callId: item.id, offset });
+  let page = await read();
+  let json = page.chunk;
+  while (page.nextOffset !== null) {
+    assert.ok(page.chunk.isWellFormed());
+    page = await read(page.nextOffset);
+    json += page.chunk;
+  }
+  assert.deepEqual(JSON.parse(json), {
+    callId: item.id,
+    tool: "Read",
+    source: "saved",
+    output,
+  });
+  await assert.rejects(
+    readArchivedToolOutput(store, "other", { callId: item.id }),
+    /找不到该已存档工具调用/,
+  );
+  assert.equal(JSON.stringify(sessions), saved);
+});
+
+test("已归档的 agy SQLite 保留工具全文，历史卡片引用原生调用", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "agy-archived-tool-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const archive = join(
+    directory,
+    ".gemini",
+    "antigravity-cli",
+    ".claudex-history",
+    "archived",
+  );
+  await mkdir(archive, { recursive: true });
+  const nativeId = "dec00ded-0000-4000-8000-000000000001";
+  const callId = "fixture-call";
+  const payload = "原始存档内容🧪".repeat(800);
+  const numberBytes = (number) => {
+    const bytes = [];
+    while (number >= 128) {
+      bytes.push((number % 128) + 128);
+      number = Math.floor(number / 128);
+    }
+    return Buffer.from([...bytes, number]);
+  };
+  const field = (id, value) => {
+    const bytes = Buffer.from(value);
+    return Buffer.concat([
+      numberBytes(id * 8 + 2),
+      numberBytes(bytes.length),
+      bytes,
+    ]);
+  };
+  const db = new DatabaseSync(join(archive, nativeId + ".db"));
+  try {
+    db.exec(
+      "CREATE TABLE steps (idx INTEGER, step_type INTEGER, status INTEGER, step_format INTEGER, metadata BLOB, step_payload BLOB)",
+    );
+    db.prepare("INSERT INTO steps VALUES (1, 132, 3, 0, ?, ?)").run(
+      field(4, Buffer.concat([field(1, callId), field(2, "Read")])),
+      field(140, field(2, field(1, payload))),
+    );
+  } finally {
+    db.close();
+  }
+  const agentInfo = { name: "Antigravity ACP Server", version: "1.5.18" };
+  const item = { id: callId, type: "mcpToolCall", status: "completed" };
+  restoreAgyToolResults(
+    [turn("archived", [item])],
+    [nativeId],
+    agentInfo,
+    directory,
+  );
+  assert.equal(item.resultArchive, nativeId);
+  assert.ok(item.result.content[0].text.length <= 4001);
+  const found = findAgyToolResults([callId], [nativeId], agentInfo, {
+    home: directory,
+  });
+  assert.deepEqual(found.get(callId), {
+    nativeId,
+    tool: "Read",
+    text: payload,
+  });
 });
 
 test("改写拒绝轮次、排队、整理、委派与待投递结果占用", () => {

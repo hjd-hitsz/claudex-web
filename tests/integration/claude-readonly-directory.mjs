@@ -72,7 +72,7 @@ const adapter = createClaudeAdapter({
   providers: {
     get: async () => ({
       id: "validation",
-      protocol: "messages",
+      protocol: "messages_compatible",
       baseUrl: recording.url,
       apiKey: process.env.MODEL_API_KEY || "",
       models: [model],

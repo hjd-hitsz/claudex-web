@@ -102,6 +102,7 @@ test("旧 HTTPS 配置读取为 HTTP CONNECT，保存时写入新格式", async 
   t.after(() => rm(configDir, { recursive: true, force: true }));
   const file = join(configDir, "backends.json");
   const bytes = JSON.stringify({
+    version: 2,
     backends: [
       {
         id: "claude",

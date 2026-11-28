@@ -46,7 +46,7 @@ async function verify(mode) {
   });
   const primary = {
     id: "primary",
-    protocol: "messages",
+    protocol: "messages_compatible",
     baseUrl: main.url,
     apiKey: "primary-key",
     models: ["fixture-main", "fixture-child", "fixture-child-next"],
@@ -62,7 +62,7 @@ async function verify(mode) {
   };
   const secondary = {
     id: "secondary",
-    protocol: "messages",
+    protocol: "messages_compatible",
     baseUrl: child.url,
     apiKey: "child-key",
     models: [childModel, "fixture-next"],

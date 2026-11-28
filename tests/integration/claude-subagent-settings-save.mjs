@@ -44,6 +44,7 @@ const primary = await messagesServer((body) => {
 await writeFile(
   config.backendsFile,
   JSON.stringify({
+    version: 2,
     backends: [
       { id: "codex", type: "codex", enabled: false },
       { id: "claude", type: "claude", enabled: true },
@@ -53,7 +54,7 @@ await writeFile(
         id: "primary",
         backendId: "claude",
         name: "Primary",
-        protocol: "messages",
+        protocol: "messages_compatible",
         baseUrl: primary.url,
         apiKey: "primary-key",
         models: ["parent"],
@@ -65,7 +66,7 @@ await writeFile(
         id: "secondary",
         backendId: "claude",
         name: "Secondary",
-        protocol: "messages",
+        protocol: "messages_compatible",
         baseUrl: secondary.url,
         apiKey: "secondary-key",
         models: ["first-child", "next-child"],

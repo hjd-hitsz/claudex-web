@@ -280,12 +280,12 @@ test("跨供应商按会话专属标识分流，同名模型各用正确凭据�
   const main = {
     baseUrl: await endpoint("main"),
     apiKey: "main-key",
-    protocol: "anthropic",
+    protocol: "messages",
   };
   const child = {
     baseUrl: await endpoint("child"),
     apiKey: "child-key",
-    protocol: "messages",
+    protocol: "messages_compatible",
   };
   const transport = await createProviderTransport(main, {
     provider: child,

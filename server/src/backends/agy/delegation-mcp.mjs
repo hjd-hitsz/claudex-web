@@ -5,6 +5,7 @@ import {
   delegationStepToolName,
 } from "../../conversation-manager/tools.mjs";
 import { connectIpc } from "./worker-ipc.mjs";
+import { archivedToolOutput } from "./archived-tool-output.mjs";
 
 const descriptions = readPromptSections("delegation/workflow.md");
 
@@ -19,6 +20,8 @@ function reply(packet, written) {
 function tool(backend) {
   if (backend === delegationStepToolName)
     return { ...delegationStepTool, _meta: { "antigravity/alwaysLoad": true } };
+  if (backend === archivedToolOutput.name)
+    return { ...archivedToolOutput, _meta: { "antigravity/alwaysLoad": true } };
   return {
     name: "ask_" + backend,
     description: descriptions(backend),

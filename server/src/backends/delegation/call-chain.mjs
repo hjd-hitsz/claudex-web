@@ -80,7 +80,7 @@ function describe(item, payload, tool) {
   };
 }
 
-function matchesCall(filter, call, item, payload, fileChanges) {
+function matchesCall(filters, call, item, payload, fileChanges) {
   const { changes, cwd, command, tool, path, query } = item ?? {};
   return [
     call.tool,
@@ -97,10 +97,11 @@ function matchesCall(filter, call, item, payload, fileChanges) {
     JSON.stringify(
       (changes ?? fileChanges)?.map(({ path, kind }) => ({ path, kind })),
     ),
-  ].some(
-    (value) =>
-      typeof value === "string" && value.toLowerCase().includes(filter),
-  );
+  ].some((value) => {
+    if (typeof value !== "string") return false;
+    const normalized = value.toLowerCase();
+    return filters.some((filter) => normalized.includes(filter));
+  });
 }
 
 export function turnCalls(turn, trace, target, filter) {
@@ -146,10 +147,11 @@ export function turnCalls(turn, trace, target, filter) {
     });
   }
   const ordered = traceOrder(calls, trace);
-  return filter
+  const filters = Array.isArray(filter) ? filter : filter ? [filter] : [];
+  return filters.length
     ? ordered.filter((call) =>
         matchesCall(
-          filter,
+          filters,
           call,
           native.get(call.callId),
           trace?.calls.get(call.callId)?.input.payload,

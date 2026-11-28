@@ -31,6 +31,6 @@ export const nativeSubagentProvider = (backend) => ({
   native: /** @type {const} */ (true),
   dataDir: backend.dataDir,
   baseUrl: process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com",
-  protocol: "anthropic",
+  protocol: "messages",
   modelCapabilities: {},
 });

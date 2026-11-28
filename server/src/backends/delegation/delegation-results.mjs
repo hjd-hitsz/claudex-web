@@ -241,13 +241,22 @@ function delegationDelivery(stages) {
     return [{ answer, stage, index }];
   });
   const first = sections[0]?.answer;
+  const priorAnswers = new Map();
   return {
     deliveryAnswer:
       sections.length > 1
         ? sections
-            .map(({ answer, stage, index }) =>
-              stageSection(stage, index, answer, "派单轮答复"),
-            )
+            .map(({ answer, stage, index }) => {
+              const text = answer.trim();
+              const prior = priorAnswers.get(text);
+              if (prior === undefined) priorAnswers.set(text, index);
+              return stageSection(
+                stage,
+                index,
+                prior === undefined ? answer : `答复与第 ${prior + 1} 轮相同。`,
+                "派单轮答复",
+              );
+            })
             .join("\n\n")
         : (first ?? null),
     deliveryPreview: first

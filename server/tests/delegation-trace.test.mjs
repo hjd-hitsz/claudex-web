@@ -407,6 +407,9 @@ test("Codex 按步骤筛选调用并完整读取压缩 Rollout 中的原始输�
     "stepId",
     "callId",
     "filter",
+    "callIds",
+    "filters",
+    "answer",
     "offset",
   ]);
   await assert.rejects(read({}, { ...owner, id: "other" }), /找不到该委派任务/);
@@ -434,8 +437,53 @@ test("Codex 按步骤筛选调用并完整读取压缩 Rollout 中的原始输�
   }
   assert.deepEqual((await read({ filter: "OTHER" })).calls, []);
   assert.deepEqual((await read({ filter: "patch complete" })).calls, []);
+  const beforeBatch = reads;
+  const batch = await read({
+    filters: ["PRINTF DONE", "RENAMED.TXT", "moved.txt"],
+    callIds: [traceId(patchId), shellId, "absent"],
+  });
+  assert.equal(reads - beforeBatch, 1);
+  assert.deepEqual(
+    batch.calls.map(({ callId }) => callId),
+    [shellId, patchId],
+  );
+  assert.equal(batch.nextOffset, null);
+  assert.equal(batch.details[0].call.callId, patchId);
+  assert.equal(
+    batch.details[0].raw.outputs[0].payload.output,
+    "patch complete",
+  );
+  assert.equal(batch.details[1].callId, shellId);
+  assert.equal(batch.details[1].encoding, "json");
+  assert.ok(
+    batch.details[1].nextOffset > 0 && batch.details[1].nextOffset <= 1024,
+  );
+  assert.equal(batch.details[2].callId, "absent");
+  assert.match(batch.details[2].error, /找不到指定调用/);
+  await assert.rejects(read({ callIds: [0] }), /参数 callIds 无效/);
+  await assert.rejects(read({ filters: [] }), /参数 filters 无效/);
+  await assert.rejects(
+    read({ filters: Array(9).fill("path") }),
+    /参数 filters 无效/,
+  );
+  await assert.rejects(read({ callIds: [shellId], offset: 20 }), /单个 callId/);
   assert.equal((await read({ callId: traceId(patchId) })).call.callId, patchId);
   const index = task.steps[0].result;
+  index.answer = "已存档答复🧪".repeat(1000);
+  const beforeArchivedAnswer = reads;
+  let archived = await read({ answer: true });
+  assert.ok(archived.chunk.length <= 1024);
+  let answerChunks = archived.chunk;
+  while (archived.nextOffset !== null) {
+    archived = await read({ answer: true, offset: archived.nextOffset });
+    answerChunks += archived.chunk;
+  }
+  assert.equal(JSON.parse(answerChunks).answer, index.answer);
+  assert.equal(reads, beforeArchivedAnswer);
+  await assert.rejects(
+    read({ answer: true, filters: ["output"] }),
+    /单独传入 answer/,
+  );
   index.callChain = Array.from({ length: 14 }, (_, n) => ({
     callId: "test" + n,
     tool: "exec_command",

@@ -49,7 +49,7 @@ const runtime = createClaudeRuntime({
   providers: {
     get: async () => ({
       id: "fixture",
-      protocol: "messages",
+      protocol: "messages_compatible",
       baseUrl: service.url,
       apiKey: "test-token",
       models: ["fixture-model"],

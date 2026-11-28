@@ -47,7 +47,7 @@ test("默认供应商空凭据停用、填写启用、持久恢复及清空撤�
   assert.deepEqual(await providers.list(), []);
   const [preset] = await providers.list("claude", { includeDisabled: true });
   assert.equal(preset.id, "deepseek");
-  assert.equal(preset.protocol, "anthropic");
+  assert.equal(preset.protocol, "messages");
   assert.equal(preset.enabled, false);
   assert.equal(preset.hasApiKey, false);
   assert.equal("apiKey" in preset, false);
@@ -86,7 +86,7 @@ test("默认供应商空凭据停用、填写启用、持久恢复及清空撤�
     ...data,
     providers: data.providers.map((p) => ({
       ...p,
-      protocol: "messages",
+      protocol: "messages_compatible",
       baseUrl: "https://old.example",
       models: ["old"],
       modelCapabilities: {},
@@ -94,7 +94,7 @@ test("默认供应商空凭据停用、填写启用、持久恢复及清空撤�
   }));
   const normalized = await restored.get("claude", preset.id);
   assert.equal(normalized.baseUrl, "https://api.deepseek.com/anthropic");
-  assert.equal(normalized.protocol, "anthropic");
+  assert.equal(normalized.protocol, "messages");
   assert.equal(normalized.apiKey, "test-key");
   assert.deepEqual(normalized.models, ["deepseek-flash", "deepseek-v4-pro"]);
   assert.equal(

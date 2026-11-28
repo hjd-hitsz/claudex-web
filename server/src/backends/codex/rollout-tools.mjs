@@ -44,7 +44,13 @@ function fileChanges(changes) {
   }));
 }
 
-async function scan(path, threadId, turnIds, onlyCallId, callsOnly) {
+async function scan(
+  path,
+  threadId,
+  turnIds,
+  onlyCallId,
+  { callsOnly, outputMatches },
+) {
   const matches =
     typeof onlyCallId === "function" ? onlyCallId : (id) => id === onlyCallId;
   const source = createReadStream(path);
@@ -182,7 +188,7 @@ async function scan(path, threadId, turnIds, onlyCallId, callsOnly) {
         trace.calls.set(callId, {
           callId,
           input: record,
-          ...(onlyCallId && { outputs: [] }),
+          ...((onlyCallId || outputMatches?.(callId)) && { outputs: [] }),
         });
       } else {
         const call = trace.calls.get(callId);
@@ -199,15 +205,10 @@ async function scan(path, threadId, turnIds, onlyCallId, callsOnly) {
   }
 }
 
-export async function readRolloutTrace(
-  thread,
-  turnIds,
-  callId,
-  { callsOnly = false } = {},
-) {
+export async function readRolloutTrace(thread, turnIds, callId, options = {}) {
   if (!thread.path) return new Map();
   try {
-    return await scan(thread.path, thread.id, turnIds, callId, callsOnly);
+    return await scan(thread.path, thread.id, turnIds, callId, options);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
     if (!thread.path.endsWith(".zst"))
@@ -216,7 +217,7 @@ export async function readRolloutTrace(
         thread.id,
         turnIds,
         callId,
-        callsOnly,
+        options,
       ).catch((error) => {
         if (error.code !== "ENOENT") throw error;
         return new Map();

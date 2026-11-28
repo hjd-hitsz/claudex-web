@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { delegationNotice } from "../src/backends/agy/delegation-delivery.mjs";
+import { finishDelegation } from "../src/backends/delegation/delegation-store.mjs";
 import { noticeResult } from "../src/backends/delegation/call-chain.mjs";
 import {
   delegationResults,
@@ -31,6 +32,70 @@ const backgroundNotice = (name, results) => ({
   type: "functionCallOutput",
   name,
   output: JSON.stringify({ results }),
+});
+
+test("同任务邻近的排队结果随最新回投提交，逐步骤证据仍可定位", () => {
+  const first = { id: "b207ca31", result: { answer: "已送达" } };
+  const related = { id: "babba003", result: { answer: "前一次结果" } };
+  const current = { id: stepId };
+  const task = {
+    id: taskId,
+    target: "codex",
+    steps: [first, related, current],
+  };
+  const data = {
+    notices: {
+      [first.id + ":result"]: {
+        createdAt: Date.now(),
+        payload: { status: "completed" },
+        status: "delivered",
+      },
+      [related.id + ":result"]: {
+        createdAt: Date.now(),
+        payload: { status: "failed" },
+        status: "superseded",
+      },
+    },
+  };
+  finishDelegation(data, task, "completed", { answer: "最新结果" });
+  const payload = data.notices[stepId + ":result"].payload;
+  assert.equal(payload.answer, "最新结果");
+  assert.deepEqual(payload.relatedSteps, [
+    { stepId: related.id, status: "failed", answer: "前一次结果" },
+  ]);
+  assert.equal(related.result.answer, "前一次结果");
+  const { items, prompt } = delegationNotice(
+    data.notices[stepId + ":result"],
+    task,
+  );
+  assert.equal(items[0].stepId, stepId);
+  assert.deepEqual(
+    JSON.parse(prompt[0].text.split("\n").at(-1)).relatedSteps,
+    payload.relatedSteps,
+  );
+  data.notices[related.id + ":result"].createdAt = Date.now() - 2501;
+  const late = { id: "6c000001" };
+  task.steps = [first, related, late];
+  finishDelegation(data, task, "completed", { answer: "延迟完成" });
+  assert.equal(
+    data.notices[late.id + ":result"].payload.relatedSteps,
+    undefined,
+  );
+});
+
+test("重复回投仅携带首次完整正文，存档保留各轮答复", () => {
+  const answer = "需要完整保留的原生答复。".repeat(300);
+  const turns = [
+    turn("dispatch", [final(answer)]),
+    turn("resumed", [completed(["one"]), final(answer)]),
+  ];
+  const { payload, result } = settle("codex", turns, {
+    jobs: [{ id: "one", startedAt: 12, status: "completed" }],
+  });
+  assert.equal(payload.answer.split(answer).length, 2);
+  assert.match(payload.answer, /答复与第 1 轮相同/);
+  assert.equal(result.answer.split(answer).length, 3);
+  assert.equal(result.turns.length, 2);
 });
 
 function settle(target, turns, { jobs = [], tasks = {}, stopRequested } = {}) {

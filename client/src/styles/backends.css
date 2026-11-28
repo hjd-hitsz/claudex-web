@@ -196,6 +196,10 @@
 .backend-form .provider-fields > .provider-address {
   grid-column: 1 / -1;
 }
+.provider-protocol-help {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
 .provider-fields > label > :is(input, select) {
   grid-column: 2 / -1;
 }

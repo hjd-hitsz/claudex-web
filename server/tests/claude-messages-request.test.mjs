@@ -10,14 +10,14 @@ import { readPromptSections, renderPrompt } from "../src/prompts.mjs";
 
 test("模型支持元数据交给原生能力规则，保持思考启停独立", () => {
   assert.equal(
-    modelOptions({ protocol: "messages" }, "custom", {}).thinking,
+    modelOptions({ protocol: "messages_compatible" }, "custom", {}).thinking,
     undefined,
   );
   for (const enabled of [true, false])
     assert.deepEqual(
       modelOptions(
         {
-          protocol: "messages",
+          protocol: "messages_compatible",
           modelCapabilities: { custom: { supportsAdaptiveThinking: enabled } },
         },
         "custom",
@@ -116,27 +116,31 @@ test("配置供应商的秘书请求合并系统正文并保留最新项目规�
     ],
     tools: [{ name: "Bash" }],
   };
-  for (const standard of [true, false]) {
-    const result = messagesRequest(body, { standard, secretaryRole });
-    assert.deepEqual(result.messages, [user]);
-    assert.deepEqual(result.tools, body.tools);
-    assert.equal(result.system.length, 1);
-    assert.equal(result.system[0].cache_control, cacheControl);
-    const text = result.system[0].text;
-    assert.equal(text.split("\n")[0], secretaryRole);
-    assert(
-      text.includes("Workspace context") && text.includes("Enabled skill list"),
-    );
-    assert(text.includes(snapshot("current")));
-    for (const removed of [
-      identity,
-      agentTypes,
-      "x-anthropic-billing-header:",
-      snapshot("older"),
-    ])
-      assert(!text.includes(removed));
-    assert.equal(result.thinking?.type, standard ? "disabled" : undefined);
-  }
+  const result = messagesRequest(body, { standard: true, secretaryRole });
+  assert.deepEqual(result.messages, [user]);
+  assert.deepEqual(result.tools, body.tools);
+  assert.equal(result.system.length, 1);
+  assert.equal(result.system[0].cache_control, cacheControl);
+  const text = result.system[0].text;
+  assert.equal(text.split("\n")[0], secretaryRole);
+  assert(
+    text.includes("Workspace context") && text.includes("Enabled skill list"),
+  );
+  assert(text.includes(snapshot("current")));
+  for (const removed of [
+    identity,
+    agentTypes,
+    "x-anthropic-billing-header:",
+    snapshot("older"),
+  ])
+    assert(!text.includes(removed));
+  assert.equal(result.thinking?.type, "disabled");
+
+  const native = messagesRequest(body, { standard: false, secretaryRole });
+  assert.equal(native.messages, body.messages);
+  assert.equal(native.tools, body.tools);
+  assert.deepEqual(native.system, [{ type: "text", text: secretaryRole }]);
+  assert.equal(native.thinking, undefined);
   assert.equal(messagesRequest(body, { standard: false }), body);
   assert.equal(messagesRequest(body).system[1].text, identity);
   assert.equal(
@@ -158,9 +162,72 @@ test("配置供应商的秘书请求合并系统正文并保留最新项目规�
   );
 });
 
+test("原生秘书请求只将组内系统消息移到完整工具组之后", () => {
+  const secretaryRole = "Session secretary";
+  const historySystem = (text) => ({
+    role: "system",
+    content: [{ type: "text", text, cache_control: { type: "ephemeral" } }],
+  });
+  const before = historySystem("before tool group");
+  const first = historySystem("before first result");
+  const second = historySystem("between results");
+  const after = historySystem("after tool group");
+  const call = {
+    role: "assistant",
+    content: [
+      { type: "tool_use", id: "first", name: "Read", input: {} },
+      { type: "tool_use", id: "second", name: "Read", input: {} },
+    ],
+  };
+  const result = (id) => ({
+    role: "user",
+    content: [{ type: "tool_result", tool_use_id: id, content: id }],
+  });
+  const firstResult = result("first");
+  const secondResult = result("second");
+  const original = [
+    before,
+    call,
+    first,
+    firstResult,
+    second,
+    secondResult,
+    after,
+  ];
+  const body = { system: secretaryRole, messages: [...original] };
+  const native = messagesRequest(body, { standard: false, secretaryRole });
+  assert.deepEqual(native.messages, [
+    before,
+    call,
+    firstResult,
+    secondResult,
+    first,
+    second,
+    after,
+  ]);
+  assert.equal(native.messages[4], first);
+  assert.equal(native.messages[5], second);
+  assert.deepEqual(body.messages, original);
+  const compatible = messagesRequest(body, { standard: true, secretaryRole });
+  assert.deepEqual(compatible.messages, [call, firstResult, secondResult]);
+  assert.equal(
+    compatible.system[0].text,
+    [
+      secretaryRole,
+      ...[before, first, second, after].map((m) => m.content[0].text),
+    ].join("\n\n"),
+  );
+
+  const incomplete = { ...body, messages: [call, first, result("other")] };
+  assert.equal(
+    messagesRequest(incomplete, { standard: false, secretaryRole }).messages,
+    incomplete.messages,
+  );
+});
+
 test("供应商环境保留结构化输出所需的原生功能并按实际选择传递 effort", () => {
   const provider = {
-    protocol: "messages",
+    protocol: "messages_compatible",
     baseUrl: "https://provider.example",
     apiKey: "fixture",
     models: ["custom-model"],
@@ -177,7 +244,10 @@ test("供应商环境保留结构化输出所需的原生功能并按实际选�
 });
 
 test("初始化与逐轮模型设置同步主模型及三个原生别名", () => {
-  const provider = { models: ["first", "second"], protocol: "messages" };
+  const provider = {
+    models: ["first", "second"],
+    protocol: "messages_compatible",
+  };
   for (const model of [undefined, "second", "first"]) {
     const current = model || "first";
     const update = providerModelEnvironment(provider, model);

@@ -13,10 +13,10 @@ import { visibleAgyItems } from "../acp-messages.mjs";
 import { nowSeconds } from "../session-store.mjs";
 
 const workflow = readPromptSections("delegation/workflow.md");
-const summarize = (value) => {
+const summarize = (value, limit = 4000) => {
   if (value == null) return undefined;
   const text = typeof value === "string" ? value : JSON.stringify(value);
-  return text.length > 4000 ? text.slice(0, 4000) + "…" : text;
+  return text.length > limit ? text.slice(0, limit).toWellFormed() + "…" : text;
 };
 
 export function retainedAgyTurns(turns, turnId, inclusive) {
@@ -27,6 +27,7 @@ export function retainedAgyTurns(turns, turnId, inclusive) {
 }
 
 export function agyHistoryRecords(turns) {
+  const seenResults = new Set();
   return turns
     .map(({ items }) =>
       visibleAgyItems(items).flatMap((item) => {
@@ -47,25 +48,38 @@ export function agyHistoryRecords(turns) {
         if (
           type === "mcpToolCall" &&
           ["completed", "failed"].includes(item.status)
-        )
+        ) {
+          const result = summarize(item.result ?? item.error);
+          const archived = item.id && result?.length > 1024;
           return [
             {
               type,
               tool: item.nativeTool || item.tool,
               status: item.status,
               arguments: summarize(item.arguments),
-              result: summarize(item.result ?? item.error),
+              result: archived ? summarize(result, 256) : result,
+              ...(archived && { archivedCallId: item.id }),
             },
           ];
-        if (type === "delegationResult")
+        }
+        if (type === "delegationResult") {
+          const key =
+            item.taskId &&
+            item.stepId &&
+            JSON.stringify([item.taskId, item.stepId, item.status]);
+          if (key && seenResults.has(key)) return [];
+          if (key) seenResults.add(key);
           return [
             {
               type,
               target: item.target,
               status: item.status,
+              taskId: item.taskId,
+              stepId: item.stepId,
               result: summarize(item.context),
             },
           ];
+        }
         if (type === "fileChange" && item.status === "completed")
           return [
             {

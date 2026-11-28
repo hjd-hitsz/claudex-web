@@ -1,4 +1,4 @@
-import { readClaudeToolRecords } from "../claude/tool-records.mjs";
+import { createClaudeToolRecordsReader } from "../claude/tool-records.mjs";
 import { readRolloutTrace } from "../codex/rollout-tools.mjs";
 import {
   conversationArguments,
@@ -7,8 +7,9 @@ import {
 import { initialTurn, traceVersion } from "./delegation-results.mjs";
 import { traceCall, turnCalls } from "./call-chain.mjs";
 import { findDelegationTask, traceId, traceMatches } from "./trace-ids.mjs";
+import { deliveryAnswer } from "./delivery-summary.mjs";
+import { evidencePage } from "./evidence-page.mjs";
 
-const pageSize = 4000;
 const callsPerPage = 12;
 
 function callsPage(identity, calls, offset = 0) {
@@ -20,26 +21,21 @@ function callsPage(identity, calls, offset = 0) {
   };
 }
 
-function detailPage(detail, offset) {
-  const json = JSON.stringify(detail);
-  if (offset === undefined && json.length <= pageSize) return detail;
-  const start = offset ?? 0;
-  if (start >= json.length || /[\uDC00-\uDFFF]/.test(json[start]))
-    throw new Error("委派详情分页位置无效");
-  let end = Math.min(start + pageSize, json.length);
-  if (end < json.length && /[\uDC00-\uDFFF]/.test(json[end])) end--;
-  return {
-    encoding: "json",
-    chunk: json.slice(start, end),
-    nextOffset: end < json.length ? end : null,
-  };
-}
-
 export async function readDelegationStep(store, executor, parent, input) {
-  const { taskId, stepId, callId, filter, offset } = conversationArguments(
-    delegationStepToolName,
-    input,
-  );
+  const { taskId, stepId, callId, filter, callIds, filters, answer, offset } =
+    conversationArguments(delegationStepToolName, input);
+  const batch = callIds !== undefined || filters !== undefined;
+  const requested = [...new Set([callId, ...(callIds ?? [])].filter(Boolean))];
+  const keywords = [
+    ...new Set(
+      [filter, ...(filters ?? [])]
+        .filter(Boolean)
+        .map((value) => value.trim().toLowerCase()),
+    ),
+  ];
+  const wantsCalls = !requested.length || (batch && keywords.length > 0);
+  if (batch && !wantsCalls && offset !== undefined)
+    throw new Error("请使用单个 callId 继续读取原始详情");
   const { tasks } = await store.read();
   const task = findDelegationTask(tasks, parent, taskId);
   if (!task) throw new Error("当前会话找不到该委派任务");
@@ -52,8 +48,28 @@ export async function readDelegationStep(store, executor, parent, input) {
     stepId: traceId(step.id),
     backend: task.target,
   };
-  if (!callId && !task.executor) return callsPage(identity, [], offset);
-  if (!callId && !filter && step.result?.traceVersion === traceVersion)
+  if (answer) {
+    if (requested.length || keywords.length)
+      throw new Error("读取步骤答复时请单独传入 answer");
+    if (!step.result) throw new Error("该委派步骤尚无存档答复");
+    const result = step.result;
+    return evidencePage(
+      {
+        ...identity,
+        answer: result.answer ?? deliveryAnswer(result),
+        conclusion: result.conclusion,
+        error: result.error,
+      },
+      offset,
+    );
+  }
+  if (!requested.length && !task.executor)
+    return callsPage(identity, [], offset);
+  if (
+    !requested.length &&
+    !keywords.length &&
+    step.result?.traceVersion === traceVersion
+  )
     return callsPage(identity, step.result.callChain, offset);
   if (!task.executor) throw new Error("委派步骤尚无原生执行记录");
 
@@ -72,21 +88,27 @@ export async function readDelegationStep(store, executor, parent, input) {
     ].filter(Boolean),
   );
   const turns = (thread.turns ?? []).filter((turn) => ids.has(turn.id));
+  const wanted = (id) =>
+    requested.includes(id) || requested.includes(traceId(id));
   const rollout =
     task.target === "codex"
       ? await readRolloutTrace(
           thread,
           new Set(turns.map(({ id }) => id)),
-          callId && ((id) => id === callId || traceId(id) === callId),
-          { callsOnly: true },
+          !wantsCalls && wanted,
+          {
+            callsOnly: true,
+            ...(requested.length && { outputMatches: wanted }),
+          },
         )
       : new Map();
-  if (!callId) {
-    const keyword = filter?.trim().toLowerCase();
+  let page;
+  if (wantsCalls) {
     const calls = turns.flatMap((turn) =>
-      turnCalls(turn, rollout.get(turn.id), task.target, keyword),
+      turnCalls(turn, rollout.get(turn.id), task.target, keywords),
     );
-    return callsPage(identity, calls, offset);
+    page = callsPage(identity, calls, offset);
+    if (!requested.length) return page;
   }
 
   const chain = turns.flatMap((turn) =>
@@ -95,24 +117,33 @@ export async function readDelegationStep(store, executor, parent, input) {
       turn,
     })),
   );
-  const matches = traceMatches(chain, callId, ({ call }) => call.callId);
-  if (matches.length > 1)
-    throw new Error("调用 ID 有重复，请提供列表中的完整调用 ID");
-  const [match] = matches;
-  if (!match) throw new Error("该委派步骤中找不到指定调用");
-  const { call, turn } = match;
-  const nativeCallId = call.callId;
-  const items = turn.items;
-  const trace = rollout.get(turn.id);
-  const item =
-    items?.find(({ id }) => id === nativeCallId) ??
-    trace?.items.get(nativeCallId);
-  const raw =
-    task.target === "codex"
-      ? trace?.calls.get(nativeCallId)
-      : await readClaudeToolRecords(entry.backend, thread, item);
-  return detailPage(
-    {
+  const readClaudeRecords =
+    task.target === "claude" &&
+    createClaudeToolRecordsReader(entry.backend, thread);
+
+  async function lookup(id) {
+    const matches = traceMatches(chain, id, ({ call }) => call.callId);
+    const error =
+      matches.length > 1
+        ? "调用 ID 有重复，请提供列表中的完整调用 ID"
+        : matches.length === 0
+          ? "该委派步骤中找不到指定调用"
+          : null;
+    if (error) {
+      if (batch) return { callId: id, error };
+      throw new Error(error);
+    }
+    const [{ call, turn }] = matches;
+    const nativeCallId = call.callId;
+    const items = turn.items;
+    const trace = rollout.get(turn.id);
+    const item =
+      items?.find(({ id }) => id === nativeCallId) ??
+      trace?.items.get(nativeCallId);
+    const raw = readClaudeRecords
+      ? await readClaudeRecords(item)
+      : trace?.calls.get(nativeCallId);
+    const detail = {
       ...identity,
       call: traceCall(call),
       turnId: turn.id,
@@ -122,7 +153,12 @@ export async function readDelegationStep(store, executor, parent, input) {
           ?.changes,
       }),
       raw,
-    },
-    offset,
-  );
+    };
+    const result = evidencePage(detail, batch ? undefined : offset);
+    return batch ? { callId: id, ...result } : result;
+  }
+
+  if (!batch) return lookup(requested[0]);
+  const details = await Promise.all(requested.map(lookup));
+  return { ...(page ?? identity), details };
 }

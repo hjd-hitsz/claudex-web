@@ -44,7 +44,7 @@ const data = {
       backendId: "claude",
       name: "示例供应商",
       baseUrl: "https://example.org",
-      protocol: "messages",
+      protocol: "messages_compatible",
       hasApiKey: true,
       models,
       modelAliases: { [model]: "SenseNova Loop 9B" },
@@ -135,6 +135,16 @@ try {
     assert.ok(clear.y > key.y + key.height);
     await form.screenshot({ path: join(output, "provider-fields.png") });
   } else {
+    const protocol = form.getByLabel("API 协议");
+    assert.equal(await protocol.inputValue(), "messages_compatible");
+    assert.deepEqual(await protocol.getByRole("option").allTextContents(), [
+      "Message API",
+      "Message API（兼容）",
+    ]);
+    assert.match(
+      await protocol.getAttribute("aria-describedby"),
+      /provider-protocol-help/,
+    );
     assert.equal(await edit.getAttribute("aria-expanded"), "true");
     assert.ok(
       await row.evaluate((el) =>
@@ -341,6 +351,7 @@ try {
     await add.click();
     assert.equal(await add.getAttribute("aria-expanded"), "true");
     await page.locator(".provider-new .provider-editor").waitFor();
+    assert.equal(await protocol.inputValue(), "messages");
     assert.equal(await clearKey.count(), 0);
     assert.ok(await keyField.isVisible());
     assert.equal(

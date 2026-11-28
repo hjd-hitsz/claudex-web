@@ -84,13 +84,13 @@ const config = {
 await writeFile(
   config.backendsFile,
   JSON.stringify({
-    version: 1,
+    version: 2,
     backends: [backend],
     providers: [
       {
         id: "fixture",
         backendId: "claude",
-        protocol: "messages",
+        protocol: "messages_compatible",
         name: "Fixture",
         baseUrl: url,
         apiKey: "test-token",

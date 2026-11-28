@@ -8,7 +8,7 @@ export const providerPresets = [
     name: "DeepSeek",
     icon: "deepseek",
     usage: "deepseek-balance",
-    protocol: "anthropic",
+    protocol: "messages",
     baseUrl: "https://api.deepseek.com/anthropic",
     modelDirectory: {
       url: "https://api.deepseek.com/models",
@@ -38,7 +38,7 @@ export const providerPresets = [
     backendId: "claude",
     name: "OpenCode Go",
     icon: "opencode",
-    protocol: "anthropic",
+    protocol: "messages",
     authentication: "bearer",
     usage: "opencode-go-usage",
     baseUrl: "https://opencode.ai/inference/go/anthropic",

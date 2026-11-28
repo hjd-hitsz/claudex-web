@@ -8,6 +8,7 @@ import {
   createPresetCatalogueReader,
   mergePresetCatalogue,
 } from "./preset-model-catalogue.mjs";
+import { validateProviderProtocol } from "./provider-protocol.mjs";
 
 export function createProviders(configuration, { fetchModels, timeout } = {}) {
   const readCatalogue = createPresetCatalogueReader(fetchModels, timeout);
@@ -50,6 +51,7 @@ export function createProviders(configuration, { fetchModels, timeout } = {}) {
     const preset = providerPresets.find((p) => p.id === input.id);
     if (input.backendId !== "claude")
       throw new Error("供应商配置仅用于 Claude Code");
+    validateProviderProtocol(input.protocol);
     if (preset)
       input = {
         ...preset,
@@ -68,8 +70,6 @@ export function createProviders(configuration, { fetchModels, timeout } = {}) {
     )
       throw new Error("请填写有效的 API 地址");
     if (!input.name?.trim()) throw new Error("请填写供应商名称");
-    if (input.protocol && !["messages", "anthropic"].includes(input.protocol))
-      throw new Error("请选择支持的 API 协议");
     const models = (input.models || []).map((m) =>
       typeof m === "string" ? m.trim() : m.id?.trim(),
     );
@@ -126,10 +126,7 @@ export function createProviders(configuration, { fetchModels, timeout } = {}) {
         id,
         backendId: backend.id,
         name: input.name.trim(),
-        protocol:
-          input.protocol ||
-          previous?.protocol ||
-          (previous ? "messages" : "anthropic"),
+        protocol: input.protocol ?? previous?.protocol ?? "messages",
         baseUrl: url.href.replace(/\/$/, ""),
         models: hasCatalogue ? previous.models : models,
         hiddenModels: [

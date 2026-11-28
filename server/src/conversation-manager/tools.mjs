@@ -4,6 +4,12 @@ const descriptions = readPromptSections("conversation/collaboration.md");
 
 const text = { type: "string", minLength: 1 };
 const limit = { type: "integer", minimum: 1, maximum: 50 };
+const evidenceList = {
+  type: "array",
+  items: text,
+  minItems: 1,
+  maxItems: 8,
+};
 
 export const delegationToolName = "delegate_task";
 export const claudeConversationServerName = "claudex_conversation";
@@ -25,6 +31,9 @@ export const delegationStepTool = {
       stepId: text,
       callId: text,
       filter: text,
+      callIds: evidenceList,
+      filters: evidenceList,
+      answer: { type: "boolean" },
       offset: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
     },
   },
@@ -132,6 +141,16 @@ export function conversationArguments(name, args = {}) {
         (typeof value !== "string" ||
           value.trim().length < spec.minLength ||
           value.length > (spec.maxLength ?? 4096))) ||
+      (spec.type === "array" &&
+        (!Array.isArray(value) ||
+          value.length < spec.minItems ||
+          value.length > spec.maxItems ||
+          value.some(
+            (item) =>
+              typeof item !== "string" ||
+              item.trim().length < spec.items.minLength ||
+              item.length > 4096,
+          ))) ||
       (spec.type === "integer" &&
         (!Number.isInteger(value) ||
           value < spec.minimum ||

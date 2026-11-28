@@ -27,7 +27,7 @@ export function modelOptions(
   model: string | undefined,
   input: Pick<QueuedExecution, "effort" | "serviceTier">,
 ): Pick<Options, "effort"> & { settings: { fastMode: boolean } } {
-  const standard = provider && (provider.protocol || "messages") === "messages";
+  const standard = provider?.protocol === "messages_compatible";
   const capabilities = (model && provider?.modelCapabilities?.[model]) || {};
   const effort = input.effort || undefined;
   const fastMode =

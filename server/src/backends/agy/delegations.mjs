@@ -9,6 +9,10 @@ import { buildDelegationSelection } from "../delegation/settings.mjs";
 import { createDelegationRuntime } from "../delegation/runtime.mjs";
 import { findDelegationTask, traceId } from "../delegation/trace-ids.mjs";
 import { delegationNotice, noticeMarker } from "./delegation-delivery.mjs";
+import {
+  archivedToolOutput,
+  readArchivedToolOutput,
+} from "./archived-tool-output.mjs";
 
 const forwarding = readPromptSections("delegation/workflow.md")(
   "secretaryForwarding",
@@ -68,8 +72,9 @@ export function createDelegations({
     entry.mcpTools = [
       ...enabled.map((target) => "ask_" + target),
       delegationStepToolName,
+      archivedToolOutput.name,
     ];
-    return [...enabled, delegationStepToolName];
+    return [...enabled, delegationStepToolName, archivedToolOutput.name];
   }
   async function forwardingContext(parentId, blocks) {
     const { tasks } = await store.read();
@@ -100,6 +105,13 @@ export function createDelegations({
       throw new Error("当前没有提交委派的 agy 轮次");
     if (tool === delegationStepToolName)
       return runtime.readStep({ id: entry.id }, input);
+    if (tool === archivedToolOutput.name)
+      return readArchivedToolOutput(
+        store,
+        entry.id,
+        input,
+        sessions().agentInfo(),
+      );
     const target = { ask_codex: "codex", ask_claude: "claude" }[tool];
     if (!target) throw new Error("未知委派工具");
     const { input: send, turn, session } = activity;

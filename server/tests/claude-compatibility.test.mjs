@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { createProviderTransport } from "../src/backends/claude/provider-transport.mjs";
+import { messagesRequest } from "../src/backends/claude/messages-request.mjs";
 import { convertMessage } from "../src/backends/claude/messages.mjs";
 
 test("首次供应商请求使用合法消息结构，保留系统指令、工具和全部上下文", async (t) => {
@@ -30,7 +31,7 @@ test("首次供应商请求使用合法消息结构，保留系统指令、工�
   const proxy = await createProviderTransport({
     baseUrl: `http://127.0.0.1:${server.address().port}`,
     apiKey: "fixture",
-    compatibility: {},
+    protocol: "messages_compatible",
   });
   t.after(() => proxy.close());
   const body = {
@@ -65,6 +66,76 @@ test("首次供应商请求使用合法消息结构，保留系统指令、工�
   assert.equal((await call()).status, 200);
   assert.equal(seen.length, 2);
   assert.equal(body.messages[1].role, "system");
+});
+
+test("协议取值保留原生和兼容请求的完整序列化语义", async (t) => {
+  let bytes;
+  const server = http.createServer(async (request, response) => {
+    bytes = "";
+    for await (const chunk of request) bytes += chunk;
+    response.writeHead(200).end("{}");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const body = {
+    model: "custom",
+    system: [{ type: "text", text: "Secretary role" }],
+    messages: [
+      { role: "user", content: "task" },
+      {
+        role: "system",
+        content: [
+          {
+            type: "text",
+            text: "context",
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+      },
+    ],
+  };
+  for (const [protocol, standard] of [
+    ["messages", false],
+    ["messages_compatible", true],
+    [undefined, false],
+  ]) {
+    for (const secretaryRole of [undefined, "Other role", "Secretary role"]) {
+      const proxy = await createProviderTransport(
+        {
+          baseUrl: `http://127.0.0.1:${server.address().port}`,
+          apiKey: "fixture",
+          protocol,
+        },
+        null,
+        secretaryRole,
+      );
+      try {
+        for (const request of [
+          body,
+          { ...body, thinking: { type: "adaptive" } },
+        ]) {
+          const result = await fetch(proxy.url + "/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": proxy.token },
+            body: JSON.stringify(request),
+          });
+          assert.equal(result.status, 200);
+          await result.text();
+          assert.equal(
+            bytes,
+            JSON.stringify(
+              messagesRequest(request, { standard, secretaryRole }),
+            ),
+          );
+        }
+      } finally {
+        proxy.close();
+      }
+    }
+  }
 });
 
 test("原生 API 失败记录保持为失败状态，正文与历史省去伪助手回复", () => {

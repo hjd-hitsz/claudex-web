@@ -153,11 +153,12 @@ export function ProviderSettings({ actionTarget }) {
             </span>
             <select
               aria-label="API 协议"
+              aria-describedby="provider-protocol-help"
               name="protocol"
-              defaultValue={editing.protocol || "anthropic"}
+              defaultValue={editing.protocol || "messages"}
             >
-              <option value="anthropic">Message API</option>
-              <option value="messages">Message API （兼容）</option>
+              <option value="messages">Message API</option>
+              <option value="messages_compatible">Message API（兼容）</option>
             </select>
           </label>
           <label className="provider-address">
@@ -172,6 +173,9 @@ export function ProviderSettings({ actionTarget }) {
               defaultValue={editing.baseUrl}
             />
           </label>
+          <small id="provider-protocol-help" className="provider-protocol-help">
+            兼容模式将系统消息移到请求顶部，仅用于不接受历史系统消息的端点。
+          </small>
         </div>
         <ProviderCredentials
           hasApiKey={editing.hasApiKey}

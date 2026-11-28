@@ -33,6 +33,7 @@ test("模型参数采用原生元数据，未知模型保留真实配置且不�
 test("供应商协议在首次运行前确定，Anthropic 保留原生实验协议", () => {
   const backend = { dataDir: "/isolated" };
   const provider = {
+    protocol: "messages_compatible",
     baseUrl: "http://fixture",
     apiKey: "fixture",
     models: ["custom"],
@@ -54,7 +55,7 @@ test("供应商协议在首次运行前确定，Anthropic 保留原生实验协�
     "unset",
   );
   const native = providerRuntimeEnvironment(
-    { ...provider, protocol: "anthropic" },
+    { ...provider, protocol: "messages" },
     backend,
   );
   assert.equal(native.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS, undefined);
@@ -96,7 +97,7 @@ test("目录读取按供应商和cwd匹配活会话，并保留MCP真实工具",
     providers: {
       get: async (_backend, id) => {
         requested.push(id);
-        return { id, models: ["same"] };
+        return { id, protocol: "messages_compatible", models: ["same"] };
       },
     },
     queries: new Map([
@@ -135,7 +136,7 @@ test("原生 Message API 的自定义模型使用供应商配置的模型能力"
     providers: {
       get: async () => ({
         id: "custom",
-        protocol: "anthropic",
+        protocol: "messages",
         models: ["custom-model"],
         modelCapabilities: {
           "custom-model": {

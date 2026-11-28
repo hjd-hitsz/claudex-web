@@ -63,7 +63,7 @@ export function providerModelEnvironment(provider, model, effort) {
     CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(
       provider.modelCapabilities?.[selectedModel]?.contextWindow || "",
     ),
-    ...((provider.protocol || "messages") === "messages" && {
+    ...(provider.protocol === "messages_compatible" && {
       CLAUDE_CODE_EFFORT_LEVEL: effort || "unset",
     }),
   };

@@ -17,7 +17,7 @@ test("旧 Claude 隐藏条目按供应商迁移，随后原子保存且不反转
   };
   const custom = {
     backendId: "claude",
-    protocol: "anthropic",
+    protocol: "messages",
     name: "Custom",
     baseUrl: "https://fixture.example",
     models: ["deepseek-flash", "other"],
@@ -29,7 +29,7 @@ test("旧 Claude 隐藏条目按供应商迁移，随后原子保存且不反转
   await writeFile(
     file,
     JSON.stringify({
-      version: 1,
+      version: 2,
       backends: [
         { id: "codex", type: "codex", enabled: true, hiddenModels: ["gpt"] },
         {

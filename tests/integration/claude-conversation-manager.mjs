@@ -376,14 +376,14 @@ await Promise.all([
 await writeFile(
   config.backendsFile,
   JSON.stringify({
-    version: 1,
+    version: 2,
     backends: [backend],
     providers: [
       {
         id: "fixture",
         backendId: "claude",
         name: "Fixture",
-        protocol: "messages",
+        protocol: "messages_compatible",
         baseUrl: service.url,
         apiKey: "fixture-key",
         models: ["fixture-model"],

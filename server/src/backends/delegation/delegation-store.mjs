@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { resultNoticePayload } from "./call-chain.mjs";
 import { deliveryAnswer } from "./delivery-summary.mjs";
+import { delegationSnippet } from "../../../../shared/delivery-summary.mjs";
 import { findDelegationTask } from "./trace-ids.mjs";
 
 export const executing = new Set([
@@ -151,18 +152,62 @@ export function currentResultNotice(data, notice) {
   );
 }
 
+function relatedResults(data, task, completedAt, answer) {
+  const results = [];
+  const seenAnswers = new Set([answer?.trim()]);
+  // A newer step supersedes a queued notice. Carry nearby results that
+  // have yet to enter native submission in the latest step's report.
+  for (let index = task.steps.length - 2; index >= 0; index--) {
+    const step = task.steps[index];
+    const notice = data.notices[`${step.id}:result`];
+    if (
+      notice?.status !== "superseded" ||
+      !step.result ||
+      completedAt - notice.createdAt > 2500
+    )
+      break;
+    const payload = resultNoticePayload({
+      ...step.result,
+      stepId: step.id,
+      status: notice.payload.status,
+    });
+    const text = payload.answer?.trim();
+    if (text && (seenAnswers.has(text) || text.length > 1024)) {
+      const { answer, ...summary } = payload;
+      results.push({
+        ...summary,
+        preview: summary.preview || delegationSnippet(answer),
+        answerArchived: true,
+      });
+    } else {
+      results.push(payload);
+    }
+    if (text) seenAnswers.add(text);
+  }
+  return results.reverse();
+}
+
 export function finishDelegation(data, task, status, result) {
   const settled = { ...result, deliveryAnswer: deliveryAnswer(result) };
+  const completedAt = Date.now();
   task.status = status;
   task.request = null;
   Object.assign(task.steps.at(-1), {
     result: settled,
-    completedAt: Date.now(),
+    completedAt,
   });
-  queueNotice(
+  const relatedSteps = relatedResults(
     data,
     task,
-    "result",
-    resultNoticePayload({ ...settled, status, stepId: task.steps.at(-1).id }),
+    completedAt,
+    settled.deliveryAnswer,
   );
+  queueNotice(data, task, "result", {
+    ...resultNoticePayload({
+      ...settled,
+      status,
+      stepId: task.steps.at(-1).id,
+    }),
+    ...(relatedSteps.length && { relatedSteps }),
+  });
 }

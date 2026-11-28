@@ -117,9 +117,18 @@ const stepTool = "read_delegation_step";
 const claudeStepTool = "mcp__claudex_conversation__" + stepTool;
 const codexModel = "gpt-5.4";
 const claudeModel = "gsq-rco-27b";
-const claudeProtocol = process.argv.includes("--anthropic")
-  ? "anthropic"
-  : "messages";
+const claudeProtocol = process.argv.includes("--messages")
+  ? "messages"
+  : "messages_compatible";
+const evidenceBenchmark = process.argv.find((arg) =>
+  ["--evidence-single", "--evidence-batch"].includes(arg),
+);
+const evidenceMarkers = ["EVIDENCE_LEFT", "EVIDENCE_RIGHT"];
+const evidenceMetrics = { inputBytes: 0, requests: 0, results: [] };
+const evidencePayloads = [];
+if (evidenceBenchmark)
+  for (const marker of evidenceMarkers)
+    await writeFile(join(cwd, marker), marker + "\n");
 const codexPrompt = "CODEX_PRESET_PROOF";
 const longCodexRole =
   "Codex secretary instructions. ".repeat(110) + codexPrompt;
@@ -274,25 +283,50 @@ const codex = createServer(async (request, response) => {
     answer = "CODEX_STANDARD_ANSWER";
   } else if (prompt.includes("Claudex 委派执行结果")) {
     proof.codex.result = prompt.includes("CLAUDE_EXECUTOR_PROOF");
+    if (evidenceBenchmark && !evidenceMetrics.complete) {
+      const payload = JSON.stringify(body.input);
+      evidenceMetrics.requests++;
+      evidenceMetrics.inputBytes += Buffer.byteLength(payload);
+      if (process.env.DELEGATION_EVIDENCE_PAYLOADS)
+        evidencePayloads.push(payload);
+    }
     const returned = body.input.find(
       ({ type, call_id }) =>
         type === "function_call_output" && call_id === "read-codex-step",
     );
-    if (!returned) {
+    const second = body.input.find(
+      ({ type, call_id }) =>
+        type === "function_call_output" && call_id === "read-codex-step-second",
+    );
+    const needsSecond =
+      evidenceBenchmark === "--evidence-single" && returned && !second;
+    if (!returned || needsSecond) {
       const tool = tools.find(({ name }) => name === stepTool);
       assert(tool, "Codex 回投轮次应提供详情工具");
+      const input = lookupInput(body.input);
+      if (evidenceBenchmark === "--evidence-single")
+        input.filter = evidenceMarkers[needsSecond ? 1 : 0];
+      if (evidenceBenchmark === "--evidence-batch")
+        input.filters = evidenceMarkers;
       call = {
         type: "function_call",
         name: tool.name,
         namespace: tool.namespace,
-        call_id: "read-codex-step",
-        arguments: JSON.stringify(lookupInput(body.input)),
+        call_id: needsSecond ? "read-codex-step-second" : "read-codex-step",
+        arguments: JSON.stringify(input),
       };
     } else {
       const output = JSON.stringify(returned.output);
       proof.codex.lookupOutput = output;
       proof.codex.lookup =
         output.includes("calls") && output.includes("nextOffset");
+      if (evidenceBenchmark && !evidenceMetrics.complete) {
+        const evidence = JSON.stringify([returned.output, second?.output]);
+        evidenceMetrics.results = evidenceMarkers.filter((marker) =>
+          evidence.includes(marker),
+        );
+        evidenceMetrics.complete = true;
+      }
       answer = "CODEX_RETURNED_PROOF";
     }
   } else if (prompt.includes("[Claudex delegation step:")) {
@@ -439,6 +473,17 @@ const claude = await messagesServer(async (body) => {
       containsSourcePrompt:
         prompt.includes(codexPrompt) || prompt.includes(claudePrompt),
     };
+    if (
+      evidenceBenchmark &&
+      body.tools?.some(({ name }) => name === "Read") &&
+      !prompt.includes("toolu_bench_0")
+    )
+      return evidenceMarkers.map((marker, index) => ({
+        type: "tool_use",
+        id: "toolu_bench_" + index,
+        name: "Read",
+        input: { file_path: join(cwd, marker) },
+      }));
     return [{ type: "text", text: "CLAUDE_EXECUTOR_PROOF" }];
   }
   if (prompt.lastIndexOf(localPrompt) > prompt.lastIndexOf(directPrompt)) {
@@ -479,11 +524,23 @@ const claude = await messagesServer(async (body) => {
   }
   if (prompt.includes(directPrompt) && !prompt.includes(source.claude)) {
     if (body.tools?.length) {
+      const historySystem = body.messages
+        .filter(({ role }) => role === "system")
+        .flatMap(({ content }) =>
+          typeof content === "string" ? [{ text: content }] : content,
+        );
+      const latestProjectSnapshot = [
+        ...(body.system || []),
+        ...historySystem,
+      ].findLast(({ text }) => text.includes("本轮有效 AGENTS 项目指令"))?.text;
       proof.claude.direct =
         instructions.includes(longClaudeRole) &&
         !instructions.includes("You are an agent working with the user") &&
         !prompt.includes(claudePrompt) &&
-        JSON.stringify(body).includes(claudeUserRule);
+        JSON.stringify(body).includes(claudeUserRule) &&
+        latestProjectSnapshot?.includes(directProjectRule) &&
+        latestProjectSnapshot.indexOf(projectScope) >
+          latestProjectSnapshot.indexOf(directProjectRule);
       proof.claude.firstRequestTool = Boolean(tool && !tool.defer_loading);
       proof.claude.secretarySystem =
         body.system.length === 1 &&
@@ -1274,7 +1331,22 @@ try {
     "Codex → Claude Code 和 Claude Code → Codex 原生 MCP 双向委派及步骤查询通过",
   );
   console.log("双向委派发起会话在派单轮次结束后持续活跃，结果回投结算后退出");
-  console.log("Claude Bash 和 Write 均可执行");
+  if (evidenceBenchmark) {
+    assert.deepEqual(evidenceMetrics.results, evidenceMarkers);
+    assert.equal(
+      evidenceMetrics.requests,
+      evidenceBenchmark === "--evidence-batch" ? 2 : 3,
+    );
+    console.log(JSON.stringify({ evidenceBenchmark, ...evidenceMetrics }));
+    if (process.env.DELEGATION_EVIDENCE_PAYLOADS)
+      await writeFile(
+        process.env.DELEGATION_EVIDENCE_PAYLOADS,
+        JSON.stringify(evidencePayloads),
+      );
+  }
+  console.log(
+    "原生模型请求中的秘书角色、项目说明与常规工具通过核对，Claude Bash 和 Write 均可执行",
+  );
   console.log(
     "同一会话默认关闭、开启、关闭及新会话首轮开启均已核对原生提示词与工具目录。无派单回答、请求去重和桥接恢复通过",
   );

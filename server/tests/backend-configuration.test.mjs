@@ -23,12 +23,16 @@ test("新供应商默认原生 Message API，已有供应商沿用保存的协�
     models: ["model"],
   };
   await providers.save({ ...input, id: "native" });
-  assert.equal((await providers.get("claude", "native")).protocol, "anthropic");
-  await providers.save({ ...input, id: "compatible", protocol: "messages" });
+  assert.equal((await providers.get("claude", "native")).protocol, "messages");
+  await providers.save({
+    ...input,
+    id: "compatible",
+    protocol: "messages_compatible",
+  });
   await providers.save({ ...input, id: "compatible", name: "改名" });
   assert.equal(
     (await providers.get("claude", "compatible")).protocol,
-    "messages",
+    "messages_compatible",
   );
   await configuration.update((data) => ({
     ...data,

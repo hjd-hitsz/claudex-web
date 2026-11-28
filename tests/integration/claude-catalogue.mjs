@@ -61,7 +61,7 @@ const catalogue = createClaudeCatalogue({
   providers: {
     get: async () => ({
       id: "catalogue-fixture",
-      protocol: "anthropic",
+      protocol: "messages",
       models: ["fixture-model"],
       baseUrl: "http://127.0.0.1:1",
       apiKey: "fixture-token",

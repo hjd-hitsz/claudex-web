@@ -5,6 +5,10 @@ import { subagentSettings } from "../../../shared/subagent-settings.mjs";
 
 import { validateAgyBackend } from "./agy/configuration.mjs";
 import { migrateProviderVisibility } from "./provider-visibility.mjs";
+import {
+  backendConfigVersion,
+  migrateProviderProtocols,
+} from "./provider-protocol.mjs";
 
 export function validateBackend(input, config) {
   if (input.id === "agy" && input.type === "agy")
@@ -98,7 +102,7 @@ export function createBackendConfiguration(config) {
   const storage = createStorage(
     config.backendsFile || join(config.configDir, "backends.json"),
     {
-      version: 1,
+      version: backendConfigVersion,
       backends: [
         {
           id: "codex",
@@ -123,14 +127,18 @@ export function createBackendConfiguration(config) {
       ],
       providers: [],
     },
+    { migrate: migrateProviderProtocols },
   );
   async function readStored() {
     return migrateProviderVisibility(await storage.read());
   }
   function update(change) {
-    return storage.update(async (data) =>
-      migrateProviderVisibility(await change(migrateProviderVisibility(data))),
-    );
+    return storage.update(async (data) => {
+      const updated = await change(migrateProviderVisibility(data));
+      return migrateProviderVisibility(
+        migrateProviderProtocols({ ...updated, version: backendConfigVersion }),
+      );
+    });
   }
   async function save(input) {
     const saved = await update((data) => {
@@ -174,7 +182,6 @@ export function createBackendConfiguration(config) {
     };
   }
   return {
-    ...storage,
     update,
     read,
     save,

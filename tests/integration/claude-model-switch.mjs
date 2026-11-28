@@ -102,7 +102,7 @@ const provider = {
   id: "switch-fixture",
   baseUrl: upstream || service.url,
   apiKey: process.env.MODEL_API_KEY || "fixture-token",
-  protocol: "messages",
+  protocol: "messages_compatible",
   models,
   modelCapabilities: Object.fromEntries(
     models.map((model) => [
