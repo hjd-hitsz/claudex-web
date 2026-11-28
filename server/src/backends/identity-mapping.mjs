@@ -3,10 +3,10 @@ import {
   resourceTarget,
 } from "../../../shared/backend-identity.mjs";
 import {
-  projectCodexDelegationItem,
-  projectCodexDelegationTurn,
-  projectCodexDelegationHistory,
-} from "./codex/delegation-projection.mjs";
+  projectCodexDeliveryItem,
+  projectCodexDeliveryTurn,
+  projectCodexDeliveryHistory,
+} from "./codex/delivery-projection.mjs";
 
 const threadFields = new Set([
   "threadId",
@@ -28,8 +28,7 @@ const opaque = new Set([
 ]);
 
 export function mapResult(value, backendId, method, context = "") {
-  if (backendId === "codex")
-    return projectCodexDelegationHistory(method, value);
+  if (backendId === "codex") return projectCodexDeliveryHistory(method, value);
   const key = (id) => resourceId(backendId, id);
   if (Array.isArray(value))
     return value.map((entry) => mapResult(entry, backendId, method, context));
@@ -78,8 +77,8 @@ export function mapNotification(message, backendId) {
         ...message,
         params: {
           ...message.params,
-          ...(item && { item: projectCodexDelegationItem(item) }),
-          ...(turn && { turn: projectCodexDelegationTurn(turn) }),
+          ...(item && { item: projectCodexDeliveryItem(item) }),
+          ...(turn && { turn: projectCodexDeliveryTurn(turn) }),
         },
       };
   }

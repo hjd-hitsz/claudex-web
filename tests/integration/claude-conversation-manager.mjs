@@ -592,11 +592,15 @@ try {
       includeTurns: true,
     });
     const items = thread.turns.flatMap((turn) => turn.items);
+    const item = items.find((item) => item.id === messageId);
+    assert.equal(item?.type, "peerMessage");
+    assert.equal(item.from.title, authorLabel);
+    assert.equal(item.messageId, messageId);
     assert.equal(
-      items.find((item) => item.id === messageId && item.type === "userMessage")
-        ?.authorLabel,
-      authorLabel,
+      item.replyTo,
+      messageId === reply.messageId ? question.messageId : undefined,
     );
+    assert.match(item.content[0].text, /^Claudex thread_chat message /);
     assert.ok(
       items.some(
         (item) =>
@@ -623,8 +627,8 @@ try {
           event.method === "item/completed" &&
           event.params.threadId === a &&
           event.params.turnId === continuing.id &&
-          event.params.item.type === "userMessage" &&
-          JSON.stringify(event.params.item.content).includes(activeReplyBody),
+          event.params.item.type === "peerMessage" &&
+          event.params.item.body === activeReplyBody,
       ),
     "回复已进入 A 的原轮次输入队列",
   );
@@ -659,10 +663,13 @@ try {
   const reconstructed = continued.turns.find(
     (turn) => turn.id === continuing.id,
   );
-  assert.equal(
-    reconstructed.items.find((item) => item.id === activeMessage)?.authorLabel,
-    "Fixture B",
+  const restored = reconstructed.items.find(
+    (item) => item.id === activeMessage,
   );
+  assert.equal(restored?.type, "peerMessage");
+  assert.equal(restored.from.title, "Fixture B");
+  assert.equal(restored.replyTo, question.messageId);
+  assert.equal(restored.body, activeReplyBody);
   assert.ok(!continued.turns.some((turn) => turn.id === activeMessage));
   assert.ok(
     !native.calls.some(

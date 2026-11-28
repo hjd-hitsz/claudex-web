@@ -19,8 +19,9 @@ export function DelegationResult({ item, readOnly }) {
   return (
     <div className="delegation-result" data-delegation-task={item.taskId}>
       <DeliverySummary
+        source="delegation"
         title={summary?.title || "委派结果"}
-        status={backend + " · " + (status || "待核对")}
+        status={[backend, status || "待核对"]}
         preview={summary?.preview ?? item.preview}
         action="查看执行记录"
         onOpen={agent && !readOnly ? () => openSubAgent(agent) : undefined}

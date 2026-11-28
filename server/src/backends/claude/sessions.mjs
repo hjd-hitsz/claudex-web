@@ -18,7 +18,10 @@ import {
   claudeSecretaryUpgradeRequired,
   secretaryHistoryVersion,
 } from "./secretary-policy.mjs";
-import { historyTurns, visibleSessionMessages } from "./messages.mjs";
+import {
+  projectClaudeConversationItem,
+  sessionHistoryTurns,
+} from "./messages.mjs";
 import { countClaudeCompactions } from "./compaction-count.mjs";
 import { conversationMethods } from "../../../../shared/product-contract.mjs";
 
@@ -112,32 +115,22 @@ export function createClaudeSessions({
         ])
       : [[], []];
     s = await session(id);
-    const records = historyTurns(
-      visibleSessionMessages(messages, s.internalInputIds).map((message) => {
-        const previousId = message.forkedFrom?.messageUuid;
-        const peer =
-          message.type === "user" &&
-          (s.peerInputs?.[message.uuid] ?? s.peerInputs?.[previousId]);
-        return peer
-          ? {
-              ...message,
-              peerMessageId: peer.sourceMessageId ?? previousId ?? message.uuid,
-              origin: {
-                kind: "peer",
-                from: peer.from.threadId,
-                name: peer.from.title,
-              },
-            }
-          : message;
-      }),
-      s.turns,
-      s.turnIds,
-      s.inputTurns,
-    );
+    const records = sessionHistoryTurns(messages, s);
     const byId = new Map(records.map((turn) => [turn.id, turn]));
     const savedOnly = Object.values(s.turns || {})
       .filter((turn) => !byId.has(turn.id) && turn.items?.length)
-      .map((turn) => ({ ...turn, items: [...turn.items] }));
+      .map((turn) => ({
+        ...turn,
+        items: turn.items.map((item) => {
+          const peer = s.peerInputs?.[item.id];
+          return peer
+            ? projectClaudeConversationItem(item, {
+                id: peer.sourceMessageId ?? item.id,
+                threadId: peer.from.threadId,
+              })
+            : item;
+        }),
+      }));
     if (savedOnly.length) {
       const time = (turn) => turn.startedAt ?? turn.completedAt ?? Infinity;
       records.push(...savedOnly);
@@ -201,7 +194,9 @@ export function createClaudeSessions({
       return {
         messages: (await turns(p.threadId)).flatMap((turn) =>
           turn.items.filter(
-            (item) => item.type === "userMessage" && item.authorLabel,
+            (item) =>
+              ["userMessage", "peerMessage"].includes(item.type) &&
+              item.authorLabel,
           ),
         ),
       };

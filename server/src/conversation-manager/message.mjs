@@ -8,6 +8,14 @@ const delegationResult = readPromptSections("delegation/workflow.md")(
   "nativeResult",
 );
 
+const messageIdPattern = "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}";
+const messageId = new RegExp(`^${messageIdPattern}$`, "i");
+const peerHeader = new RegExp(
+  `^Claudex thread_chat message (${messageIdPattern})\\nPeer conversation: ([^\\n]+)\\n`,
+  "i",
+);
+const peerBodySeparator = "\nMessage body:\n";
+
 function peerMessagePrefix({ id, replyTo, from }) {
   const source = JSON.stringify({
     threadId: from.threadId,
@@ -73,6 +81,52 @@ export function delegationResultItem(item, text, messageId) {
   };
 }
 
+export function conversationMessageItem(item, text, { serverName, source }) {
+  const result = delegationResultItem(item, text, source?.id);
+  if (result !== item) return result;
+
+  const header = peerHeader.exec(text);
+  if (!header || (source && header[1] !== source.id)) return item;
+  let sender;
+  try {
+    sender = JSON.parse(header[2]);
+  } catch {
+    return item;
+  }
+  const { threadId, runtimeId, title, replyTo } = sender ?? {};
+  if (
+    typeof threadId !== "string" ||
+    !threadId.trim() ||
+    (source && threadId !== source.threadId) ||
+    (runtimeId !== undefined &&
+      (typeof runtimeId !== "string" || !runtimeId.trim())) ||
+    (title !== undefined && typeof title !== "string") ||
+    (replyTo !== undefined &&
+      (typeof replyTo !== "string" || !messageId.test(replyTo)))
+  )
+    return item;
+
+  const boundary = text.indexOf(peerBodySeparator, header[0].length);
+  if (boundary < 0) return item;
+  const body = text.slice(boundary + peerBodySeparator.length);
+  if (!body.trim()) return item;
+  const from = { threadId, runtimeId, title };
+  const envelope = { id: header[1], from, replyTo, body };
+  if (
+    text !== formatConversationMessage(envelope, serverName) &&
+    text !== formatLegacyConversationMessage(envelope)
+  )
+    return item;
+  return {
+    ...item,
+    type: "peerMessage",
+    messageId: envelope.id,
+    from,
+    replyTo,
+    body,
+  };
+}
+
 export function matchesConversationMessage(text, envelope) {
   if (typeof text !== "string") return false;
   const prefix = envelope.delegation
@@ -81,7 +135,7 @@ export function matchesConversationMessage(text, envelope) {
   if (!text.startsWith(prefix)) return false;
   const content = text.slice(prefix.length);
   // Match the saved payload independently of the editable guidance above it.
-  const separator = envelope.delegation ? "\n" : "\nMessage body:\n";
+  const separator = envelope.delegation ? "\n" : peerBodySeparator;
   const boundary = envelope.delegation
     ? content.lastIndexOf(separator)
     : content.indexOf(separator);

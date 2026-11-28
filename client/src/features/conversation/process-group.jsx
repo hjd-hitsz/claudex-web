@@ -13,6 +13,7 @@ import {
   isBackgroundNotice,
 } from "../../domain/background-results.js";
 import { BackgroundTaskReceipt } from "./background-task-receipt.jsx";
+import { PeerMessage } from "./peer-message.jsx";
 import { turnElapsedMs, formatElapsed } from "../../domain/turn-timing.js";
 import { ReasoningPart } from "./activity.jsx";
 import { userMessageText } from "../../domain/user-message.js";
@@ -50,8 +51,13 @@ export function ProcessGroup({
   cwd,
 }) {
   const [open, setOpen] = useState(false);
-  const background = group.items.some(isBackgroundNotice);
-  const check = group.items.some(isBackgroundCheck);
+  const peerMessages = group.items.filter(
+    (item) => item.type === "peerMessage",
+  );
+  const history = group.items.filter((item) => item.type !== "peerMessage");
+  const historyCount = history.length + group.questions.length;
+  const background = history.some(isBackgroundNotice);
+  const check = history.some(isBackgroundCheck);
   const turnStatus = working ? "inProgress" : (timing?.status ?? status);
   const label = background
     ? {
@@ -62,7 +68,7 @@ export function ProcessGroup({
     : working
       ? "正在处理"
       : "工作过程";
-  const latest = group.items.findLast(
+  const latest = history.findLast(
     (item) =>
       item.type !== "userMessage" &&
       item.type !== "userInputRequest" &&
@@ -76,63 +82,68 @@ export function ProcessGroup({
     <div className="process-group">
       {background && (
         <BackgroundTaskReceipt
-          items={group.items}
+          items={history}
           threadId={readOnly ? undefined : threadId}
         />
       )}
-      <details
-        className="process-history"
-        onToggle={(event) => setOpen(event.currentTarget.open)}
-      >
-        <summary className="activity-summary">
-          {working ? (
-            <LoaderCircle size={15} className="spin" />
-          ) : (
-            <ListChecks size={15} />
-          )}
-          <span>{label}</span>
-          <ProcessDuration timing={timing} working={working} />
-          <small>{group.items.length + group.questions.length} 项</small>
-          <ChevronRight className="process-chevron" size={13} />
-        </summary>
-        {open && (
-          <div className="process-content">
-            {group.items.map((item) =>
-              item.type === "userMessage" ? (
-                <details
-                  className="activity supplemental-message"
-                  key={item.id}
-                >
-                  <summary className="activity-summary">
-                    <MessageSquare size={15} />
-                    <span className="supplemental-preview">
-                      {userMessageText(item.content) || "附件"}
-                    </span>
-                    {item.optimistic && <small>发送中</small>}
-                    <ChevronRight className="summary-chevron" size={13} />
-                  </summary>
-                  <div className="activity-body">
-                    <Content content={item.content} cwd={cwd} />
-                  </div>
-                </details>
-              ) : (
-                <Message
-                  key={item.id}
-                  item={item}
-                  complete={
-                    item.status === "completed" ||
-                    (!["inProgress", "running"].includes(item.status) &&
-                      (!working || item !== latest))
-                  }
-                  annotations={annotations.get(item.id)}
-                  readOnly={readOnly}
-                  cwd={cwd}
-                />
-              ),
+      {peerMessages.map((item) => (
+        <PeerMessage key={item.id} item={item} cwd={cwd} />
+      ))}
+      {historyCount > 0 && (
+        <details
+          className="process-history"
+          onToggle={(event) => setOpen(event.currentTarget.open)}
+        >
+          <summary className="activity-summary">
+            {working ? (
+              <LoaderCircle size={15} className="spin" />
+            ) : (
+              <ListChecks size={15} />
             )}
-          </div>
-        )}
-      </details>
+            <span>{label}</span>
+            <ProcessDuration timing={timing} working={working} />
+            <small>{historyCount} 项</small>
+            <ChevronRight className="process-chevron" size={13} />
+          </summary>
+          {open && (
+            <div className="process-content">
+              {history.map((item) =>
+                item.type === "userMessage" ? (
+                  <details
+                    className="activity supplemental-message"
+                    key={item.id}
+                  >
+                    <summary className="activity-summary">
+                      <MessageSquare size={15} />
+                      <span className="supplemental-preview">
+                        {userMessageText(item.content) || "附件"}
+                      </span>
+                      {item.optimistic && <small>发送中</small>}
+                      <ChevronRight className="summary-chevron" size={13} />
+                    </summary>
+                    <div className="activity-body">
+                      <Content content={item.content} cwd={cwd} />
+                    </div>
+                  </details>
+                ) : (
+                  <Message
+                    key={item.id}
+                    item={item}
+                    complete={
+                      item.status === "completed" ||
+                      (!["inProgress", "running"].includes(item.status) &&
+                        (!working || item !== latest))
+                    }
+                    annotations={annotations.get(item.id)}
+                    readOnly={readOnly}
+                    cwd={cwd}
+                  />
+                ),
+              )}
+            </div>
+          )}
+        </details>
+      )}
       {working && !open && latest && (
         <div className="process-content process-preview">
           {summary ? (

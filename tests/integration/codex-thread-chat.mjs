@@ -625,6 +625,8 @@ try {
     (item) => item.type === "functionCallOutput" && item.output === legacyText,
   );
   assert(legacyItem);
+  assert.equal(legacyItem.name, "thread_chat_message");
+  assert.equal(legacyItem.namespace, codexConversationMcpName);
   assert.deepEqual(await adapter.conversationManager.reconcile(legacyReply), {
     status: "delivered",
     evidence: { turnId: racing.turn.id, itemId: legacyItem.id },

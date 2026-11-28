@@ -131,7 +131,12 @@ export function delegationResults(
   const stage = [{ turn: initial, triggers: [] }];
   const jobs = new Map(background.jobs.map((job) => [job.id, job]));
   for (const turn of turns.slice(turns.indexOf(initial) + 1)) {
-    if (turn.items?.some(({ type }) => type === "userMessage")) break;
+    if (
+      turn.items?.some(({ type }) =>
+        ["userMessage", "peerMessage"].includes(type),
+      )
+    )
+      break;
     const triggers = triggersFor(turn);
     const fromPriorStep =
       triggers.length &&

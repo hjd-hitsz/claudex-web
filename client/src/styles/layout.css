@@ -165,7 +165,10 @@
   position: relative;
   container-type: inline-size;
 }
-.conversation-layout:has(.conversation-navigation) {
+.conversation-layout:has(
+  .conversation-navigation,
+  .message-column .delivery-summary
+) {
   --navigation-space: 36px;
   --navigation-inset: 10px;
 }

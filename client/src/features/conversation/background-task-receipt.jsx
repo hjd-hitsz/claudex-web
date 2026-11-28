@@ -1,5 +1,8 @@
 import React, { useContext } from "react";
-import { deliverySnippet } from "../../../../shared/delivery-summary.mjs";
+import {
+  deliveryCardPreviewLimit,
+  deliverySnippet,
+} from "../../../../shared/delivery-summary.mjs";
 import {
   backgroundNoticeResults,
   isBackgroundCheck,
@@ -34,9 +37,13 @@ export function BackgroundTaskReceipt({ items, threadId }) {
       return (
         <DeliverySummary
           key={`${item.id}:${id}`}
+          source="background"
           title={title || "后台终端"}
-          status={meta.filter(Boolean).join(" · ")}
-          preview={deliverySnippet(result.output_tail)}
+          status={meta.filter(Boolean)}
+          preview={deliverySnippet(
+            result.output_tail,
+            deliveryCardPreviewLimit,
+          )}
           action="查看输出"
           onOpen={
             threadId &&

@@ -211,7 +211,7 @@ export async function testProcessDisplay(app, fixture) {
                   status: "succeeded",
                   duration_ms: 70000,
                   exit_code: 0,
-                  output_tail: "测试通过。".repeat(30),
+                  output_tail: "测试通过。".repeat(45),
                 },
               ],
             }),
@@ -230,7 +230,7 @@ export async function testProcessDisplay(app, fixture) {
     const card = view.root.findByProps({ className: "delivery-summary" });
     assert.match(
       card.props["aria-label"],
-      /验证规划模块，已完成 · 1分10秒 · 退出码 0，查看输出/,
+      /^后台终端，验证规划模块，已完成 · 1分10秒 · 退出码 0，查看输出$/,
     );
     assert.match(
       card.findByProps({ className: "delivery-summary-preview" }).props
@@ -246,5 +246,96 @@ export async function testProcessDisplay(app, fixture) {
       app.set(original);
     });
     console.log("PASS 后台终端摘要共用交付卡片，点击打开输出并保留模型正文");
+  }
+  {
+    const original = app.get();
+    const turnId = "peer-turn";
+    const body = "回复正文。".repeat(45) + "\n\n**完整结论。**";
+    await act(async () => {
+      app.set({
+        items: [
+          {
+            id: "peer",
+            type: "peerMessage",
+            turnId,
+            messageId: "2847b3fe-0000-4000-8000-000000000001",
+            replyTo: "d8b0db59-0000-4000-8000-000000000002",
+            from: { threadId: "sender" },
+            body,
+          },
+          {
+            id: "ordinary",
+            type: "functionCallOutput",
+            turnId,
+            namespace: "ordinary",
+            name: "unrelated_tool",
+            output: "普通工具结果",
+          },
+          {
+            id: "delegate-return",
+            type: "delegationResult",
+            turnId,
+            taskId: "639ee130",
+            stepId: "a9e9ea74",
+            target: "claude",
+            status: "completed",
+            preview: "委派检查已完成。",
+          },
+        ],
+      });
+      view = create(React.createElement(app.Conversation));
+    });
+    const card = view.root.findByProps({ className: "peer-message" });
+    const button = card.findByType("button");
+    const history = view.root.findByProps({ className: "process-history" });
+    assert.ok(card.parent.parent === history.parent);
+    assert.match(
+      button.props["aria-label"],
+      /^会话来信，未命名会话，会话回复 · 消息 2847b3fe，展开正文$/,
+    );
+    assert.equal(button.props["aria-expanded"], false);
+    assert.match(
+      card.findByProps({ className: "delivery-summary-preview" }).props
+        .children,
+      /\.\.\.$/,
+    );
+    await act(async () =>
+      history.props.onToggle({ currentTarget: { open: true } }),
+    );
+    assert.ok(
+      history
+        .findAllByType("span")
+        .some(
+          ({ props }) =>
+            props.children === "工具结果 · ordinary / unrelated_tool",
+        ),
+    );
+    assert.equal(
+      history.findAllByProps({ className: "peer-message" }).length,
+      0,
+    );
+    const delegation = view.root.findByProps({
+      className: "delegation-result",
+    });
+    const summary = delegation.findByProps({ className: "delivery-summary" });
+    assert.equal(summary.props.role, "group");
+    assert.equal(summary.props["aria-label"], "委派结果，Claude Code · 已完成");
+    assert.equal(
+      delegation.findByProps({ className: "delivery-summary-preview" }).props
+        .children,
+      "委派检查已完成。",
+    );
+    await act(async () => button.props.onClick());
+    assert.equal(button.props["aria-expanded"], true);
+    assert.equal(card.findByType("strong").props.children, "完整结论。");
+    await act(async () => button.props.onClick());
+    assert.equal(card.findAllByType("strong").length, 0);
+    await act(async () => {
+      view.unmount();
+      app.set(original);
+    });
+    console.log(
+      "PASS 会话来信独立显示，通过摘要展开完整 Markdown，工作过程保留普通工具",
+    );
   }
 }

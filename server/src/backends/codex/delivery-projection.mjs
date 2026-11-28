@@ -1,38 +1,40 @@
-import { delegationResultItem } from "../../conversation-manager/message.mjs";
+import { conversationMessageItem } from "../../conversation-manager/message.mjs";
 import { codexConversationMcpName } from "./conversation-tools.mjs";
 
-export function projectCodexDelegationItem(item) {
+export function projectCodexDeliveryItem(item) {
   return item.type === "functionCallOutput" &&
     item.namespace === codexConversationMcpName &&
     item.name === "thread_chat_message" &&
     typeof item.output === "string"
-    ? delegationResultItem(item, item.output)
+    ? conversationMessageItem(item, item.output, {
+        serverName: codexConversationMcpName,
+      })
     : item;
 }
 
-export function projectCodexDelegationTurn(turn) {
+export function projectCodexDeliveryTurn(turn) {
   return turn.items
-    ? { ...turn, items: turn.items.map(projectCodexDelegationItem) }
+    ? { ...turn, items: turn.items.map(projectCodexDeliveryItem) }
     : turn;
 }
 
-export function projectCodexDelegationHistory(method, result) {
+export function projectCodexDeliveryHistory(method, result) {
   if (method === "thread/read" && result?.thread?.turns)
     return {
       ...result,
       thread: {
         ...result.thread,
-        turns: result.thread.turns.map(projectCodexDelegationTurn),
+        turns: result.thread.turns.map(projectCodexDeliveryTurn),
       },
     };
   if (method === "thread/turns/list" && result?.data)
-    return { ...result, data: result.data.map(projectCodexDelegationTurn) };
+    return { ...result, data: result.data.map(projectCodexDeliveryTurn) };
   if (method === "thread/items/list" && result?.data)
     return {
       ...result,
       data: result.data.map((entry) => ({
         ...entry,
-        item: projectCodexDelegationItem(entry.item),
+        item: projectCodexDeliveryItem(entry.item),
       })),
     };
   return result;

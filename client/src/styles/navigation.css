@@ -152,7 +152,10 @@
   .conversation-layout {
     --context-tools-top: 0.923077rem;
   }
-  .conversation-layout:has(.conversation-navigation) {
+  .conversation-layout:has(
+    .conversation-navigation,
+    .message-column .delivery-summary
+  ) {
     --navigation-space: 30px;
   }
   .conversation-navigation {

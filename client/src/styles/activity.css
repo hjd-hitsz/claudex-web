@@ -26,8 +26,9 @@
   opacity: 0.55;
 }
 .delegation-result,
-.background-completion-receipt {
-  width: min(100%, 352px);
+.background-completion-receipt,
+.peer-message {
+  width: min(100%, clamp(352px, 56%, 640px));
   margin: 0 0 12px auto;
 }
 .background-completion-receipt {
@@ -38,7 +39,8 @@
   width: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 12px;
+  align-items: center;
+  column-gap: min(12px, 5%);
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -47,22 +49,47 @@
   text-align: start;
   line-height: 1.45;
 }
+.delivery-summary-content {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.delivery-summary-source {
+  display: flex;
+  align-items: center;
+  gap: 0.384615rem;
+  color: var(--muted);
+  font-size: 0.769231rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.delivery-summary-source > svg {
+  flex: none;
+}
 .delivery-summary-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   font-weight: 600;
   font-size: 1rem;
   overflow-wrap: anywhere;
 }
 .delivery-summary-status {
-  grid-column: 1;
   color: var(--muted);
   font-size: 0.846154rem;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.delivery-summary-status-part {
+  display: inline-block;
+  max-width: 100%;
+  white-space: pre-wrap;
 }
 .delivery-summary-preview {
-  grid-column: 1;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   overflow: hidden;
   overflow-wrap: anywhere;
   margin-block-start: 3px;
@@ -71,12 +98,30 @@
 }
 .delivery-summary-arrow {
   grid-column: 2;
-  grid-row: 1 / span 3;
-  align-self: center;
   color: var(--muted);
 }
 button.delivery-summary:hover .delivery-summary-arrow {
   color: var(--fg);
+}
+.peer-message .delivery-summary[aria-expanded="true"] .delivery-summary-title {
+  display: block;
+}
+.peer-message .delivery-summary[aria-expanded="true"] {
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+.peer-message .delivery-summary[aria-expanded="true"] .delivery-summary-arrow {
+  transform: rotate(90deg);
+}
+.peer-message-body {
+  padding: 10px 14px 12px;
+  border: 1px solid var(--border);
+  border-block-start: 0;
+  border-radius: 0 0 10px 10px;
+  overflow-wrap: anywhere;
+}
+.peer-message-body > .delivery-summary-status {
+  margin-block-end: 8px;
 }
 .delegation-context {
   display: flex;

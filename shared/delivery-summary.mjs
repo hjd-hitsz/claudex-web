@@ -1,22 +1,28 @@
-export function deliverySnippet(text) {
+export const deliveryCardPreviewLimit = 180;
+
+export function deliverySnippet(text, limit = 78) {
   if (typeof text !== "string") return "";
   const plain = text
     .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
     .replace(/\s+/g, " ")
     .trim();
   const characters = [...plain];
-  return characters.length > 78
-    ? characters.slice(0, 75).join("").trimEnd() + "..."
+  return characters.length > limit
+    ? characters
+        .slice(0, limit - 3)
+        .join("")
+        .trimEnd() + "..."
     : plain;
 }
 
-export function delegationSnippet(text) {
+export function delegationSnippet(text, limit) {
   return deliverySnippet(
     text
       .replace(/^\s*#{1,6}\s+.*$/gm, "")
       .replace(/\[([^\]\n]+)\]\([^)\n]+\)/g, "$1")
       .replace(/\*\*([^*\n]+)\*\*/g, "$1")
       .replace(/`([^`\n]+)`/g, "$1"),
+    limit,
   );
 }
 

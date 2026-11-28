@@ -1,5 +1,6 @@
 import { executionError } from "./execution-errors.mjs";
-import { delegationResultItem } from "../../conversation-manager/message.mjs";
+import { conversationMessageItem } from "../../conversation-manager/message.mjs";
+import { claudeConversationServerName } from "../../conversation-manager/tools.mjs";
 import { historicalClaudeUsage, mergeClaudeUsage } from "./token-usage.mjs";
 
 function imageUrl(block) {
@@ -41,6 +42,44 @@ export function visibleSessionMessages(messages, internalInputIds = {}) {
       ),
   );
 }
+export function projectClaudeConversationItem(item, source) {
+  const [content] = item.content ?? [];
+  return item.type === "userMessage" &&
+    item.content?.length === 1 &&
+    content.type === "text"
+    ? conversationMessageItem(item, content.text, {
+        serverName: claudeConversationServerName,
+        source,
+      })
+    : item;
+}
+
+export function sessionHistoryTurns(messages, session) {
+  const { internalInputIds, peerInputs, turns, turnIds, inputTurns } = session;
+  return historyTurns(
+    visibleSessionMessages(messages, internalInputIds).map((message) => {
+      const previousId = message.forkedFrom?.messageUuid;
+      const peer =
+        message.type === "user" &&
+        (peerInputs?.[message.uuid] ?? peerInputs?.[previousId]);
+      return peer
+        ? {
+            ...message,
+            peerMessageId: peer.sourceMessageId ?? previousId ?? message.uuid,
+            origin: {
+              kind: "peer",
+              from: peer.from.threadId,
+              name: peer.from.title,
+            },
+          }
+        : message;
+    }),
+    turns,
+    turnIds,
+    inputTurns,
+  );
+}
+
 export function convertMessage(
   message,
   turnId,
@@ -98,12 +137,11 @@ export function convertMessage(
         }),
       };
       items.push(
-        peer && content.length === 1 && content[0].type === "text"
-          ? delegationResultItem(
-              item,
-              content[0].text,
-              message.peerMessageId ?? message.uuid,
-            )
+        peer
+          ? projectClaudeConversationItem(item, {
+              id: message.peerMessageId ?? message.uuid,
+              threadId: message.origin.from,
+            })
           : item,
       );
     }
@@ -406,7 +444,10 @@ export function historyTurns(
           item.phase = saved.phase;
         }
       }
-      if (item.type === "userMessage" && turnIds[item.id])
+      if (
+        ["userMessage", "peerMessage"].includes(item.type) &&
+        turnIds[item.id]
+      )
         item.id = turnIds[item.id];
       const existing = turn.items.findIndex((i) => i.id === item.id);
       if (existing >= 0) turn.items[existing] = item;
