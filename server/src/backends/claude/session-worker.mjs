@@ -5,10 +5,12 @@ import {
 } from "./native-records.mjs";
 import * as sdk from "@anthropic-ai/claude-agent-sdk";
 import { projectSecretaryHistory } from "./secretary-history.mjs";
-let input = "";
-for await (const chunk of process.stdin) input += chunk;
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
 try {
-  const { operation, args } = JSON.parse(input);
+  const { operation, args } = JSON.parse(
+    Buffer.concat(chunks).toString("utf8"),
+  );
   if (
     ![
       "listSessions",

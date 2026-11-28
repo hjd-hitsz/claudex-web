@@ -14,8 +14,8 @@ export function createSessionReader(backend) {
           stdio: ["pipe", "pipe", "pipe"],
         },
       );
-      let output = "",
-        stderr = "",
+      const chunks = [];
+      let stderr = "",
         settled = false;
       const timer = setTimeout(() => {
         child.kill();
@@ -30,8 +30,9 @@ export function createSessionReader(backend) {
       }
       child.on("error", (error) => finish(error));
       child.stdout.on("data", (chunk) => {
-        output += chunk;
+        chunks.push(chunk);
       });
+      child.stderr.setEncoding("utf8");
       child.stderr.on("data", (chunk) => {
         stderr = (stderr + chunk).slice(-4000);
       });
@@ -40,7 +41,7 @@ export function createSessionReader(backend) {
         if (settled) return;
         try {
           if (code !== 0) throw new Error(stderr || "读取 Claude 历史失败");
-          const message = JSON.parse(output);
+          const message = JSON.parse(Buffer.concat(chunks).toString("utf8"));
           if (message.error) throw new Error(message.error);
           finish(null, message.result);
         } catch (error) {

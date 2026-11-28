@@ -35,11 +35,14 @@ export async function createProviderTransport(
       return;
     }
     try {
-      let body = "";
+      const chunks = [];
+      let bytes = 0;
       for await (const chunk of request) {
-        body += chunk;
-        if (body.length > 64 * 1024 * 1024) throw new Error("请求过大");
+        bytes += chunk.length;
+        if (bytes > 64 * 1024 * 1024) throw new Error("请求过大");
+        chunks.push(chunk);
       }
+      let body = Buffer.concat(chunks, bytes).toString("utf8");
       let selected = provider;
       if (body) {
         let input = JSON.parse(body);
