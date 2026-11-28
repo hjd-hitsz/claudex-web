@@ -1,6 +1,9 @@
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
-import { settingsPage } from "../helpers/settings-navigation.mjs";
+import {
+  settingsPage,
+  switchComposerBackend,
+} from "../helpers/settings-navigation.mjs";
 import http from "node:http";
 import { readFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -104,6 +107,7 @@ try {
     .getByRole("button", { name: /^新对话/ })
     .first()
     .click();
+  if (!before) await switchComposerBackend(page, "Claude Code");
   await page.getByRole("button", { name: "设置", exact: true }).click();
   if (!before) await settingsPage(page, "模型服务商").click();
   await page.locator(".provider-settings").waitFor();
@@ -151,8 +155,11 @@ try {
       path: join(output, "provider-editor.png"),
     });
     const fields = form.locator(".provider-fields");
-    const keyField = fields.getByLabel("API Key", { exact: true });
-    const clearKey = fields.getByRole("checkbox", { name: "清除已保存凭据" });
+    const credentials = form.locator(".provider-credentials");
+    const keyField = credentials.getByLabel("API Key", { exact: true });
+    const clearKey = credentials.getByRole("checkbox", {
+      name: "清除已保存凭据",
+    });
     await fields.screenshot({ path: join(output, "provider-fields.png") });
     const modelList = form.getByRole("region", { name: "模型参数" });
     const picker = modelList.getByRole("combobox", { name: "配置模型" });
@@ -335,17 +342,10 @@ try {
     assert.equal(await add.getAttribute("aria-expanded"), "true");
     await page.locator(".provider-new .provider-editor").waitFor();
     assert.equal(await clearKey.count(), 0);
-    const emptyKey = await keyField.boundingBox();
-    const emptyProtocol = await fields.getByLabel("API 协议").boundingBox();
-    const emptyFields = await fields.boundingBox();
-    assert.ok(Math.abs(emptyKey.x - emptyProtocol.x) < 1);
-    assert.ok(
-      Math.abs(
-        emptyProtocol.x +
-          emptyProtocol.width -
-          emptyFields.x -
-          emptyFields.width,
-      ) < 1,
+    assert.ok(await keyField.isVisible());
+    assert.equal(
+      await form.getByRole("button", { name: "刷新模型" }).count(),
+      0,
     );
 
     const settings = await context.newPage();
@@ -375,52 +375,36 @@ try {
             (scale) => Math.abs(devicePixelRatio - scale) < 0.02,
             scale,
           );
-          const connections = await fields.evaluate((el) => {
-            const fieldsRight = el.getBoundingClientRect().right;
-            const gap = parseFloat(getComputedStyle(el).columnGap);
-            const [firstRow, secondRow] = [
-              [
-                ":scope > label:nth-child(1) > span",
-                '[name="name"]',
-                ":scope > label:nth-child(2) > span",
-                '[name="protocol"]',
-              ],
-              [
-                ":scope > label:nth-child(3) > span",
-                '[name="baseUrl"]',
-                ".provider-key-field > label:first-child",
-                '[name="apiKey"]',
-                ".provider-key-field .backend-checkbox",
-              ],
-            ].map((selectors) =>
-              selectors.map((selector) =>
-                el.querySelector(selector).getBoundingClientRect(),
-              ),
-            );
-            const aligned = (top, bottom) =>
-              Math.abs(top.left - bottom.left) < 1 &&
-              Math.abs(top.height - bottom.height) < 1;
-            const rows = [firstRow, secondRow].map((boxes) => {
-              const center = boxes[0].y + boxes[0].height / 2;
-              return boxes.every(
-                (box, index) =>
-                  box.right <= fieldsRight + 1 &&
-                  Math.abs(box.y + box.height / 2 - center) < 1 &&
-                  (index === 0 || box.left - boxes[index - 1].right >= gap - 1),
-              );
-            });
+          const connections = await form.evaluate((editor) => {
+            const box = (selector) =>
+              editor.querySelector(selector).getBoundingClientRect();
+            const name = box('[name="name"]');
+            const protocol = box('[name="protocol"]');
+            const address = box('[name="baseUrl"]');
+            const area = box(".provider-credentials");
+            const key = box('[name="apiKey"]');
+            const save = box('.provider-credentials button[type="submit"]');
+            const modelIds = box('[name="models"]');
             return {
-              rows,
-              aligned:
-                aligned(firstRow[1], secondRow[1]) &&
-                aligned(firstRow[3], secondRow[3]),
-              protocolFillsRow: Math.abs(firstRow[3].right - fieldsRight) < 1,
+              nameProtocolInline: Math.abs(name.top - protocol.top) < 1,
+              addressFullWidth:
+                Math.abs(address.left - name.left) < 1 &&
+                Math.abs(address.right - protocol.right) < 1,
+              modelsBelow:
+                address.bottom <= area.top && area.bottom <= modelIds.top,
+              keyActionInline:
+                Math.abs(
+                  key.top + key.height / 2 - (save.top + save.height / 2),
+                ) < 1,
+              fullKeyWidth: Math.abs(key.width - area.width) < 1,
             };
           });
           assert.ok(
-            connections.rows.every(Boolean) &&
-              connections.aligned &&
-              connections.protocolFillsRow,
+            connections.nameProtocolInline &&
+              connections.addressFullWidth &&
+              connections.modelsBelow &&
+              (width !== 1440 || connections.keyActionInline) &&
+              (width !== 390 || scale !== 2 || connections.fullKeyWidth),
             JSON.stringify({ width, theme, scale, connections }),
           );
           if (width === 390 && scale === 2 && theme === "dark") {
@@ -525,7 +509,7 @@ try {
     await zoom.selectOption("1");
     await settings.close();
     console.log(
-      `PASS 供应商字段两列、凭据操作同行及保留、替换和清除，下拉选择十个模型与单组参数区（${height} CSS px），点选与键盘、失败重试、保存恢复、深浅主题与实际浏览器缩放`,
+      `PASS 供应商连接配置先于模型、桌面凭据操作同行及保留、替换和清除，下拉选择十个模型与单组参数区（${height} CSS px），点选与键盘、失败重试、保存恢复、深浅主题与实际浏览器缩放`,
     );
   }
 } finally {

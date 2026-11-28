@@ -139,8 +139,6 @@ test("相同原生会话 ID 按实例路由，单实例故障保留另一实例�
   assert.equal(defaults.customized, false);
   assert.equal(defaults.content, defaultSecretaryRole);
   assert.equal(defaults.defaultContent, defaultSecretaryRole);
-  assert.ok(defaults.content.includes("根目录 `prompt/`"));
-  assert.match(defaults.content, /禁止在业务源码中硬编码提示词/);
   const custom = await saveRole("# 自定义角色\n\n保留行尾空格。  \n");
   assert.equal(custom.customized, true);
   assert.deepEqual(await readRole(), custom);

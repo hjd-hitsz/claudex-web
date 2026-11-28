@@ -184,13 +184,7 @@
   align-items: center;
   gap: 0.65em var(--provider-label-gap);
 }
-.provider-fields:has(.backend-checkbox) {
-  grid-template-columns:
-    repeat(2, var(--provider-label-width) minmax(0, 1fr))
-    max-content;
-}
-.backend-form .provider-fields > label,
-.provider-key-field {
+.backend-form .provider-fields > label {
   display: grid;
   grid-column: span 2;
   grid-template-columns: subgrid;
@@ -199,19 +193,14 @@
   min-width: 0;
   white-space: nowrap;
 }
-.backend-form .provider-fields:has(.backend-checkbox) > :nth-child(even) {
-  grid-column: span 3;
+.backend-form .provider-fields > .provider-address {
+  grid-column: 1 / -1;
 }
-.provider-fields > label > select {
+.provider-fields > label > :is(input, select) {
   grid-column: 2 / -1;
 }
 .provider-fields :is(input:not([type="checkbox"]), select) {
   height: 2.4em;
-}
-.provider-key-field .backend-checkbox {
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
 }
 @container (max-width: 355px) {
   .provider-field-prefix {
@@ -223,17 +212,12 @@
     --provider-label-width: 22px;
     --provider-label-gap: 0.3em;
   }
-  .provider-fields > label > span,
-  .provider-key-field > label {
+  .provider-fields > label > span {
     font-size: 11px;
   }
   .provider-fields :is(input:not([type="checkbox"]), select) {
     font-size: 12px;
     padding-inline: 0.25em;
-  }
-  .modal-settings .settings-body .provider-key-field input[type="checkbox"] {
-    width: 12px;
-    height: 12px;
   }
 }
 .provider-models {

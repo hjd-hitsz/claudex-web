@@ -16,6 +16,7 @@ export const {
   refreshBackends,
   saveBackend,
   saveProvider,
+  refreshProvider,
   removeProvider,
   setReadingThread,
   openSubAgent,

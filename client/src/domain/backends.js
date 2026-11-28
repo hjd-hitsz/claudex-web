@@ -21,6 +21,12 @@ export function isModelHidden(backend, model, providerId) {
     false
   );
 }
+export function isModelChoiceHidden(backend, choice) {
+  return Boolean(
+    choice?.providerModelHidden ||
+    isModelHidden(backend, choice?.model, choice?.providerId),
+  );
+}
 export function modelChoiceLabel({ providerName, displayName, model }) {
   const name = displayName || model;
   return providerName && name ? providerName + "/" + name : name;

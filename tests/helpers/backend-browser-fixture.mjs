@@ -155,6 +155,21 @@ export function backendFixture(data) {
     terminals: {},
   });
   window.fixtureRequests = [];
+  window.fixtureCatalogueCalls = [];
+  function catalogue(provider, source) {
+    fixtureCatalogueCalls.push({ id: provider.id, source });
+    const configured = window.fixtureModelDirectories?.[provider.id];
+    const models = configured?.models || provider.models;
+    return {
+      ...provider,
+      models,
+      modelAliases: { ...provider.modelAliases, ...configured?.aliases },
+      hiddenModels: (provider.hiddenModels || []).filter((model) =>
+        models.includes(model),
+      ),
+      catalogueUpdatedAt: Date.now(),
+    };
+  }
   window.WebSocket = class {
     static OPEN = 1;
     readyState = 1;
@@ -252,13 +267,55 @@ export function backendFixture(data) {
             ...previous,
             ...p,
             ...(previous?.preset && {
-              enabled: Boolean(p.apiKey?.trim()),
-              hasApiKey: Boolean(p.apiKey?.trim()),
+              enabled:
+                p.apiKey === undefined
+                  ? previous.enabled
+                  : Boolean(p.apiKey.trim()),
+              hasApiKey:
+                p.apiKey === undefined
+                  ? previous.hasApiKey
+                  : Boolean(p.apiKey.trim()),
             }),
           },
           ...providers.filter((provider) => provider.id !== p.id),
         ];
+        if (previous?.canRefreshModels && p.apiKey?.trim())
+          providers[0] = catalogue(providers[0], "save");
         result = { providers };
+      }
+      if (m.method === "lan/providers/refresh") {
+        const provider = providers.find(({ id }) => id === p.id);
+        const preview = p.apiKey !== undefined;
+        const error = window.fixtureCatalogueError;
+        if (error) {
+          setTimeout(
+            () =>
+              this.onmessage({
+                data: JSON.stringify({
+                  id: m.id,
+                  error: { code: -32000, message: error },
+                }),
+              }),
+            window.fixtureCatalogueDelay || 0,
+          );
+          return;
+        }
+        const refreshed = catalogue(provider, preview ? "preview" : "saved");
+        if (!preview)
+          providers = providers.map((entry) =>
+            entry === provider ? refreshed : entry,
+          );
+        setTimeout(
+          () =>
+            this.onmessage({
+              data: JSON.stringify({
+                id: m.id,
+                result: { preview, provider: refreshed },
+              }),
+            }),
+          window.fixtureCatalogueDelay || 0,
+        );
+        return;
       }
       if (m.method === "model/list")
         result = {
@@ -288,6 +345,10 @@ export function backendFixture(data) {
         });
       if (m.method === "model/list" && p.backendId === "codex")
         result.data.push(...(data.codexModels || []));
+      if (m.method === "model/list" && p.nativeSubscriptionOnly) {
+        const models = data.claudeSubscriptionModels;
+        result = { nativeSubscription: Boolean(models), data: models || [] };
+      }
       if (
         (data.providerModelNames || data.providers) &&
         m.method === "model/list" &&

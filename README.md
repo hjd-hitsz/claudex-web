@@ -94,7 +94,7 @@ claude auth login
 
 在网页「设置 → 模型服务商」中点击「添加供应商」。
 
-DeepSeek 等预置供应商直接填写 API Key。
+DeepSeek 和 OpenCode Go 等预置供应商直接填写 API Key。可在各供应商的编辑表单选择显示的模型，Claude 订阅的原生模型在「设置 → 后端 → Claude Code」中选择。
 
 ## 配置 Antigravity
 

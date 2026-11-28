@@ -215,3 +215,57 @@ test("CLI默认模型目录只在原生身份已认证时进入可选模型", as
     catalogue.close();
   }
 });
+
+test("订阅目录只读取原生 Claude 模型，并区分未登录和目录失败", async () => {
+  let identity = { tokenSource: "none", apiProvider: "firstParty" };
+  let response = { models: [{ value: "opus", displayName: "Claude Opus" }] };
+  const catalogue = createClaudeCatalogue({
+    backend: { id: "claude", dataDir: "/isolated" },
+    providers: {
+      get: async (_id, providerId) => {
+        assert.equal(providerId, undefined);
+        return null;
+      },
+    },
+    queries: new Map([
+      [
+        "native",
+        {
+          cwd: process.cwd(),
+          providerId: "",
+          query: {
+            initializationResult: async () => ({}),
+            accountInfo: async () => identity,
+            request: async ({ subtype }) => {
+              assert.equal(subtype, "list_models");
+              return { response };
+            },
+          },
+        },
+      ],
+    ]),
+  });
+  try {
+    assert.deepEqual(await catalogue.subscriptionModels(process.cwd()), {
+      data: [],
+      nativeSubscription: false,
+      nextCursor: null,
+    });
+    identity = {
+      tokenSource: "oauth",
+      apiProvider: "firstParty",
+      subscriptionType: "max",
+    };
+    const result = await catalogue.subscriptionModels(process.cwd());
+    assert.equal(result.nativeSubscription, true);
+    assert.equal(result.data[0].displayName, "Claude Opus");
+    assert.equal(result.data[0].providerId, "");
+    response = {};
+    await assert.rejects(
+      catalogue.subscriptionModels(process.cwd()),
+      /目录格式无效/,
+    );
+  } finally {
+    catalogue.close();
+  }
+});

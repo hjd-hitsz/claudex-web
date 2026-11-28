@@ -42,10 +42,12 @@ export function BackendModelSettings({ backend, active = true }) {
   const catalogue = useStoreSelector((state) => state.modelChoices);
   const codex = backend.id === "codex";
   const agy = backend.id === "agy";
+  const claude = backend.id === "claude";
   const fetchCatalogue =
-    codex || (agy && active && backend.enabled && backend.ready);
+    codex || ((agy || claude) && active && backend.enabled && backend.ready);
   const titleId = useId();
   const [nativeModels, setNativeModels] = useState(null);
+  const [needsSubscription, setNeedsSubscription] = useState(false);
   const [loading, setLoading] = useState(false);
   const [retry, setRetry] = useState(0);
   const [error, setError] = useState("");
@@ -55,15 +57,22 @@ export function BackendModelSettings({ backend, active = true }) {
     let current = true;
     setLoading(true);
     setError("");
+    setNeedsSubscription(false);
+    setNativeModels(null);
     const read = agy
-      ? readAgyCatalogue(cwd)
-      : rpc("model/list", { backendId: backend.id, cwd }).then(
-          ({ data }) => data,
-        );
+      ? readAgyCatalogue(cwd).then((data) => ({ data }))
+      : rpc("model/list", {
+          backendId: backend.id,
+          cwd,
+          ...(claude && { nativeSubscriptionOnly: true }),
+        });
     read.then(
-      (data) => {
+      ({ data, nativeSubscription }) => {
         if (current) {
-          if (!agy) setNativeModels(data);
+          setNeedsSubscription(claude && nativeSubscription === false);
+          if (claude && nativeSubscription === undefined)
+            setError("Claude Code 原生模型目录返回了未知状态");
+          if (!agy) setNativeModels(claude && !nativeSubscription ? [] : data);
           setLoading(false);
         }
       },
@@ -71,14 +80,16 @@ export function BackendModelSettings({ backend, active = true }) {
         if (current) {
           setNativeModels(null);
           setLoading(false);
-          setError(error.message);
+          setError(
+            claude ? `原生模型目录读取失败：${error.message}` : error.message,
+          );
         }
       },
     );
     return () => {
       current = false;
     };
-  }, [agy, fetchCatalogue, backend.id, backend.ready, cwd, retry]);
+  }, [agy, claude, fetchCatalogue, backend.id, backend.ready, cwd, retry]);
   async function toggle(models, shown) {
     if (busy) return;
     setBusy(true);
@@ -102,9 +113,9 @@ export function BackendModelSettings({ backend, active = true }) {
     }
   }
   const models =
-    agy && !fetchCatalogue
+    (agy || claude) && !fetchCatalogue
       ? null
-      : codex
+      : codex || claude
         ? nativeModels
         : catalogue?.filter((entry) => entry.backendId === backend.id);
   const { generations, otherModels } = codex
@@ -133,7 +144,7 @@ export function BackendModelSettings({ backend, active = true }) {
   return (
     <section className="backend-model-settings" aria-labelledby={titleId}>
       <div className="backend-model-heading">
-        <h3 id={titleId}>显示的模型</h3>
+        <h3 id={titleId}>{claude ? "显示的原生 Claude 模型" : "显示的模型"}</h3>
         {!codex && models?.length > 0 && (
           <label className="backend-checkbox">
             <input
@@ -203,20 +214,28 @@ export function BackendModelSettings({ backend, active = true }) {
           </ul>
         </div>
       )}
-      {models?.length === 0 && !loading && !error && <p>暂无可用模型</p>}
-      {agy && (!models || (loading && !models.length)) && !error && (
-        <p role="status">
-          {fetchCatalogue || loading
-            ? "正在读取原生模型…"
-            : "后端连接后显示可用模型"}
+      {models?.length === 0 && !loading && !error && (
+        <p>
+          {needsSubscription
+            ? "登录 Claude 订阅后可选择原生模型"
+            : "暂无可用模型"}
         </p>
       )}
+      {(agy || claude) &&
+        (!models || (loading && !models.length)) &&
+        !error && (
+          <p role="status">
+            {fetchCatalogue || loading
+              ? "正在读取原生模型…"
+              : "后端连接后显示可用模型"}
+          </p>
+        )}
       {error && (
         <div className="backend-model-error">
           <p className="inline-error" role="alert">
             {error}
           </p>
-          {agy && (
+          {(agy || claude) && fetchCatalogue && (
             <button
               type="button"
               onClick={() => setRetry((value) => value + 1)}

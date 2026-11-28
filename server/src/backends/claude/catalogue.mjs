@@ -224,6 +224,20 @@ export function createClaudeCatalogue({
   return {
     read,
     fileSuggestions,
+    async subscriptionModels(cwd) {
+      const native = await nativeFor({ cwd });
+      const account = claudeAccountIdentity((await native.accountInfo()) || {});
+      if (account?.type !== "claude" || !account.subscriptionType)
+        return { data: [], nativeSubscription: false, nextCursor: null };
+      const { response } = await native.request({ subtype: "list_models" });
+      if (!Array.isArray(response?.models))
+        throw new Error("Claude Code 原生模型目录格式无效");
+      return {
+        data: response.models.map((model) => modelRecord(model)),
+        nativeSubscription: true,
+        nextCursor: null,
+      };
+    },
     async readFile(context, path) {
       const native = await nativeFor(context);
       const { response } = await native.request({

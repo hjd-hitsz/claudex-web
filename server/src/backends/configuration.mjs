@@ -4,6 +4,7 @@ import { validateNetworkProxy } from "./network-proxy.mjs";
 import { subagentSettings } from "../../../shared/subagent-settings.mjs";
 
 import { validateAgyBackend } from "./agy/configuration.mjs";
+import { migrateProviderVisibility } from "./provider-visibility.mjs";
 
 export function validateBackend(input, config) {
   if (input.id === "agy" && input.type === "agy")
@@ -123,19 +124,30 @@ export function createBackendConfiguration(config) {
       providers: [],
     },
   );
-  async function save(input) {
-    const previous = (await storage.read()).backends.find(
-      (b) => b.id === input.id,
+  async function readStored() {
+    return migrateProviderVisibility(await storage.read());
+  }
+  function update(change) {
+    return storage.update(async (data) =>
+      migrateProviderVisibility(await change(migrateProviderVisibility(data))),
     );
-    const backend = validateBackend({ ...previous, ...input }, config);
-    await storage.update((data) => ({
-      ...data,
-      backends: [...data.backends.filter((b) => b.id !== backend.id), backend],
-    }));
-    return backend;
+  }
+  async function save(input) {
+    const saved = await update((data) => {
+      const previous = data.backends.find((backend) => backend.id === input.id);
+      const backend = validateBackend({ ...previous, ...input }, config);
+      return {
+        ...data,
+        backends: [
+          ...data.backends.filter((row) => row.id !== backend.id),
+          backend,
+        ],
+      };
+    });
+    return saved.backends.find((backend) => backend.id === input.id);
   }
   async function read() {
-    const data = await storage.read();
+    const data = await readStored();
     const ids = new Set();
     for (const backend of data.backends) {
       if (
@@ -163,6 +175,7 @@ export function createBackendConfiguration(config) {
   }
   return {
     ...storage,
+    update,
     read,
     save,
     async readDelegationSettings() {
@@ -178,7 +191,7 @@ export function createBackendConfiguration(config) {
       );
     },
     async readProviders() {
-      return (await storage.read()).providers;
+      return (await readStored()).providers;
     },
   };
 }

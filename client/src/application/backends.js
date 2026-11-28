@@ -1,7 +1,11 @@
 import { persist, saved } from "../infrastructure/storage.js";
 import { compatibleEffort } from "../domain/model-preferences.js";
 import { backendEnabled } from "../domain/backend-visibility.js";
-import { isModelHidden, modelProviderName } from "../domain/backends.js";
+import {
+  isModelChoiceHidden,
+  isModelHidden,
+  modelProviderName,
+} from "../domain/backends.js";
 import { isBackendPreference } from "../../../shared/backend-preferences.mjs";
 import { isSubagentSettings } from "../../../shared/subagent-settings.mjs";
 import {
@@ -147,8 +151,8 @@ export function createBackends({
         : modelChoicesFor(get().modelChoices, id, initialProvider);
     const available = (list) => {
       const backend = get().backends.find((entry) => entry.id === id);
-      return id === "agy"
-        ? list.filter((entry) => !isModelHidden(backend, entry.model, ""))
+      return id === "agy" || id === "claude"
+        ? list.filter((entry) => !isModelChoiceHidden(backend, entry))
         : list;
     };
     const restoreDraft = (list) => {
@@ -238,6 +242,9 @@ export function createBackends({
             backendId,
             providerId,
             providerName,
+            ...(provider?.hiddenModels?.includes(model.model) && {
+              providerModelHidden: true,
+            }),
           }));
           if (current())
             set({
@@ -364,6 +371,8 @@ export function createBackends({
         ? provider.models.map((model) => ({
             id: model,
             model,
+            providerId: id,
+            providerModelHidden: provider.hiddenModels?.includes(model),
             displayName: provider.modelAliases?.[model] || model,
             supportedReasoningEfforts: [],
           }))
@@ -384,7 +393,17 @@ export function createBackends({
       }),
       ...(choice
         ? { model: choice.model }
-        : { model: models[0]?.model || "", effort: "" }),
+        : {
+            model:
+              models.find(
+                (model) =>
+                  !isModelChoiceHidden(
+                    get().backends.find((backend) => backend.id === "claude"),
+                    model,
+                  ),
+              )?.model || "",
+            effort: "",
+          }),
     });
     persist("cx-provider-" + get().backendId, id);
     if (changed) onSelectionChanged();
@@ -394,7 +413,11 @@ export function createBackends({
       !choice ||
       get().busy ||
       get().loading ||
-      choice.backendId !== get().backendId
+      choice.backendId !== get().backendId ||
+      isModelChoiceHidden(
+        get().backends.find((backend) => backend.id === choice.backendId),
+        choice,
+      )
     )
       return;
     if (
@@ -425,8 +448,14 @@ export function createBackends({
     await refreshBackends();
   }
   async function saveProvider(value) {
-    await rpc("lan/providers/save", value);
+    const result = await rpc("lan/providers/save", value);
     await activateBackend(get().backendId);
+    return result;
+  }
+  async function refreshProvider(value) {
+    const result = await rpc("lan/providers/refresh", value);
+    if (!result.preview) await activateBackend(get().backendId);
+    return result;
   }
   async function removeProvider(value) {
     const result = await rpc("lan/providers/remove", value);
@@ -447,6 +476,7 @@ export function createBackends({
     refreshBackends,
     saveBackend,
     saveProvider,
+    refreshProvider,
     report,
   };
 }

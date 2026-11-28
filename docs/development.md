@@ -341,9 +341,9 @@ Claude Code 使用 `client/src/assets/claude.svg` 中取自官方网站页首标
 
 ### 默认供应商回归
 
-默认供应商统一在 `server/src/backends/provider-presets.mjs` 登记稳定标识、协议、地址与模型，凭据沿用受限的供应商配置存储。`server/tests/provider-presets.test.mjs` 使用临时配置验证空凭据停用、填写启用、持久恢复、运行时环境、清空撤销及公开响应隐藏凭据。
+默认供应商统一在 `server/src/backends/provider-presets.mjs` 登记稳定标识、协议、地址、官方模型目录和内置目录，凭据沿用受限的供应商配置存储。`server/tests/provider-presets.test.mjs` 验证凭据启停与持久恢复，`server/tests/preset-model-catalogue.test.mjs` 验证端点、认证、格式筛选、并发刷新、凭据保存竞态及失败时保留目录。
 
-构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/provider-presets.mjs`，通过隔离传输验证默认项展示、仅提供 Key 编辑、Key 保存与清空以及模型菜单同步。选择 DeepSeek 模型后检查侧栏品牌标识、圆环内的钱包图标、圆环下方的金额、明细收放和焦点恢复。设置与侧栏覆盖深浅主题、80%、100%、125%、150% 与 200% 实际浏览器页面缩放及窄屏。缩放通过隔离扩展调用浏览器页面缩放接口，并核对实际缩放值、DPR 与视口。截图和侧栏布局记录保存在 `.cache/provider-presets/dual`。真实 DeepSeek 推理验证使用显式提供的有效凭据。
+构建后执行 `PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chromium node tests/browser/provider-presets.mjs`。隔离传输验证连接配置顺序、桌面操作同行、窄屏凭据、刷新和预览反馈、失败保留目录、菜单同步及凭据清除。DeepSeek 校验标题、全选和短列表同行，Go 校验桌面名称单行、窄屏换行、滚动边缘状态和末项勾选。选择 DeepSeek 模型后检查侧栏品牌标识、余额明细和焦点恢复。设置与侧栏覆盖深浅主题、80%、100%、125%、150% 与 200% 实际浏览器页面缩放及窄屏，核对实际缩放值、DPR 与视口。截图和布局记录默认保存在 `.cache/provider-presets/dual`，可用 `UI_OUTPUT_DIR` 切换输出目录。真实供应商推理验证使用显式提供的有效凭据。
 
 默认供应商使用统一定义中的 `icon` 标识，设置与侧栏通过 `client/src/assets/providers/brand-icons.js` 读取对应 SVG。配置测试核对每个默认供应商的图标存在及默认项置顶顺序，浏览器回归核对图标在两个入口的实际加载。DeepSeek 标识沿用官方素材，使用遵循素材目录中的品牌规范。[DeepSeek 官方品牌素材 ICON.svg](https://github.com/deepseek-ai/awesome-deepseek-integration/blob/main/docs/_logo%20svg/ICON.svg)
 

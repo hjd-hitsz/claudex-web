@@ -7,7 +7,7 @@ import {
   report,
 } from "../../store.js";
 import {
-  isModelHidden,
+  isModelChoiceHidden,
   modelChoiceLabel,
   modelProviderName,
 } from "../../domain/backends.js";
@@ -26,17 +26,23 @@ export const ModelSelect = React.memo(function ModelSelect() {
   );
   const locked = useStoreSelector((state) => state.busy || state.loading);
   const backend = backends.find((entry) => entry.id === backendId);
-  const hidden = isModelHidden(backend, modelId, providerId);
   const choices = (modelChoices || []).filter(
     (choice) =>
-      choice.backendId === backendId &&
-      !isModelHidden(backend, choice.model, choice.providerId),
+      choice.backendId === backendId && !isModelChoiceHidden(backend, choice),
   );
   const selected = modelChoices?.find(
     (choice) =>
       choice.backendId === backendId &&
       choice.providerId === providerId &&
       choice.model === modelId,
+  );
+  const hidden = isModelChoiceHidden(
+    backend,
+    selected || {
+      ...models.find((model) => model.model === modelId),
+      model: modelId,
+      providerId,
+    },
   );
   const current = hidden ? undefined : selected;
   const providerName = modelProviderName(modelChoices, backendId, providerId);
@@ -101,7 +107,10 @@ export const ModelSelect = React.memo(function ModelSelect() {
           </>
         ) : (
           models
-            .filter((model) => !isModelHidden(backend, model.model, providerId))
+            .filter(
+              (model) =>
+                !isModelChoiceHidden(backend, { ...model, providerId }),
+            )
             .map((model) => (
               <option key={model.id} value={model.model}>
                 {modelLabel(model)}

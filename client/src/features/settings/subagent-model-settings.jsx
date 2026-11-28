@@ -1,6 +1,10 @@
 import React, { useEffect, useId, useState } from "react";
 import { useStoreSelector, saveBackend } from "../../store.js";
-import { isModelHidden, modelChoiceLabel } from "../../domain/backends.js";
+import {
+  isModelChoiceHidden,
+  isModelHidden,
+  modelChoiceLabel,
+} from "../../domain/backends.js";
 import { reasoningEffortLabels } from "../composer/reasoning-effort.jsx";
 import { Check } from "lucide-react";
 
@@ -28,7 +32,7 @@ export function SubagentModelSettings({ backend, disabled }) {
       const nativeClaude = backend.id === "claude" && !entry.providerId;
       return {
         ...entry,
-        hidden: isModelHidden(backend, entry.model, entry.providerId),
+        hidden: isModelChoiceHidden(backend, entry),
         providerId: nativeClaude ? "@native" : entry.providerId,
         model: nativeClaude ? entry.resolvedModel || entry.model : entry.model,
       };

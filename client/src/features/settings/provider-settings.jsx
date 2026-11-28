@@ -1,8 +1,10 @@
 import { ResizableTextarea } from "../../ui/resizable-textarea.jsx";
-import React, { useEffect, useId, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ProviderModels } from "./provider-models.jsx";
+import { ProviderModelVisibility } from "./provider-model-visibility.jsx";
 import { PresetProviderForm } from "./preset-provider-form.jsx";
+import { ProviderCredentials } from "./provider-credentials.jsx";
 import { rpc, saveProvider, removeProvider } from "../../store.js";
 import { contextWindowTokens } from "../../domain/provider-context-window.js";
 import { providerBrandIcons } from "../../assets/providers/brand-icons.js";
@@ -10,7 +12,6 @@ import { providerBrandIcons } from "../../assets/providers/brand-icons.js";
 const providerBackendId = "claude";
 
 export function ProviderSettings({ actionTarget }) {
-  const apiKeyId = useId();
   const [providers, setProviders] = useState([]),
     [editing, setEditing] = useState(null),
     [loading, setLoading] = useState(true),
@@ -46,8 +47,9 @@ export function ProviderSettings({ actionTarget }) {
     setSaveError("");
     setEditing(provider);
   }
-  function finishSaving() {
+  function finishSaving(catalogueError) {
     beginEditing(null);
+    setError(catalogueError || "");
     reloadProviders();
   }
   const editor =
@@ -60,6 +62,11 @@ export function ProviderSettings({ actionTarget }) {
         setBusy={setBusy}
         backendId={editing.backendId ?? providerBackendId}
         onSaved={finishSaving}
+        onCatalogue={(catalogue) =>
+          setProviders((previous) =>
+            previous.map((row) => (row.id === catalogue.id ? catalogue : row)),
+          )
+        }
         onCancel={() => beginEditing(null)}
       />
     ) : (
@@ -82,6 +89,9 @@ export function ProviderSettings({ actionTarget }) {
               name: values.get("name"),
               baseUrl: values.get("baseUrl"),
               protocol: values.get("protocol"),
+              hiddenModels: (editing.hiddenModels || []).filter((model) =>
+                models.includes(model),
+              ),
               modelAliases: Object.fromEntries(
                 Object.entries(editing.modelAliases || {}).filter(([model]) =>
                   models.includes(model),
@@ -150,7 +160,7 @@ export function ProviderSettings({ actionTarget }) {
               <option value="messages">Message API （兼容）</option>
             </select>
           </label>
-          <label>
+          <label className="provider-address">
             <span aria-hidden="true">
               <span className="provider-field-prefix">API </span>地址
             </span>
@@ -162,32 +172,13 @@ export function ProviderSettings({ actionTarget }) {
               defaultValue={editing.baseUrl}
             />
           </label>
-          <div className="provider-key-field">
-            <label htmlFor={apiKeyId} aria-hidden="true">
-              <span>
-                <span className="provider-field-prefix">API </span>Key
-              </span>
-            </label>
-            <input
-              id={apiKeyId}
-              aria-label="API Key"
-              name="apiKey"
-              type="password"
-              autoComplete="new-password"
-              placeholder={editing.hasApiKey ? "已配置；留空保留" : "可留空"}
-            />
-            {editing.hasApiKey && (
-              <label className="backend-checkbox" title="清除已保存凭据">
-                <input
-                  name="clearKey"
-                  type="checkbox"
-                  aria-label="清除已保存凭据"
-                />
-                清除
-              </label>
-            )}
-          </div>
         </div>
+        <ProviderCredentials
+          hasApiKey={editing.hasApiKey}
+          busy={busy}
+          onCancel={() => beginEditing(null)}
+        />
+        {saveError && <p role="alert">{saveError}</p>}
         <label>
           模型标识（每行一个）
           <ResizableTextarea
@@ -203,6 +194,15 @@ export function ProviderSettings({ actionTarget }) {
             rows={2}
           />
         </label>
+        <ProviderModelVisibility
+          models={editing.models}
+          aliases={editing.modelAliases}
+          hiddenModels={editing.hiddenModels}
+          disabled={busy}
+          onChange={(hiddenModels) =>
+            setEditing((draft) => ({ ...draft, hiddenModels }))
+          }
+        />
         <ProviderModels
           models={editing.models}
           aliases={editing.modelAliases}
@@ -223,19 +223,6 @@ export function ProviderSettings({ actionTarget }) {
             }))
           }
         />
-        {saveError && <p role="alert">{saveError}</p>}
-        <div className="provider-editor-actions">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => beginEditing(null)}
-          >
-            取消
-          </button>
-          <button type="submit" className="primary" disabled={busy}>
-            保存供应商
-          </button>
-        </div>
       </form>
     ));
   return (

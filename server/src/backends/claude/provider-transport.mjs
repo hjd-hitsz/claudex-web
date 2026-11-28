@@ -68,7 +68,8 @@ export async function createProviderTransport(
         if (selected.native)
           Object.assign(headers, await nativeProviderHeaders(selected));
         else {
-          headers["x-api-key"] = selected.apiKey;
+          if (selected.authentication !== "bearer")
+            headers["x-api-key"] = selected.apiKey;
           headers.authorization = `Bearer ${selected.apiKey}`;
         }
       }

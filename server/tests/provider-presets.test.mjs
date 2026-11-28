@@ -121,3 +121,46 @@ test("默认供应商空凭据停用、填写启用、持久恢复及清空撤�
   );
   assert.deepEqual(await restored.list("codex", { includeDisabled: true }), []);
 });
+
+test("OpenCode Go 使用官方 Messages、Bearer 及独立模型能力，凭据和可见性可独立更新", async (t) => {
+  const configDir = await mkdtemp(join(tmpdir(), "opencode-go-preset-"));
+  t.after(() => rm(configDir, { recursive: true, force: true }));
+  const config = {
+    configDir,
+    codexHome: join(configDir, "codex"),
+    claudeHome: join(configDir, "claude"),
+    upstreamUrl: "ws://127.0.0.1:8765",
+  };
+  const service = () => createProviders(createBackendConfiguration(config));
+  const id = "opencode-go";
+  const backendId = "claude";
+  const hiddenModels = ["minimax-m3"];
+  await service().save({ id, backendId, apiKey: " go-fixture " });
+  await service().save({ id, backendId, hiddenModels });
+  const [publicRow] = await service().list(backendId);
+  assert.deepEqual(publicRow.hiddenModels, hiddenModels);
+  assert.equal(publicRow.hasApiKey, true);
+  assert.equal(Object.hasOwn(publicRow, "apiKey"), false);
+  assert.equal(publicRow.models.length, 31);
+  assert.deepEqual(
+    publicRow.models.filter((model) => model.endsWith("-free")).sort(),
+    ["beam-free", "hungerg-free", "hy4-flash-free", "iceman-contributor-free"],
+  );
+  assert.equal(publicRow.modelCapabilities["beam-free"].contextWindow, 1048576);
+  const provider = await service().get(backendId, id);
+  const environment = providerRuntimeEnvironment(provider, {
+    dataDir: config.claudeHome,
+  });
+  assert.equal(
+    environment.ANTHROPIC_BASE_URL,
+    "https://opencode.ai/inference/go/anthropic",
+  );
+  assert.equal(environment.ANTHROPIC_AUTH_TOKEN, "go-fixture");
+  assert.equal(environment.ANTHROPIC_API_KEY, undefined);
+  await service().save({ id, backendId, apiKey: "" });
+  assert.deepEqual(await service().list(backendId), []);
+  const disabled = (
+    await service().list(backendId, { includeDisabled: true })
+  ).find((row) => row.id === id);
+  assert.deepEqual(disabled.hiddenModels, hiddenModels);
+});

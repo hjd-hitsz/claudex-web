@@ -112,7 +112,7 @@ export function SettingsDialog({
           )}
           {visited.has("backends") && (
             <div hidden={active !== "backends"}>
-              <BackendSettings />
+              <BackendSettings visible={active === "backends"} />
             </div>
           )}
           {visited.has("providers") && (

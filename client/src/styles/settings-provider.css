@@ -84,6 +84,148 @@
 .backend-form .provider-editor-actions button {
   margin: 0;
 }
+.provider-credentials {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.backend-form .provider-credential-key {
+  display: flex;
+  flex: 1 1 16em;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  white-space: nowrap;
+}
+.provider-credential-key input {
+  flex: 1;
+  min-width: 0;
+}
+.provider-credentials .provider-editor-actions {
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+}
+.provider-catalogue-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+.backend-form .provider-catalogue-status button {
+  margin: 0;
+}
+.provider-catalogue-status [role="status"] {
+  color: var(--muted);
+}
+.provider-model-visibility {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-block-start: 1px solid var(--border);
+}
+.provider-model-header,
+.provider-model-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  gap: 4px 10px;
+}
+.provider-model-header {
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.provider-model-selection h3 {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 600;
+}
+.backend-form .provider-model-select-all {
+  min-block-size: 28px;
+  padding-inline: 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--subtle);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.backend-form .provider-model-option {
+  min-block-size: 28px;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.provider-model-option:hover {
+  background: var(--hover);
+}
+.provider-model-option input {
+  flex: none;
+  margin: 0;
+}
+.provider-model-option span {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.provider-model-visibility-frame {
+  position: relative;
+  margin-block-start: 6px;
+  padding-block: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--subtle) 50%, var(--bg));
+}
+.provider-model-visibility-frame::before,
+.provider-model-visibility-frame::after {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 7px;
+  block-size: 5px;
+  content: "";
+  pointer-events: none;
+  opacity: 0;
+}
+.provider-model-visibility-frame::before {
+  inset-block-start: 0;
+  background: linear-gradient(var(--border), transparent);
+}
+.provider-model-visibility-frame::after {
+  inset-block-end: 0;
+  background: linear-gradient(transparent, var(--border));
+}
+.provider-model-visibility-frame[data-more-above]::before,
+.provider-model-visibility-frame[data-more-below]::after {
+  opacity: 1;
+}
+.provider-model-visibility-scroll {
+  --provider-model-visible-rows: 6;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 53%, transparent) transparent;
+  scroll-snap-type: y mandatory;
+}
+.provider-model-visibility-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 12px;
+  padding-inline: 6px 2px;
+}
+.provider-model-visibility-options .provider-model-option {
+  scroll-snap-align: start;
+}
+.provider-model-visibility-options [data-partial-row]:not(:focus-within) {
+  opacity: 0;
+  pointer-events: none;
+}
 .modal-settings .provider-settings button.provider-context-unit {
   flex: none;
   inline-size: var(--provider-context-unit-width, 1.8em);
@@ -103,6 +245,16 @@
   background: color-mix(in srgb, var(--link) 12%, var(--bg));
   font-weight: 600;
 }
+@container (min-width: 740px) {
+  .provider-model-visibility-options {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container (max-width: 480px) {
+  .provider-model-visibility-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @container (max-width: 355px) {
   .provider-entry,
   .provider-new {
@@ -113,6 +265,17 @@
     border-inline: 0;
     border-radius: 0;
     background: transparent;
+  }
+}
+@container (max-width: 260px) {
+  .backend-form .provider-credential-key {
+    flex: 1 1 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .provider-credential-key input {
+    flex: none;
   }
 }
 @container (215px < width <= 355px) {

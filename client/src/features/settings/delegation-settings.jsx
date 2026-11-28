@@ -4,7 +4,10 @@ import {
   DelegationPromptSelect,
 } from "./delegation-prompt-editor.jsx";
 import { saveBackend, useStoreSelector } from "../../store.js";
-import { isModelHidden, modelChoiceLabel } from "../../domain/backends.js";
+import {
+  isModelChoiceHidden,
+  modelChoiceLabel,
+} from "../../domain/backends.js";
 import { BackendBadge } from "../backends/backend-badge.jsx";
 import { reasoningEffortLabels } from "../composer/reasoning-effort.jsx";
 
@@ -123,7 +126,7 @@ export function DelegationSettings({ active }) {
               const choices = models.filter(
                 (entry) =>
                   entry.backendId === id &&
-                  !isModelHidden(backend, entry.model, entry.providerId),
+                  !isModelChoiceHidden(backend, entry),
               );
               return (
                 <DelegationRoute

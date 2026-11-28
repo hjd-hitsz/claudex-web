@@ -1,6 +1,9 @@
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
-import { settingsPage } from "../helpers/settings-navigation.mjs";
+import {
+  settingsPage,
+  switchComposerBackend,
+} from "../helpers/settings-navigation.mjs";
 import http from "node:http";
 import { readFile, mkdir, writeFile, mkdtemp, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -8,21 +11,28 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { configuredProviders } from "../../server/src/backends/provider-presets.mjs";
 import { backendFixture } from "../helpers/backend-browser-fixture.mjs";
+import { verifyProviderVisibility } from "../helpers/provider-visibility-browser.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const main = process.env.UI_MAIN === "1";
 const before = process.env.UI_BEFORE === "1";
 const build = process.env.UI_BUILD_DIR || join(root, "client/dist");
-const output = join(
-  root,
-  ".cache/provider-presets",
-  before ? "before" : main ? "main" : "dual",
-);
+const output =
+  process.env.UI_OUTPUT_DIR ||
+  join(
+    root,
+    ".cache/provider-presets",
+    before ? "before" : main ? "main" : "dual",
+  );
 await mkdir(output, { recursive: true });
 const data = {
   main,
   markdown: "模型别名测试",
   claudeItems: [],
+  claudeSubscriptionModels: [
+    { id: "sonnet", model: "sonnet", displayName: "Claude Sonnet" },
+    { id: "second", model: "second", displayName: "Claude Opus" },
+  ],
   providerBalances: {
     deepseek: {
       currency: "CNY",
@@ -45,6 +55,7 @@ const data = {
     ...provider,
     enabled: provider.preset ? false : true,
     hasApiKey: false,
+    canRefreshModels: Boolean(provider.modelDirectory),
   })),
 };
 const server = http.createServer(async (req, res) => {
@@ -110,6 +121,10 @@ try {
     context.serviceWorkers()[0] ||
     (await context.waitForEvent("serviceworker"));
   const page = await context.newPage();
+  page.on("pageerror", (error) => console.error(error));
+  page.on("console", (message) => {
+    if (message.type() === "error") console.error(message.text());
+  });
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   const setZoom = async (zoom) => {
     const actual = await worker.evaluate(
@@ -133,6 +148,7 @@ try {
     .getByRole("button", { name: /^新对话/ })
     .first()
     .click();
+  if (!before) await switchComposerBackend(page, "Claude Code");
   await page.getByRole("button", { name: "设置", exact: true }).click();
   if (!before) await settingsPage(page, "模型服务商").click();
   const row = page.locator(".backend-heading").filter({ hasText: "DeepSeek" });
@@ -179,7 +195,18 @@ try {
   );
   const key = page.locator('input[name="apiKey"]');
   assert.equal(await key.inputValue(), "");
-  assert.equal(await page.locator(".provider-settings form input").count(), 1);
+  if (!before) {
+    const refresh = page.getByRole("button", { name: "刷新模型", exact: true });
+    assert.ok(await refresh.isDisabled());
+    assert.equal(
+      await page.locator(".provider-catalogue-status [role='status']").count(),
+      0,
+    );
+  }
+  assert.equal(
+    await page.locator(".provider-settings form input[type=password]").count(),
+    1,
+  );
   assert.equal(
     await page
       .locator(
@@ -224,6 +251,14 @@ try {
   );
   await page.getByRole("button", { name: "保存供应商", exact: true }).click();
   await row.getByText("已启用", { exact: true }).waitFor();
+  if (!before)
+    assert.ok(
+      await page.evaluate(() =>
+        fixtureCatalogueCalls.some(
+          ({ id, source }) => id === "deepseek" && source === "save",
+        ),
+      ),
+    );
   await page.waitForFunction(() =>
     [...document.querySelectorAll('[aria-label="模型"] option')].some((o) =>
       o.textContent.includes("DeepSeek"),
@@ -371,7 +406,7 @@ try {
   }
   await row.getByRole("button", { name: "编辑", exact: true }).click();
   assert.equal(await key.inputValue(), "");
-  assert.equal(await page.locator('input[name="clearKey"]').count(), 0);
+  if (!before) await page.locator('input[name="clearKey"]').check();
   await page.getByRole("button", { name: "保存供应商", exact: true }).click();
   await row.getByText("待填写 API Key").waitFor();
   await page.waitForFunction(
@@ -385,6 +420,7 @@ try {
       fixtureRequests.findLast((r) => r.method === "lan/providers/save").params,
   );
   assert.equal(saved.apiKey, "");
+  if (!before) await verifyProviderVisibility({ page, setZoom, output });
   console.log(
     "PASS 默认供应商展示、Key 启停、模型菜单同步、DeepSeek 页脚标识和余额、深浅主题与桌面和手机缩放（隔离传输）",
   );

@@ -6,7 +6,7 @@ import { BackendModelSettings } from "./backend-model-settings.jsx";
 import { ProxySettings } from "./proxy-settings.jsx";
 import { SubagentModelSettings } from "./subagent-model-settings.jsx";
 
-export function BackendSettings() {
+export function BackendSettings({ visible = true }) {
   const s = useStore();
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -221,7 +221,10 @@ export function BackendSettings() {
             ) : (
               <>
                 <SubagentModelSettings backend={backend} disabled={working} />
-                <BackendModelSettings backend={backend} />
+                <BackendModelSettings
+                  backend={backend}
+                  active={visible && active === backend.id}
+                />
               </>
             )}
             {["claude", "agy"].includes(backend.type) && (

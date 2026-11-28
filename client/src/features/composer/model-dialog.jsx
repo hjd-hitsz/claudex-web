@@ -1,7 +1,7 @@
 import React from "react";
 import { Check } from "lucide-react";
 import {
-  isModelHidden,
+  isModelChoiceHidden,
   modelChoiceLabel,
   modelProviderName,
 } from "../../domain/backends.js";
@@ -20,22 +20,20 @@ export function ModelDialog({ onClose }) {
     state.backends.find((entry) => entry.id === state.backendId),
   );
   const label = (entry) => modelChoiceLabel({ providerName, ...entry });
+  const current = models.find((entry) => entry.model === selected) || {
+    model: selected,
+  };
   return (
     <div className="settings-body">
       <p className="section-description">设置应用于下一条消息。</p>
-      {isModelHidden(backend, selected, providerId) && (
-        <p role="status">
-          当前模型已隐藏：
-          {label(
-            models.find((entry) => entry.model === selected) || {
-              model: selected,
-            },
-          )}
-        </p>
+      {isModelChoiceHidden(backend, { ...current, providerId }) && (
+        <p role="status">当前模型已隐藏：{label(current)}</p>
       )}
       <div className="model-options">
         {models
-          .filter((model) => !isModelHidden(backend, model.model, providerId))
+          .filter(
+            (model) => !isModelChoiceHidden(backend, { ...model, providerId }),
+          )
           .map((model) => (
             <button
               key={model.id}

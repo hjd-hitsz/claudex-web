@@ -120,7 +120,9 @@ export function providerRuntimeEnvironment(
     ),
   );
   env.ANTHROPIC_BASE_URL = proxy?.url || provider.baseUrl;
-  env.ANTHROPIC_API_KEY = proxy?.token || provider.apiKey;
+  if (proxy || provider.authentication !== "bearer")
+    env.ANTHROPIC_API_KEY = proxy?.token || provider.apiKey;
+  else env.ANTHROPIC_AUTH_TOKEN = provider.apiKey;
   return env;
 }
 
@@ -132,6 +134,7 @@ export function providerSettingsEnvironment(provider, backend, options) {
     CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "",
     CLAUDE_CODE_SUBAGENT_EFFORT: "",
     ...(provider && { ANTHROPIC_AUTH_TOKEN: "" }),
+    ...(provider?.authentication === "bearer" && { ANTHROPIC_API_KEY: "" }),
     ...networkProxyEnvironment(backend.proxy),
     ...Object.fromEntries(
       Object.entries(env).filter(

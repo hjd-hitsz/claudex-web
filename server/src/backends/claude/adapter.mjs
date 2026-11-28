@@ -210,6 +210,8 @@ export function createClaudeAdapter({
         },
       };
     }
+    if (method === "model/list" && p.nativeSubscriptionOnly === true)
+      return catalogue.subscriptionModels(p.cwd || config.defaultCwd);
     if (
       [
         "model/list",

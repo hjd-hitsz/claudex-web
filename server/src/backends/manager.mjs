@@ -400,16 +400,8 @@ export function createBackendManager({
       changing = operation.catch(() => {});
       return reply(await operation);
     }
-    if (method === "lan/providers/list")
-      return reply({
-        providers: await providers.list(params.backendId, {
-          includeDisabled: params.includeDisabled === true,
-        }),
-      });
-    if (method === "lan/providers/save")
-      return reply({ providers: await providers.save(params) });
-    if (method === "lan/providers/remove")
-      return reply({ providers: await providers.remove(params) });
+    const providerOperation = providers.request(method, params);
+    if (providerOperation) return reply(await providerOperation);
     if (method === "thread/list" && !params.backendId)
       return reply(
         await listBackendThreads(params, { instances, instance, call }),
