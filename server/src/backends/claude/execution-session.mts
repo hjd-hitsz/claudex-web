@@ -1,4 +1,3 @@
-import { readPromptSections } from "../../prompts.mjs";
 import {
   createPermissionCheck,
   delegationToolOptions,
@@ -34,10 +33,7 @@ import {
 import { networkProxyEnvironment } from "../network-proxy.mjs";
 import { subagentSettings } from "../../../../shared/subagent-settings.mjs";
 import { createProviderTransport } from "./provider-transport.mjs";
-import { claudeQuerySettings } from "./query-settings.mjs";
-const executionPrompt = readPromptSections("backends/claude/execution.md");
-const planMode = executionPrompt("planMode");
-const reviewMode = executionPrompt("reviewMode");
+import { claudeQuerySettings, planPrompt } from "./query-settings.mjs";
 export async function createExecutionSession({
   backend,
   session,
@@ -50,6 +46,7 @@ export async function createExecutionSession({
   questions,
   observeMessage,
   callConversationTool,
+  secretary,
   secretaryRole,
   goals,
   tasks,
@@ -159,7 +156,7 @@ export async function createExecutionSession({
         : { sessionId: session.nativeSessionId || threadId }),
       model,
       permissionMode: executionPermissionMode(queued),
-      planModeInstructions: queued.review ? reviewMode : planMode,
+      planModeInstructions: planPrompt(queued.review),
       ...delegationToolOptions(queued.delegation),
       ...(queued.review && {
         disallowedTools: ["Write", "Edit", "NotebookEdit"],
@@ -185,7 +182,7 @@ export async function createExecutionSession({
         callConversationTool,
         secretaryRole,
       ),
-      settingSources: ["user", "project", "local"],
+      settingSources: secretary ? ["user"] : ["user", "project", "local"],
       canUseTool: createPermissionCheck({
         current,
         threadId,
@@ -194,6 +191,7 @@ export async function createExecutionSession({
       }),
       hooks: createRunHooks({
         threadId,
+        secretary,
         context,
         save,
         broadcast,

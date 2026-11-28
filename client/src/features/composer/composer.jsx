@@ -52,6 +52,7 @@ import { CompactionStatus } from "./compaction-status.jsx";
 import { ReferenceEditor } from "./reference-editor.jsx";
 import { AttachmentPreview } from "./attachment-preview.jsx";
 import { ComposerSurface } from "./composer-surface.jsx";
+import { SecretaryUpgrade } from "./secretary-upgrade.jsx";
 import { CodeFileAttachments } from "./code-file-attachments.jsx";
 import { ComposerActivity } from "./composer-activity.jsx";
 import { AgyContextUsage } from "./agy-context-usage.jsx";
@@ -164,7 +165,11 @@ export function Composer({ inputRef }) {
         />
       )}
       {!unavailable && shortcuts.popup}
-      {unavailable ? (
+      {access?.status === "secretaryContinuation" ? (
+        <SecretaryUpgrade
+          disabled={!s.connected || s.busy || Boolean(active)}
+        />
+      ) : unavailable ? (
         <div
           className="composer-access"
           role="status"

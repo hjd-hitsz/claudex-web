@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import WebSocket, { WebSocketServer } from "ws";
 import { resourceTarget } from "../../shared/backend-identity.mjs";
 import { createDelegationModes } from "../../server/src/backends/delegation/source-modes.mjs";
 import { resolveNativeSecretaryRole } from "../../server/src/backends/delegation/settings.mjs";
@@ -18,20 +19,93 @@ import { messagesServer } from "../helpers/claude-messages-server.mjs";
 import { shutdownBrowserClaudeWorker } from "../helpers/claude-worker-cleanup.mjs";
 
 const root = await mkdtemp(join(tmpdir(), "claudex-native-delegation-"));
-const cwd = join(root, "workspace");
-await mkdir(cwd);
+const ancestor = join(root, "ancestor");
+const workspace = join(ancestor, "workspace");
+const cwd = join(workspace, "nested");
+await mkdir(cwd, { recursive: true });
+await writeFile(join(ancestor, ".fixture-root"), "");
 await writeFile(join(cwd, "fixture.txt"), "Local file fixture\n");
-await writeFile(join(cwd, "CLAUDE.md"), "# CLAUDE_PROJECT_RULE_PROOF\n");
 const directProjectRule = "PROJECT_IMPLEMENTATION_OWNER_PROOF";
-const projectScope = "工作分工由会话当前的系统角色和用户选择决定";
+const claudeProjectRule = "CLAUDE_PROJECT_RULE_PROOF";
+const claudeUserRule = "CLAUDE_USER_RULE_PROOF";
+const codexUserRule = "CODEX_USER_RULE_PROOF";
+const projectSettings = "PROJECT_SETTINGS_PROOF";
+const projectHook = "PROJECT_HOOK_PROOF";
+const codexProjectHook = "CODEX_PROJECT_HOOK_PROOF";
+const codexUserHook = "CODEX_USER_HOOK_PROOF";
+function codexHook(sentinel) {
+  const output = JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "UserPromptSubmit",
+      additionalContext: sentinel,
+    },
+  });
+  const command = "printf '%s\\n' '" + output + "'";
+  return [
+    "[[hooks.UserPromptSubmit]]",
+    "[[hooks.UserPromptSubmit.hooks]]",
+    'type = "command"',
+    "command = " + JSON.stringify(command),
+  ].join("\n");
+}
+const userHook = "USER_HOOK_PROOF";
+const levels = [
+  [ancestor, "ancestor", "AGENTS.md"],
+  [workspace, "root", "AGENTS.override.md"],
+  [cwd, "nested", "AGENTS.md"],
+];
+const agentRules = levels.map(([, level]) => directProjectRule + "_" + level);
+const claudeRules = levels.map(([, level]) => claudeProjectRule + "_" + level);
+for (const [index, [dir, , document]] of levels.entries()) {
+  await writeFile(join(dir, document), agentRules[index] + "\n");
+  await writeFile(join(dir, "CLAUDE.md"), claudeRules[index] + "\n");
+  await writeFile(
+    join(dir, "GEMINI.md"),
+    "OTHER_BACKEND_PROOF_" + index + "\n",
+  );
+}
+await mkdir(join(cwd, ".codex"));
 await writeFile(
-  join(cwd, "AGENTS.md"),
-  `# ${directProjectRule}\n\nImplement engineering requests directly and run their checks.\n`,
+  join(cwd, ".codex", "config.toml"),
+  'developer_instructions = "' +
+    projectSettings +
+    '"\n' +
+    codexHook(codexProjectHook),
+);
+const submitHook = (sentinel) => ({
+  hooks: {
+    UserPromptSubmit: [
+      {
+        hooks: [
+          {
+            type: "command",
+            command: `printf '%s\\n' '${JSON.stringify({
+              hookSpecificOutput: {
+                hookEventName: "UserPromptSubmit",
+                additionalContext: sentinel,
+              },
+            })}'`,
+          },
+        ],
+      },
+    ],
+  },
+});
+await mkdir(join(cwd, ".claude"));
+await writeFile(
+  join(cwd, ".claude", "settings.json"),
+  JSON.stringify(submitHook(projectHook)),
 );
 const codexHome = join(root, "codex");
 const claudeHome = join(root, "claude");
 const bin = join(root, "bin");
 await Promise.all([codexHome, claudeHome, bin].map((path) => mkdir(path)));
+await writeFile(join(codexHome, "AGENTS.md"), codexUserRule + "\n");
+await writeFile(join(claudeHome, "CLAUDE.md"), claudeUserRule + "\n");
+await writeFile(
+  join(claudeHome, "settings.json"),
+  JSON.stringify(submitHook(userHook)),
+);
 await writeFile(join(bin, "systemctl"), "#!/bin/sh\nexit 1\n", { mode: 0o700 });
 const environment = { ...process.env };
 process.env.PATH = bin + ":" + process.env.PATH;
@@ -79,6 +153,44 @@ const directPrompt = "SECRETARY_DIRECT_PROOF";
 const localPrompt = "SECRETARY_LOCAL_TOOL_PROOF";
 const standardPrompt = "STANDARD_ASSISTANT_PROOF";
 const offPrompt = "DISABLED_SECRETARY_PROOF";
+const lifecycle = new Map();
+const projectProof = (origin, turn, body) => {
+  const encoded = JSON.stringify(body);
+  const expected =
+    origin === "codex"
+      ? [...agentRules, projectSettings, codexProjectHook]
+      : [...agentRules, ...claudeRules, projectHook];
+  const hits = expected.filter((sentinel) => encoded.includes(sentinel));
+  const user = (
+    origin === "codex"
+      ? [codexUserRule, codexUserHook]
+      : [claudeUserRule, userHook]
+  ).every((sentinel) => encoded.includes(sentinel));
+  const result = {
+    backend: origin,
+    turn,
+    hits,
+    expected,
+    user,
+    conversation:
+      encoded.includes(standardPrompt) &&
+      encoded.includes(
+        origin === "claude"
+          ? "CLAUDE_STANDARD_ANSWER"
+          : "CODEX_STANDARD_ANSWER",
+      ),
+  };
+  const key = origin + ":" + turn;
+  if (lifecycle.has(key)) return;
+  console.log(JSON.stringify(result));
+  lifecycle.set(key, result);
+};
+function recordContext(origin, prompt, body) {
+  if (prompt.includes("[Claudex delegation step:"))
+    projectProof(origin, "EXPERT_DELEGATION", body);
+  const turn = prompt.match(/CONTEXT_PROBE_[A-Z_]+/g)?.at(-1);
+  if (turn) projectProof(origin, turn, body);
+}
 const scopeProbe = (prompt) =>
   prompt.lastIndexOf(scopePrompt) >
   Math.max(
@@ -118,6 +230,8 @@ const codex = createServer(async (request, response) => {
     body.instructions,
     body.input.filter(({ role }) => role === "developer"),
   ]);
+  if (body.text?.format?.type !== "json_schema")
+    recordContext("codex", prompt, body);
   const collaboration = body.input
     .filter(
       ({ role, content }) =>
@@ -253,6 +367,7 @@ const claude = await messagesServer(async (body) => {
   const prompt = JSON.stringify(body.messages);
   const instructions = JSON.stringify(body.system);
   const tool = body.tools?.find(({ name }) => name === toolName);
+  if (body.tools?.length) recordContext("claude", prompt, body);
   if (scopeProbe(prompt)) {
     if (!tool) return [{ type: "text", text: "Delegation proof" }];
     const returned = body.messages
@@ -364,17 +479,11 @@ const claude = await messagesServer(async (body) => {
   }
   if (prompt.includes(directPrompt) && !prompt.includes(source.claude)) {
     if (body.tools?.length) {
-      const latestProjectSnapshot = body.system?.findLast(({ text }) =>
-        text.includes("本轮有效 AGENTS 项目指令"),
-      )?.text;
       proof.claude.direct =
         instructions.includes(longClaudeRole) &&
         !instructions.includes("You are an agent working with the user") &&
         !prompt.includes(claudePrompt) &&
-        prompt.includes("CLAUDE_PROJECT_RULE_PROOF") &&
-        latestProjectSnapshot?.includes(directProjectRule) &&
-        latestProjectSnapshot.indexOf(projectScope) >
-          latestProjectSnapshot.indexOf(directProjectRule);
+        JSON.stringify(body).includes(claudeUserRule);
       proof.claude.firstRequestTool = Boolean(tool && !tool.defer_loading);
       proof.claude.secretarySystem =
         body.system.length === 1 &&
@@ -440,18 +549,58 @@ process.env.ANTHROPIC_BASE_URL = claude.url;
 const reserve = createServer();
 reserve.listen(0, "127.0.0.1");
 await once(reserve, "listening");
-const upstreamUrl = "ws://127.0.0.1:" + reserve.address().port;
+const nativeUrl = "ws://127.0.0.1:" + reserve.address().port;
 await new Promise((resolve) => reserve.close(resolve));
+const proxy = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+await once(proxy, "listening");
+const upstreamUrl = "ws://127.0.0.1:" + proxy.address().port;
+const nativeRequests = [];
+proxy.on("connection", (client) => {
+  const upstream = new WebSocket(nativeUrl);
+  const pending = [];
+  client.on("message", (bytes) => {
+    const packet = JSON.parse(bytes);
+    const { method, params } = packet;
+    if (["thread/start", "thread/resume", "thread/fork"].includes(method)) {
+      params.config = { ...params.config, bypass_hook_trust: true };
+      const request = {
+        method,
+        documentLimit: params.config?.project_doc_max_bytes ?? null,
+        projectTrust: params.config?.projects?.[cwd]?.trust_level ?? null,
+      };
+      nativeRequests.push(request);
+      console.log(JSON.stringify(request));
+    }
+    const message = JSON.stringify(packet);
+    if (upstream.readyState === WebSocket.OPEN) upstream.send(message);
+    else pending.push(message);
+  });
+  upstream.on("open", () =>
+    pending.forEach((message) => upstream.send(message)),
+  );
+  upstream.on("message", (bytes) => {
+    if (client.readyState === WebSocket.OPEN) client.send(bytes.toString());
+  });
+  upstream.on("close", () => client.close());
+  upstream.on("error", () => client.close());
+  client.on("close", () => upstream.terminate());
+});
 await writeFile(
   join(codexHome, "config.toml"),
   [
     'model = "' + codexModel + '"',
     'model_provider = "fixture"',
     'approval_policy = "never"',
+    'project_root_markers = [".fixture-root"]',
     "[model_providers.fixture]",
     'name = "fixture"',
     'base_url = "http://127.0.0.1:' + codex.address().port + '/v1"',
     'wire_api = "responses"',
+    `[projects.${JSON.stringify(ancestor)}]`,
+    'trust_level = "trusted"',
+    "[features]",
+    "hooks = true",
+    codexHook(codexUserHook),
   ].join("\n"),
 );
 const config = {
@@ -463,15 +612,21 @@ const config = {
   projectlessRoot: join(root, "projects"),
   upstreamUrl,
 };
-const native = spawn("codex", ["app-server", "--listen", upstreamUrl], {
-  env: { ...process.env, CODEX_HOME: codexHome },
-  cwd,
-  stdio: ["ignore", "ignore", "pipe"],
-});
+const launchCodex = () =>
+  spawn("codex", ["app-server", "--listen", nativeUrl], {
+    env: { ...process.env, CODEX_HOME: codexHome },
+    cwd,
+    stdio: ["ignore", "ignore", "pipe"],
+  });
 let errors = "";
-native.stderr.on("data", (chunk) => {
-  errors = (errors + chunk).slice(-5000);
-});
+function startAppServer() {
+  const child = launchCodex();
+  child.stderr.on("data", (chunk) => {
+    errors = (errors + chunk).slice(-5000);
+  });
+  return child;
+}
+let native = startAppServer();
 const configuration = createBackendConfiguration(config);
 await configuration.save({ id: "claude", type: "claude", enabled: true });
 const events = [];
@@ -535,6 +690,9 @@ const delegates = {
 };
 const threads = {};
 const optedIn = new Map();
+const continuedBranches = new Map();
+const legacy = new Map();
+const converted = new Map();
 try {
   await start();
   const providerId = "delegation-messages-fixture";
@@ -599,7 +757,7 @@ try {
     ["claude", claudeModel],
   ]) {
     const provider = origin === "claude" ? { providerId } : {};
-    const { thread } = await rpc("thread/start", {
+    let { thread } = await rpc("thread/start", {
       backendId: origin,
       cwd,
       model,
@@ -615,14 +773,73 @@ try {
         settings: { model, reasoning_effort: null },
       },
     };
-    await directTurn(origin, params, standardPrompt);
+    await directTurn(origin, params, standardPrompt + " CONTEXT_PROBE_EXPERT");
     assert.equal(proof[origin].standard, true);
-    await rpc("lan/delegation/mode/set", {
-      threadId: thread.id,
+    const originalId = thread.id;
+    legacy.set(origin, { ...params });
+    const continuation = await rpc("lan/delegation/mode/set", {
+      threadId: originalId,
       delegationMode: true,
     });
-    await directTurn(origin, params, directPrompt, false);
+    assert.notEqual(continuation.thread.id, originalId);
+    assert.equal(
+      (await rpc("thread/read", { threadId: originalId })).thread
+        .delegationMode,
+      false,
+    );
+    thread = continuation.thread;
+    threads[origin] = thread.id;
+    params.threadId = thread.id;
+    await directTurn(
+      origin,
+      params,
+      directPrompt + " CONTEXT_PROBE_SWITCHED",
+      false,
+    );
     assert.equal(proof[origin].direct, true);
+    const { data: copied } = await rpc("thread/turns/list", {
+      threadId: thread.id,
+      sortDirection: "asc",
+      itemsView: "full",
+    });
+    const retained = copied.find((turn) =>
+      JSON.stringify(turn).includes(standardPrompt),
+    );
+    assert(retained, "转入秘书后原用户与助手轮次可见");
+    const projectedDetail = await rpc("thread/read", {
+      threadId: thread.id,
+      includeTurns: true,
+    });
+    assert(
+      projectedDetail.thread.turns.some((turn) => turn.id === retained.id),
+    );
+    assert.equal(projectedDetail.thread.forkedFromId, originalId);
+    const { thread: projectedBranch } = await rpc("thread/fork", {
+      ...params,
+      lastTurnId: retained.id,
+    });
+    assert.equal(projectedBranch.delegationMode, true);
+    const branchParams = { ...params, threadId: projectedBranch.id };
+    await directTurn(
+      origin,
+      branchParams,
+      directPrompt + " CONTEXT_PROBE_PROJECTED_FORK",
+    );
+    await rpc("thread/compact/start", { threadId: projectedBranch.id });
+    await until(async () => {
+      const { compaction } = await rpc("lan/compaction/check", {
+        threadId: projectedBranch.id,
+      });
+      if (compaction?.status === "failed")
+        throw new Error(JSON.stringify(compaction));
+      return compaction?.status === "completed";
+    }, origin + " 投影历史分支整理");
+    await directTurn(
+      origin,
+      branchParams,
+      directPrompt + " CONTEXT_PROBE_PROJECTED_COMPACT",
+    );
+    continuedBranches.set(origin, branchParams);
     assert.deepEqual(
       (await rpc("lan/delegation/tasks", { threadId: thread.id })).items,
       [],
@@ -745,13 +962,14 @@ try {
 
     const { thread: fresh, delegationMode } = await rpc("thread/start", {
       backendId: origin,
-      cwd,
+      ...(origin === "claude" && { cwd }),
       model,
       ...provider,
       delegationMode: true,
     });
     assert.equal(delegationMode, true);
     assert.equal(fresh.delegationMode, true);
+    assert.equal(fresh.cwd, cwd);
     const { nativeId } = resourceTarget(fresh.id, origin);
     const backend = (await configuration.read()).backends.find(
       ({ id }) => id === origin,
@@ -772,8 +990,19 @@ try {
     }
     const freshParams = { ...params, threadId: fresh.id };
     proof[origin].direct = undefined;
-    await directTurn(origin, freshParams, directPrompt);
+    await directTurn(
+      origin,
+      freshParams,
+      directPrompt + " CONTEXT_PROBE_START",
+    );
     assert.equal(proof[origin].direct, true);
+    const branch = await rpc("thread/fork", freshParams);
+    assert.equal(branch.thread.delegationMode, true);
+    await directTurn(
+      origin,
+      { ...freshParams, threadId: branch.thread.id },
+      directPrompt + " CONTEXT_PROBE_FORK",
+    );
     if (origin === "claude") {
       const index = JSON.parse(
         await readFile(
@@ -830,14 +1059,162 @@ try {
   assert.equal(Object.keys(persisted.receipts).length, 4);
   await manager.close();
   await conversations.close();
+  await shutdownBrowserClaudeWorker(config);
+  // Simulate the persisted state created by the old in-place mode toggle.
+  const configBackends = (await configuration.read()).backends;
+  const oldIndex = join(
+    configBackends.find(({ id }) => id === "claude").stateDir,
+    "claudex-web-index.json",
+  );
+  const oldIndexData = JSON.parse(await readFile(oldIndex, "utf8"));
+  const oldModes = createDelegationModes(root);
+  for (const [origin, params] of legacy) {
+    const { nativeId } = resourceTarget(params.threadId);
+    const backend = configBackends.find(({ id }) => id === origin);
+    await oldModes.save(backend, nativeId, true);
+    if (origin === "claude") {
+      const record = oldIndexData.sessions[nativeId];
+      record.delegationMode = true;
+      assert.equal(record.secretaryHistoryVersion, undefined);
+    }
+  }
+  await writeFile(oldIndex, JSON.stringify(oldIndexData));
+  const previousNative = native.pid;
+  native.kill();
+  await once(native, "exit");
+  native = startAppServer();
+  assert.notEqual(native.pid, previousNative);
+  console.log(
+    JSON.stringify({
+      appServerRestart: { before: previousNative, after: native.pid },
+    }),
+  );
   await start();
+  for (const [origin, params] of legacy) {
+    const read = await rpc("thread/read", {
+      threadId: params.threadId,
+      includeTurns: true,
+    });
+    assert.equal(read.thread.delegationMode, true);
+    assert.equal(read.thread.secretaryContinuationRequired, true);
+    const page = await rpc("thread/turns/list", {
+      threadId: params.threadId,
+      itemsView: "full",
+    });
+    assert(
+      page.data.some((turn) => JSON.stringify(turn).includes(standardPrompt)),
+    );
+    const nativeBefore = nativeRequests.length;
+    const rejected = [];
+    for (const method of [
+      "thread/resume",
+      "thread/fork",
+      "thread/compact/start",
+      "turn/start",
+    ]) {
+      const input = [
+        { type: "text", text: directPrompt + " CONTEXT_PROBE_LEGACY_BLOCKED" },
+      ];
+      await assert.rejects(
+        rpc(method, { ...params, input }),
+        /转换为干净秘书续接/,
+      );
+      rejected.push(method);
+    }
+    assert.equal(nativeRequests.length, nativeBefore);
+    assert(!lifecycle.has(origin + ":CONTEXT_PROBE_LEGACY_BLOCKED"));
+    console.log(
+      JSON.stringify({
+        backend: origin,
+        legacyAfterRestart: true,
+        rejected,
+        nativeForwarded: false,
+      }),
+    );
+    const { thread } = await rpc("lan/delegation/mode/set", {
+      threadId: params.threadId,
+      model: params.model,
+      delegationMode: true,
+    });
+    assert.notEqual(thread.id, params.threadId);
+    assert.equal(
+      (await rpc("thread/read", { threadId: params.threadId })).thread
+        .secretaryContinuationRequired,
+      true,
+    );
+    const clean = { ...params, threadId: thread.id };
+    converted.set(origin, clean);
+    assert.equal(
+      (await rpc("thread/resume", clean)).thread.secretaryContinuationRequired,
+      false,
+    );
+    await directTurn(
+      origin,
+      clean,
+      directPrompt + " CONTEXT_PROBE_LEGACY_CONVERTED",
+    );
+    const { thread: fork } = await rpc("thread/fork", clean);
+    await directTurn(
+      origin,
+      { ...clean, threadId: fork.id },
+      directPrompt + " CONTEXT_PROBE_LEGACY_CONVERTED_FORK",
+    );
+    await rpc("lan/delegation/mode/set", {
+      threadId: params.threadId,
+      delegationMode: false,
+    });
+    assert.equal(
+      (await rpc("thread/resume", params)).thread.delegationMode,
+      false,
+    );
+    await directTurn(
+      origin,
+      params,
+      standardPrompt + " CONTEXT_PROBE_LEGACY_ORDINARY",
+    );
+  }
+  await manager.close();
+  await conversations.close();
+  await shutdownBrowserClaudeWorker(config);
+  const beforeConvertedRestart = native.pid;
+  native.kill();
+  await once(native, "exit");
+  native = startAppServer();
+  await start();
+  console.log(
+    JSON.stringify({
+      convertedRestart: { before: beforeConvertedRestart, after: native.pid },
+    }),
+  );
+  for (const [origin, params] of converted) {
+    assert.equal(
+      (await rpc("thread/resume", params)).thread.secretaryContinuationRequired,
+      false,
+    );
+    await directTurn(
+      origin,
+      params,
+      directPrompt + " CONTEXT_PROBE_LEGACY_CONVERTED_RESTART",
+    );
+  }
+  for (const [origin, params] of continuedBranches) {
+    assert.equal(
+      (await rpc("thread/resume", params)).thread.delegationMode,
+      true,
+    );
+    await directTurn(
+      origin,
+      params,
+      directPrompt + " CONTEXT_PROBE_PROJECTED_RESTART",
+    );
+  }
   for (const [origin, params] of optedIn) {
     proof[origin].direct = undefined;
     assert.equal(
       (await rpc("thread/resume", params)).thread.delegationMode,
       true,
     );
-    await directTurn(origin, params, directPrompt);
+    await directTurn(origin, params, directPrompt + " CONTEXT_PROBE_RESTART");
     assert.equal(proof[origin].direct, true);
   }
   for (const threadId of Object.values(threads)) {
@@ -850,13 +1227,54 @@ try {
   assert.deepEqual(saved.delegationPrompts, prompts);
   assert.equal(saved.delegationSourcePrompts.claude, prompts[1].id);
   assert.equal(saved.delegationSourcePrompts.codex, prompts[0].id);
+  for (const origin of ["codex", "claude"]) {
+    for (const phase of [
+      "EXPERT",
+      "SWITCHED",
+      "PROJECTED_FORK",
+      "PROJECTED_COMPACT",
+      "PROJECTED_RESTART",
+      "LEGACY_CONVERTED",
+      "LEGACY_CONVERTED_FORK",
+      "LEGACY_CONVERTED_RESTART",
+      "LEGACY_ORDINARY",
+      "START",
+      "FORK",
+      "RESTART",
+      "DELEGATION",
+    ]) {
+      const stage =
+        phase === "DELEGATION" ? "EXPERT_DELEGATION" : "CONTEXT_PROBE_" + phase;
+      const record = lifecycle.get(origin + ":" + stage);
+      assert(record, origin + " " + stage);
+      assert.equal(record.user, true, origin + " " + stage);
+      if (phase === "SWITCHED" || phase === "LEGACY_CONVERTED")
+        assert.equal(record.conversation, true, origin);
+      assert.deepEqual(
+        record.hits,
+        ["EXPERT", "DELEGATION", "LEGACY_ORDINARY"].includes(phase)
+          ? record.expected
+          : [],
+        origin + " " + stage,
+      );
+    }
+  }
+  for (const method of ["thread/start", "thread/resume", "thread/fork"]) {
+    assert(
+      nativeRequests.some(
+        (request) =>
+          request.method === method &&
+          request.documentLimit === 0 &&
+          request.projectTrust === "untrusted",
+      ),
+      method,
+    );
+  }
   console.log(
     "Codex → Claude Code 和 Claude Code → Codex 原生 MCP 双向委派及步骤查询通过",
   );
   console.log("双向委派发起会话在派单轮次结束后持续活跃，结果回投结算后退出");
-  console.log(
-    "原生模型请求中的秘书角色、项目说明与常规工具通过核对，Claude Bash 和 Write 均可执行",
-  );
+  console.log("Claude Bash 和 Write 均可执行");
   console.log(
     "同一会话默认关闭、开启、关闭及新会话首轮开启均已核对原生提示词与工具目录。无派单回答、请求去重和桥接恢复通过",
   );
@@ -888,6 +1306,7 @@ try {
   ))
     await rpc("turn/interrupt", { threadId, turnId }).catch(() => {});
   await manager?.close();
+  proxy.close();
   await conversations?.close();
   try {
     await shutdownBrowserClaudeWorker(config);

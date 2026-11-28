@@ -7,6 +7,8 @@ import {
   backgroundTurnParams,
 } from "./background-terminals.mjs";
 import { threadMethods } from "./methods.mjs";
+import { secretaryProjectParams } from "../../../../packages/background-terminal/project-instructions.mjs";
+import { createCodexSecretaryHistory } from "./secretary-history.mjs";
 import { referenceToolParams } from "./reference-tools.mjs";
 import { codexConversationToolParams } from "./conversation-tools.mjs";
 import { createCodexConversationManager } from "./conversation-manager.mjs";
@@ -202,6 +204,19 @@ export function createCodexAdapter({
     if (!threadMethods.has(method)) {
       return enabled ? backgroundTurnParams(method, params) : params;
     }
+    if (!research && role)
+      params = await secretaryProjectParams(
+        params,
+        params.cwd ||
+          (params.threadId
+            ? (
+                await transport.call("thread/read", {
+                  threadId: params.threadId,
+                  includeTurns: false,
+                })
+              ).thread.cwd
+            : config.defaultCwd),
+      );
     if (
       method !== "thread/resume" &&
       (params.threadSource == null ||
@@ -350,6 +365,36 @@ export function createCodexAdapter({
     broadcast,
   });
 
+  const secretaryHistory = createCodexSecretaryHistory(
+    transport.call,
+    join(config.configDir, "codex-secretary-history", runtimeIdentity(backend)),
+    (thread: { cwd: string; model?: string }, role?: string) =>
+      historyRequest(
+        "thread/start",
+        { cwd: thread.cwd, model: thread.model },
+        role,
+      ),
+    (params: NativeParams, role?: string) =>
+      historyRequest("thread/fork", params, role),
+  );
+  async function historyRequest(
+    method: string,
+    params: NativeParams,
+    role?: string,
+  ) {
+    return transport.call(
+      method,
+      await sessionParams(
+        method,
+        {
+          ...params,
+          config: { ...params.config, thread_unload_delay_secs: 0 },
+        },
+        role,
+      ),
+      { prepared: true },
+    );
+  }
   function state(): RpcMessage {
     return {
       method: "lan/state",
@@ -395,15 +440,32 @@ export function createCodexAdapter({
       if (research && params.threadId) researchThreads.add(params.threadId);
       if (!delegationExecutor)
         checkWebResearchAccess(message.method, params, research);
+      const continuing = message.method === "lan/delegation/secretary/continue";
+      if (continuing) {
+        const threadId = params.threadId;
+        if (!threadId || research) throw new Error("此对话无法创建秘书续接。");
+        if (compactions.busy(threadId) || handoff.pending(threadId))
+          throw new Error("请等待此对话维护结束后开启委派模式。");
+      }
       const role =
-        !research && threadMethods.has(message.method)
+        !research && (continuing || threadMethods.has(message.method))
           ? await readSecretaryRole?.(
-              message.method === "thread/resume" ? params.threadId : undefined,
-              message.method === "thread/start"
-                ? delegationMode === true
-                : undefined,
+              params.threadId,
+              continuing
+                ? true
+                : message.method === "thread/start" ||
+                    delegationMode !== undefined
+                  ? delegationMode === true
+                  : undefined,
             )
           : undefined;
+      if (continuing && !role) throw new Error("当前后端缺少秘书角色设置。");
+      const projected = await secretaryHistory.request(
+        message.method,
+        params,
+        role,
+      );
+      if (projected) return send(client, { id: message.id, result: projected });
       return receive(
         client,
         {
@@ -423,6 +485,7 @@ export function createCodexAdapter({
     releaseUnusedThreads: subscriptions.releaseUnusedThreads,
     releaseClient: subscriptions.releaseClient,
     close() {
+      secretaryHistory.close();
       threadNaming.clear();
       handoff.disconnected();
       streamingMessages.clear();

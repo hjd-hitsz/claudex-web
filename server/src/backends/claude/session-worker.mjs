@@ -4,6 +4,7 @@ import {
   readSessionTranscript,
 } from "./native-records.mjs";
 import * as sdk from "@anthropic-ai/claude-agent-sdk";
+import { projectSecretaryHistory } from "./secretary-history.mjs";
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 try {
@@ -18,11 +19,14 @@ try {
       "getSubagentMessages",
       "listSubagents",
       "getNativeGoalStatus",
+      "projectSecretaryHistory",
     ].includes(operation)
   )
     throw new Error("未知会话操作");
   let result;
-  if (operation === "getNativeGoalStatus")
+  if (operation === "projectSecretaryHistory")
+    result = await projectSecretaryHistory(...args);
+  else if (operation === "getNativeGoalStatus")
     result = await readNativeGoalStatus(...args);
   else if (
     operation === "getSessionMessages" &&

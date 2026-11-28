@@ -1,12 +1,30 @@
+import { isSecretarySession } from "./session-role.mjs";
+import { resourceTarget } from "../../../../shared/backend-identity.mjs";
+
+import { guardedSecretaryOperations } from "../../../../shared/secretary-upgrade.mjs";
+import { claudeSecretaryUpgradeRequired } from "../claude/secretary-policy.mjs";
+
 export function delegationModeRequests(modes, enabled) {
   const supported = (backend) => enabled && backend.id !== "agy";
 
-  function forward(backend, method, params) {
+  async function forward(backend, method, params) {
     const { delegationMode, ...forwarded } = params || {};
-    const selectedMode =
-      method === "thread/start" && supported(backend)
-        ? delegationMode === true
-        : undefined;
+    let selectedMode;
+    if (
+      backend.id === "codex" &&
+      params?.threadId &&
+      guardedSecretaryOperations.has(method)
+    ) {
+      const secretary = await modes.codexEnabledForResume(
+        backend,
+        params.threadId,
+      );
+      if (method === "thread/fork") selectedMode = secretary;
+    }
+    if (supported(backend)) {
+      if (method === "thread/start")
+        selectedMode = isSecretarySession(backend.id, delegationMode);
+    }
     if (selectedMode !== undefined) forwarded.delegationMode = selectedMode;
     return { forwarded, selectedMode };
   }
@@ -16,6 +34,27 @@ export function delegationModeRequests(modes, enabled) {
     const { threadId, delegationMode } = params;
     if (!supported(backend) || !threadId || typeof delegationMode !== "boolean")
       throw new Error("委派模式需要有效对话和开关状态。");
+    if (delegationMode) {
+      const continuation = await call(
+        entry,
+        "lan/delegation/secretary/continue",
+        params,
+      );
+      const { nativeId: id } = resourceTarget(
+        continuation.thread.id,
+        backend.id,
+      );
+      await modes.save(backend, id, true, true);
+      return {
+        ...continuation,
+        delegationMode: true,
+        thread: {
+          ...continuation.thread,
+          model: continuation.thread.model || continuation.model,
+          delegationMode: true,
+        },
+      };
+    }
     if (backend.id === "claude")
       await call(entry, "lan/delegation/mode/set", params);
     await modes.save(backend, threadId, delegationMode);
@@ -34,11 +73,22 @@ export function delegationModeRequests(modes, enabled) {
         : creating
           ? (result.thread.delegationMode ?? selected === true)
           : await modes.enabled(backend, threadId);
-    if (creating) await modes.save(backend, threadId, delegationMode);
+    if (creating) await modes.save(backend, threadId, delegationMode, true);
+    const secretaryContinuationRequired =
+      backend.id === "claude"
+        ? (result.thread.secretaryContinuationRequired ??
+          claudeSecretaryUpgradeRequired(result.thread, delegationMode))
+        : delegationMode &&
+          !creating &&
+          (await modes.status(backend, threadId)) === "upgrade";
     return {
       ...result,
       delegationMode,
-      thread: { ...result.thread, delegationMode },
+      thread: {
+        ...result.thread,
+        delegationMode,
+        secretaryContinuationRequired,
+      },
     };
   }
 

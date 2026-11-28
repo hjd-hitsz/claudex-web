@@ -12,6 +12,12 @@ import {
   retainedDetails,
 } from "./history-actions.mjs";
 import { page } from "./history.mjs";
+import {
+  assertClaudeSecretaryHistory,
+  claudeSecretaryMode,
+  claudeSecretaryUpgradeRequired,
+  secretaryHistoryVersion,
+} from "./secretary-policy.mjs";
 import { historyTurns, visibleSessionMessages } from "./messages.mjs";
 import { conversationMethods } from "../../../../shared/product-contract.mjs";
 
@@ -176,6 +182,7 @@ export function createClaudeSessions({
     ...conversationMethods,
     "lan/agents/messages",
     "lan/delegation/mode/set",
+    "lan/delegation/secretary/continue",
   ]);
   async function perform(method, p) {
     if (method === "lan/agents/messages")
@@ -231,6 +238,45 @@ export function createClaudeSessions({
         p,
       );
     }
+    if (method === "lan/delegation/secretary/continue") {
+      const s = await session(p.threadId);
+      const projected = s.initialized
+        ? await readSession(
+            "projectSecretaryHistory",
+            s.nativeSessionId || s.id,
+            {
+              dir: s.historySearchAll ? undefined : s.cwd,
+              internalIds: s.internalInputIds,
+            },
+          )
+        : { sessionId: randomUUID(), initialized: false };
+      const now = Date.now() / 1000;
+      const next = {
+        id: projected.sessionId,
+        cwd: s.cwd,
+        model: s.model,
+        providerId: s.providerId,
+        effort: s.effort,
+        serviceTier: s.serviceTier,
+        name: s.name,
+        forkedFromId: s.id,
+        createdAt: now,
+        updatedAt: now,
+        initialized: projected.initialized,
+        delegationMode: true,
+        secretaryHistoryVersion,
+        turns: {},
+        queue: [],
+      };
+      await update(next.id, next);
+      return {
+        thread: thread(next),
+        model: next.model,
+        providerId: next.providerId,
+        reasoningEffort: next.effort,
+        cwd: next.cwd,
+      };
+    }
     if (method === "thread/start") {
       assertReady();
       const id = randomUUID(),
@@ -246,6 +292,7 @@ export function createClaudeSessions({
         updatedAt: now,
         initialized: false,
         delegationMode: p.delegationMode === true,
+        ...(p.delegationMode === true && { secretaryHistoryVersion }),
         turns: {},
         queue: [],
       };
@@ -254,14 +301,15 @@ export function createClaudeSessions({
     }
     if (method === "thread/unsubscribe") return { status: "unsubscribed" };
     if (method === "lan/delegation/mode/set") {
-      if (typeof p.delegationMode !== "boolean")
-        throw new Error("委派模式需要开关状态。");
+      if (p.delegationMode !== false)
+        throw new Error("开启委派模式需要创建秘书续接。");
       await storage.update((data) => {
         const current = data.sessions[p.threadId];
         if (!current || current.deleted) throw new Error("对话不存在");
         data.sessions[p.threadId] = {
           ...current,
-          delegationMode: p.delegationMode,
+          delegationMode: false,
+          secretaryHistoryVersion: undefined,
         };
         return data;
       });
@@ -269,12 +317,20 @@ export function createClaudeSessions({
     }
     if (["thread/read", "thread/resume"].includes(method)) {
       const s = await session(p.threadId);
-      const delegationMode =
-        s.delegationMode ?? (await readLegacyDelegationMode(s.id));
+      const delegationMode = await claudeSecretaryMode(
+        s,
+        readLegacyDelegationMode,
+      );
+      if (method === "thread/resume")
+        await assertClaudeSecretaryHistory(s, readLegacyDelegationMode);
       return {
         thread: {
           ...thread(s),
           delegationMode,
+          secretaryContinuationRequired: claudeSecretaryUpgradeRequired(
+            s,
+            delegationMode,
+          ),
           tokenUsage: await readTokenUsage(s),
           ...(p.includeTurns && { turns: await turns(s.id) }),
         },
@@ -300,6 +356,10 @@ export function createClaudeSessions({
       const s = await session(p.threadId);
       if (runtime.running.has(s.id)) throw new Error("请等待此对话任务结束");
       if (method === "thread/fork") {
+        const delegationMode = await assertClaudeSecretaryHistory(
+          s,
+          readLegacyDelegationMode,
+        );
         if (!s.initialized) throw new Error("请在首轮完成后创建分支");
         const records = await turns(s.id);
         const index = p.lastTurnId
@@ -312,8 +372,7 @@ export function createClaudeSessions({
         const copy = {
           ...s,
           id: sessionId,
-          delegationMode:
-            s.delegationMode ?? (await readLegacyDelegationMode(s.id)),
+          delegationMode,
           ...fork,
           nativeAliases: [sessionId],
           forkedFromId: s.id,
@@ -374,6 +433,7 @@ export function createClaudeSessions({
     throw new Error(`未知对话操作：${method}`);
   }
   const mutations = new Set([
+    "lan/delegation/secretary/continue",
     "thread/revert",
     "thread/rollback",
     "thread/fork",
@@ -394,7 +454,10 @@ export function createClaudeSessions({
       const s = await session(id);
       if (runtime.running.has(id) || s.queue?.length || compactions.busy(id))
         throw new Error("请等待此对话任务结束");
-      await runtime.releaseSession?.(id);
+      if (method === "thread/revert" || method === "thread/rollback")
+        await assertClaudeSecretaryHistory(s, readLegacyDelegationMode);
+      if (method !== "lan/delegation/secretary/continue")
+        await runtime.releaseSession?.(id);
       const result = await perform(method, p);
       if (
         ["thread/revert", "thread/rollback", "thread/delete"].includes(method)

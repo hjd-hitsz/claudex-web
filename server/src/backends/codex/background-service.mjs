@@ -14,6 +14,7 @@ import { supportsBackgroundTerminal } from "../../config.mjs";
 import { spawnDetached } from "../../service-maintenance-process.mjs";
 import { runtimeIdentity } from "../../conversation-manager/address.mjs";
 import { delegationStatePaths } from "../delegation/delegated-threads.mjs";
+import { delegationModesPath } from "../delegation/source-modes.mjs";
 import { delegationRecordsPath } from "../../../../packages/background-terminal/delegation-records.mjs";
 import { writePrivateFile } from "../../private-file.mjs";
 
@@ -42,6 +43,7 @@ export function createBackgroundService(config) {
     const binding =
       JSON.stringify({
         paths: delegationStatePaths(config.configDir),
+        modesPath: delegationModesPath(config.configDir),
         runtimeId: runtimeIdentity({
           id: "codex",
           type: "codex",

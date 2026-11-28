@@ -46,6 +46,7 @@ export type SessionRecord = {
   nativeSessionId?: string;
   initialized?: boolean;
   delegationMode?: boolean;
+  secretaryHistoryVersion?: number;
   providerId?: string;
   model?: string;
   modelTokens?: number;
@@ -215,6 +216,7 @@ export type SessionDependencies = {
     ): Promise<ExecutionProvider | null | undefined>;
   };
   subagentProvider?: SubagentProvider | null;
+  secretary: boolean;
   secretaryRole?: string;
   save: SaveSession;
   emit: (method: string, params: Record<string, unknown>) => void;

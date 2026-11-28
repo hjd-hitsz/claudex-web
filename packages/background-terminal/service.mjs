@@ -17,6 +17,7 @@ import { createDelivery } from "./delivery.mjs";
 import { createNativeWatches } from "./native-watches.mjs";
 import { withCodex } from "./codex.mjs";
 import { createBackgroundResearchLookup } from "./delegation-records.mjs";
+import { createBackgroundResume } from "./thread-policy.mjs";
 
 export async function serve(location, upstream) {
   const url = new URL(upstream);
@@ -28,6 +29,7 @@ export async function serve(location, upstream) {
   await mkdir(location, { recursive: true, mode: 0o700 });
   const directory = await privateDirectory(location);
   const isResearchThread = createBackgroundResearchLookup(directory);
+  const resumeThread = createBackgroundResume(directory);
   const path = socketPath(directory);
   // The kernel releases the abstract lock on exit. Only its owner removes a stale filesystem socket.
   const lock = net.createServer((socket) => socket.destroy());
@@ -62,6 +64,7 @@ export async function serve(location, upstream) {
           upstream: url.href,
           nativeWatch: true,
           researchPolicy: true,
+          secretaryPolicy: true,
           pid: process.pid,
         });
       if (method === "tool") {
@@ -107,16 +110,26 @@ export async function serve(location, upstream) {
           });
           if (thread.ephemeral || thread.path?.includes("/archived_sessions/"))
             throw new Error("后台终端需要已持久化的活动对话");
-          const session = await call("thread/resume", {
-            threadId: id,
-            excludeTurns: true,
-          });
+          const session = await resumeThread(
+            call,
+            {
+              threadId: id,
+              excludeTurns: true,
+            },
+            { cwd: thread.cwd },
+          );
           if (session.sandbox?.type !== "dangerFullAccess")
             throw new Error("后台终端需要对话已授权完全访问");
           return session.thread;
         }),
     });
-    nativeWatches = createNativeWatches(url, jobs, undefined, isResearchThread);
+    nativeWatches = createNativeWatches(
+      url,
+      jobs,
+      undefined,
+      isResearchThread,
+      resumeThread,
+    );
     server.listen(path);
     await once(server, "listening");
     await chmod(path, 0o600);

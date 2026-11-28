@@ -99,7 +99,7 @@ export function createNativeDelegation({
       const authorized =
         source.id === "claude"
           ? parent.delegationTurnId === turnId
-          : await modes.enabled(source, actor.threadId);
+          : await modes.codexEnabledForResume(source, actor.threadId);
       if (!authorized) throw new Error("请先为当前对话开启委派模式。");
       const previous = findDelegationTask(
         data.tasks,

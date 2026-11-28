@@ -39,12 +39,12 @@ export function createApplication() {
   });
   const { report } = feedback;
   let noticeRevision = 0;
-  function notice(text) {
+  function notice(text, duration = 4000) {
     const revision = ++noticeRevision;
     set({ notice: text });
     setTimeout(() => {
       if (noticeRevision === revision && get().notice) set({ notice: "" });
-    }, 4000);
+    }, duration);
   }
   function copy(text) {
     return feedback

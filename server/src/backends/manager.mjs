@@ -195,7 +195,10 @@ export function createBackendManager({
               const enabled =
                 selected ??
                 (threadId &&
-                  (await delegationModes.enabled(backend, threadId)));
+                  (await delegationModes.codexEnabledForResume(
+                    backend,
+                    threadId,
+                  )));
               if (enabled)
                 return resolveNativeSecretaryRole(
                   instances.get("agy").backend,
@@ -422,7 +425,7 @@ export function createBackendManager({
       method && nativeParams(folders.params(method, params), entry.backend.id);
     if (method === "lan/delegation/mode/set")
       return reply(await modeRequests.set(entry, native, call));
-    const { forwarded, selectedMode } = modeRequests.forward(
+    const { forwarded, selectedMode } = await modeRequests.forward(
       entry.backend,
       method,
       native,

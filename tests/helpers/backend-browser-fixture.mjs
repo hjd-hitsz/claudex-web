@@ -4,7 +4,7 @@ export function backendFixture(data) {
   if (data.retainStorageOnReload)
     sessionStorage.backendFixtureInitialized = "1";
   localStorage.setItem("cx-current", "legacy");
-  localStorage.setItem("cx-theme", JSON.stringify("light"));
+  localStorage.setItem("cx-theme", JSON.stringify(data.colorMode || "light"));
   const threads = [
     {
       id: "legacy",
@@ -109,7 +109,9 @@ export function backendFixture(data) {
       ...data.backendSettings?.agy,
       ...JSON.parse(sessionStorage.delegationSettings || "{}"),
     });
-  const delegationModes = new Map();
+  const delegationModes = new Map(
+    data.legacySecretary ? [["legacy", true]] : [],
+  );
   let providers =
     data.providers ||
     (data.providerModelNames
@@ -402,6 +404,10 @@ export function backendFixture(data) {
           thread: {
             ...thread,
             delegationMode: delegationModes.get(p.threadId) === true,
+            secretaryContinuationRequired:
+              data.legacySecretary === true &&
+              p.threadId === "legacy" &&
+              delegationModes.get(p.threadId) === true,
           },
           cwd: thread.cwd,
           model: thread.model || "gpt",
@@ -415,8 +421,22 @@ export function backendFixture(data) {
         };
       if (m.method === "lan/delegation/tasks") result = { items: [] };
       if (m.method === "lan/delegation/mode/set") {
-        delegationModes.set(p.threadId, p.delegationMode);
-        result = { delegationMode: p.delegationMode };
+        if (data.projectSecretaryHistory && p.delegationMode) {
+          const next = {
+            ...thread,
+            id: thread.id + "-secretary",
+            name: thread.name + " · 秘书",
+            model: p.model || thread.model || "gpt",
+            delegationMode: true,
+          };
+          threads.unshift(next);
+          messages[next.id] = messages[thread.id];
+          delegationModes.set(next.id, true);
+          result = { thread: next, delegationMode: true };
+        } else {
+          delegationModes.set(p.threadId, p.delegationMode);
+          result = { delegationMode: p.delegationMode };
+        }
       }
       if (m.method === "lan/projectless/prepare" && data.nativeDelegation)
         result = {

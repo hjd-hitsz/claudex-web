@@ -27,6 +27,8 @@ import { claudeCapabilities } from "../../../../shared/backend-capabilities.mjs"
 import { hasBackendWork } from "../../../../shared/backend-activity.mjs";
 import { launchWorker, workerLocation } from "./worker-launcher.mjs";
 import { workerRevision } from "./worker-revision.mjs";
+import { verifyPendingClaudeSecretary } from "./secretary-policy.mjs";
+import { guardedSecretaryOperations } from "../../../../shared/secretary-upgrade.mjs";
 import { readWorkerLines } from "./worker-lines.mjs";
 import { networkProxyEnvironment } from "../network-proxy.mjs";
 import { executionBackend } from "../../../../shared/subagent-settings.mjs";
@@ -415,12 +417,23 @@ export function createClaudeWorkerAdapter<Client>({
       observeThreads: () => request({ kind: "conversationList" }),
       readThread: (threadId: string) =>
         request({ kind: "conversationRead", threadId }),
-      deliver(envelope: ConversationEnvelope): Promise<ConversationDelivery> {
+      async deliver(
+        envelope: ConversationEnvelope,
+      ): Promise<ConversationDelivery> {
         if (!socket || socket.destroyed || !snapshot.params.ready)
           return Promise.resolve({
             status: "deferred",
             reason: "Claude 执行服务尚未连接",
           });
+        try {
+          await verifyPendingClaudeSecretary(
+            outdated,
+            envelope.to.threadId,
+            request,
+          );
+        } catch (error) {
+          return { status: "deferred", reason: (error as Error).message };
+        }
         return request({ kind: "conversationDeliver", envelope }).catch(
           (error) => ({
             status: "unknown",
@@ -443,6 +456,12 @@ export function createClaudeWorkerAdapter<Client>({
     connect,
     async receive(client: Client, message: RpcMessage) {
       try {
+        if (message.method && guardedSecretaryOperations.has(message.method))
+          await verifyPendingClaudeSecretary(
+            outdated,
+            message.params?.threadId,
+            request,
+          );
         const response = await request({ kind: "rpc", message });
         if (response) send(client, response);
       } catch (error) {

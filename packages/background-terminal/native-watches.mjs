@@ -8,6 +8,7 @@ export function createNativeWatches(
   jobs,
   connect = connectCodex,
   isResearchThread = async () => false,
+  resumeThread = (call, params) => call("thread/resume", params),
 ) {
   const threads = new Map();
   let closing = false;
@@ -93,9 +94,11 @@ export function createNativeWatches(
       },
     }).then(async (connection) => {
       entry.connection = connection;
-      const { thread } = await connection.call(
-        "thread/resume",
-        backgroundResumeParams(threadId, await isResearchThread(threadId)),
+      const research = await isResearchThread(threadId);
+      const { thread } = await resumeThread(
+        connection.call,
+        backgroundResumeParams(threadId, research),
+        { research },
       );
       if (thread.ephemeral || thread.path?.includes("/archived_sessions/"))
         throw new Error("原生后台终端需要未归档的持久对话");

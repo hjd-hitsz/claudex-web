@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { BACKGROUND_TURN_CONTEXT } from "./background-protocol.mjs";
 import { mcpConfig } from "./client.mjs";
 import { withCodex } from "./codex.mjs";
-import { backgroundResumeParams, readOnlyTurn } from "./thread-policy.mjs";
+import {
+  backgroundResumeParams,
+  createBackgroundResume,
+  readOnlyTurn,
+} from "./thread-policy.mjs";
 
 const notificationName = (batch) =>
   batch.checkpoints ? "background_check_due" : "background_completed";
@@ -47,6 +51,7 @@ export function createDelivery(
   jobs,
   isResearchThread = async () => false,
 ) {
+  const resumeThread = createBackgroundResume(directory);
   const owner = randomUUID();
   const active = new Map();
   const retryAt = new Map();
@@ -83,11 +88,12 @@ export function createDelivery(
           if (!batch) return;
           const research = await isResearchThread(threadId);
           const resume = backgroundResumeParams(threadId, research);
-          const resumed = await call(
-            "thread/resume",
+          const resumed = await resumeThread(
+            call,
             research
               ? resume
               : { ...resume, config: mcpConfig(directory, url) },
+            { cwd: thread.cwd, research },
           );
           if (resumed.thread.status?.type === "active" || closed) {
             await jobs.updateBatch({ id: batch.id, owner, status: "pending" });

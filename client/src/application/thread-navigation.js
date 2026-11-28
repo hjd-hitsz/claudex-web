@@ -250,6 +250,10 @@ export function createThreadNavigation({
       set({ threadAccess: { threadId: id, status: "archived" } });
       return false;
     }
+    if (get().current.secretaryContinuationRequired) {
+      set({ threadAccess: { threadId: id, status: "secretaryContinuation" } });
+      return false;
+    }
     const epoch = opening;
     const connection = transport.connection;
     const revision = getConnectionRevision();

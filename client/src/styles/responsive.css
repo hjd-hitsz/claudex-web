@@ -271,10 +271,14 @@
     --terminal-height-default: 16.923077rem;
   }
   .toast {
+    width: max-content;
     max-width: 90%;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
     font-size: 0.846154rem;
     bottom: 20px;
+  }
+  .toast > svg {
+    flex: none;
   }
   .primary-nav > button kbd {
     display: none;

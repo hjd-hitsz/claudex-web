@@ -1,8 +1,32 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { codexSecretaryStatus } from "./secretary-history-policy.mjs";
 
 export const delegationRecordsPath = (directory) =>
   join(directory, "delegation-records.json");
+
+async function readOptional(path) {
+  return readFile(path, "utf8").catch((error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+}
+
+export function createBackgroundSecretaryLookup(directory) {
+  return async (threadId) => {
+    const current = await readOptional(delegationRecordsPath(directory));
+    if (!current) return "ordinary";
+    const { modesPath, runtimeId } = JSON.parse(current);
+    if (!modesPath) return "ordinary";
+    const modes = await readOptional(modesPath);
+    return codexSecretaryStatus(
+      JSON.parse(modes || "{}"),
+      modesPath,
+      runtimeId,
+      threadId,
+    );
+  };
+}
 
 function threadKey(threadId) {
   // Codex ThreadId accepts standard UUID spellings and serializes hyphenated lowercase.
@@ -58,13 +82,7 @@ export function createBackgroundResearchLookup(directory) {
   let binding;
   let isResearchThread;
   return async (threadId) => {
-    const current = await readFile(
-      delegationRecordsPath(directory),
-      "utf8",
-    ).catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
+    const current = await readOptional(delegationRecordsPath(directory));
     if (!current) return false;
     if (binding !== current) {
       isResearchThread = createResearchThreadLookup(JSON.parse(current));

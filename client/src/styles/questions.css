@@ -314,6 +314,12 @@
   margin-top: 0.384615rem;
   color: var(--muted);
 }
+.secretary-upgrade-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
 @media (max-width: 540px) {
   .composer-access {
     grid-template-columns: auto minmax(0, 1fr);

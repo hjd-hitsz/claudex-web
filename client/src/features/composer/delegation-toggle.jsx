@@ -1,22 +1,57 @@
 import React from "react";
 import { Forward } from "lucide-react";
-import { get, report, rpc, set, useStoreSelector } from "../../store.js";
+import {
+  get,
+  loadThreads,
+  notice,
+  openThread,
+  report,
+  rpc,
+  set,
+  setDraft,
+  useStoreSelector,
+} from "../../store.js";
 import {
   canUseNativeDelegation,
   nativeDelegationTarget,
 } from "../../domain/delegation.js";
 import { IconButton } from "../../ui/primitives.jsx";
 
+export const secretaryHistoryScope =
+  "续接可见对话。原生压缩摘要、目标、后台运行、撤销检查点、用量和原始附件保留在原对话。";
+
 export async function setComposerDelegation(patch) {
-  const { current, delegationMode } = get();
+  const { current, delegationMode, model } = get();
   const threadId = current?.id;
-  if (threadId && delegationMode !== patch.delegationMode) {
+  const upgrading = current?.secretaryContinuationRequired === true;
+  if (threadId && (upgrading || delegationMode !== patch.delegationMode)) {
     set({ busy: true });
     try {
-      await rpc("lan/delegation/mode/set", {
+      const result = await rpc("lan/delegation/mode/set", {
         threadId,
         delegationMode: patch.delegationMode,
+        ...(model && { model }),
       });
+      if (result.thread && get().current?.id === threadId) {
+        const { draft } = get();
+        await openThread(result.thread.id, {
+          forkResult: result,
+          preserveServiceTier: true,
+        });
+        if (get().current?.id !== result.thread.id) return;
+        if (draft && !get().draft) setDraft(draft);
+        notice("已创建秘书续接。" + secretaryHistoryScope, 12000);
+        await loadThreads();
+        return;
+      }
+      if (
+        upgrading &&
+        !patch.delegationMode &&
+        get().current?.id === threadId
+      ) {
+        await openThread(threadId, { preserveServiceTier: true });
+        return;
+      }
     } catch (error) {
       report(error);
       return;

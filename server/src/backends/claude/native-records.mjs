@@ -5,7 +5,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 
 // SDK 负责记录发现、解析及消息链选择；临时原生快照补回 SessionMessage 省略的生命周期字段。
-async function nativeTranscripts(operation, args) {
+export async function nativeTranscripts(operation, args) {
   const store = new InMemorySessionStore();
   const keys = new Map();
   const append = store.append.bind(store);

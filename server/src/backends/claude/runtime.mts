@@ -33,6 +33,8 @@ import {
   recordPeerRejection,
 } from "./conversation-input.mjs";
 import { createPeerSteer, createSteer } from "./steer.mjs";
+import { isSecretarySession } from "../delegation/session-role.mjs";
+import { claudeSecretaryGuard } from "./secretary-policy.mjs";
 
 type Run = Awaited<ReturnType<typeof createExecutionSession>> & {
   nativeSessionId: string;
@@ -41,7 +43,6 @@ type Run = Awaited<ReturnType<typeof createExecutionSession>> & {
   secretaryRole?: string;
   review: QueuedInput["review"];
 };
-
 export function createClaudeRuntime({
   backend,
   storage,
@@ -69,6 +70,7 @@ export function createClaudeRuntime({
       sessions: { ...data.sessions, [id]: await change(data.sessions[id]) },
     }));
   };
+  const sessionMode = claudeSecretaryGuard(readLegacyDelegationMode);
   const tasks = createBackgroundTasks({ storage, save, emit });
   const goals = createGoals({
     storage,
@@ -105,8 +107,9 @@ export function createClaudeRuntime({
           pending: session.queue?.length,
         },
       );
-      const mode =
-        session.delegationMode ?? (await readLegacyDelegationMode(threadId));
+      const mode = await sessionMode(session);
+      if (mode && (turn.review || turn.delegation))
+        throw new Error("请在普通对话中启动项目审查或执行。");
       turn.delegationMode = mode && !turn.delegation && !turn.review;
       return {
         ...session,
@@ -237,12 +240,8 @@ export function createClaudeRuntime({
         queued.providerId ?? session.providerId,
       );
       const settings = await readSubagentSettings();
-      const secretary =
-        !queued.delegation &&
-        !queued.review &&
-        (queued.delegationMode ??
-          session.delegationMode ??
-          (await readLegacyDelegationMode(threadId)));
+      const mode = await sessionMode(session, queued);
+      const secretary = isSecretarySession(backend.id, mode, queued);
       const secretaryRole = secretary ? await readSecretaryRole?.() : undefined;
       if (secretary && !secretaryRole)
         throw new Error("Claude 委派模式缺少已加载的秘书角色。");
@@ -289,6 +288,7 @@ export function createClaudeRuntime({
           questions,
           observeMessage,
           callConversationTool,
+          secretary,
           secretaryRole,
           goals,
           tasks,

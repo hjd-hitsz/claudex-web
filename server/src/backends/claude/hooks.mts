@@ -31,6 +31,7 @@ async function contents(path: string) {
 
 type HookOptions = {
   threadId: string;
+  secretary: boolean;
   context: () => { turnId: string; readOnly?: boolean };
   save: SaveSession;
   broadcast: SessionDependencies["broadcast"];
@@ -46,6 +47,7 @@ type Snapshot =
 
 export function createRunHooks({
   threadId,
+  secretary,
   context,
   save,
   broadcast,
@@ -217,6 +219,7 @@ export function createRunHooks({
     return {};
   };
   const instructions: HookCallback = async (input) => {
+    if (secretary) return {};
     try {
       return {
         hookSpecificOutput: {
