@@ -84,7 +84,7 @@ export function delegationStage(turn, triggers, target, trace) {
     turnId: turn.id,
     status: terminal.has(turn.status) ? turn.status : "unknown",
     triggers,
-    ...executorResult(turn, trace),
+    ...executorResult(turn, trace, target),
     callChain: turnCalls(turn, trace, target),
   };
 }
@@ -212,7 +212,7 @@ export function saveDelegationResults(
   if (pending) return;
   const step = task.steps.at(-1);
   const status = step.stopRequested
-    ? "interrupted"
+    ? "stopped_by_user"
     : ["failed", "interrupted", "unknown"].find((status) =>
         stages.some((stage) => stage.status === status),
       ) || "completed";

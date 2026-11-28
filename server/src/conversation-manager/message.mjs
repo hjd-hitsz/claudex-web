@@ -47,7 +47,13 @@ export function delegationResultItem(item, text, messageId) {
     !/^(?:[\da-f]{8}|[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12})$/i.test(
       payload.task_id,
     ) ||
-    !["completed", "failed", "interrupted", "unknown"].includes(payload.status)
+    ![
+      "completed",
+      "failed",
+      "interrupted",
+      "stopped_by_user",
+      "unknown",
+    ].includes(payload.status)
   )
     return item;
   const context = contextMetrics(payload.context);

@@ -79,21 +79,45 @@ function describe(item, payload, tool) {
   };
 }
 
-export function turnCalls(turn, trace, target) {
+function matchesCall(filter, call, item, payload, fileChanges) {
+  const { changes, cwd, command, tool, path, query } = item ?? {};
+  return [
+    call.tool,
+    call.action,
+    call.path,
+    call.script,
+    command,
+    cwd,
+    tool,
+    path,
+    query,
+    JSON.stringify(callArguments(item)),
+    JSON.stringify(callArguments(payload)),
+    JSON.stringify(
+      (changes ?? fileChanges)?.map(({ path, kind }) => ({ path, kind })),
+    ),
+  ].some(
+    (value) =>
+      typeof value === "string" && value.toLowerCase().includes(filter),
+  );
+}
+
+export function turnCalls(turn, trace, target, filter) {
   const native = new Map();
   const changes = new Map();
   for (const item of traceItems(turn, trace).values()) {
     if (!item.id || !Object.hasOwn(toolTypes, item.type)) continue;
     // Claude's file hooks record the changes caused by a tool invocation.
     if (target === "claude" && item.type === "fileChange") {
-      changes.set(item.id, item.changes?.length);
+      changes.set(item.id, item.changes);
       continue;
     }
     native.set(item.id, item);
   }
   const calls = new Map();
   for (const [callId, item] of native) {
-    const fileCount = item.changes?.length ?? changes.get("file-" + callId);
+    const fileCount =
+      item.changes?.length ?? changes.get("file-" + callId)?.length;
     const tool =
       target === "claude" && item.type === "commandExecution"
         ? "Bash"
@@ -120,7 +144,23 @@ export function turnCalls(turn, trace, target) {
       ...describe(item, payload, tool),
     });
   }
-  return traceOrder(calls, trace);
+  const ordered = traceOrder(calls, trace);
+  return filter
+    ? ordered.filter((call) =>
+        matchesCall(
+          filter,
+          call,
+          native.get(call.callId),
+          trace?.calls.get(call.callId)?.input.payload,
+          changes.get("file-" + call.callId),
+        ),
+      )
+    : ordered;
+}
+
+function excerpt(text) {
+  if (!text || text.length <= 160) return text;
+  return text.slice(0, 159).replace(/[\uD800-\uDBFF]$/, "") + "…";
 }
 
 export function traceCall({
@@ -133,53 +173,24 @@ export function traceCall({
   script,
 }) {
   return {
-    callId: traceId(callId),
+    callId,
     tool,
     ...(status && { status }),
     ...(fileCount && { fileCount }),
-    ...(action && { action }),
-    ...(path !== undefined && { path }),
-    ...(script && { script }),
+    ...((action || script) && { action: excerpt(action || script) }),
+    ...(path !== undefined && { path: excerpt(path) }),
   };
 }
 
-function withoutFileTree(answer) {
-  if (!answer) return answer;
-  return answer.replace(
-    /^(?:[^\n]*文件[^\n]*如下[。:：]\n\n)?```([^\n]*)\n([\s\S]*?)\n^```[ \t]*(?:\n\n|$)/gm,
-    (block, language, tree) => {
-      const [root, ...entries] = tree.split("\n");
-      return ["", "text"].includes(language.trim()) &&
-        root.endsWith("/") &&
-        entries.length > 1 &&
-        entries.every((line) => /^[ │]*(?:├──|└──) \S/.test(line))
-        ? ""
-        : block;
-    },
-  );
-}
-
 export function resultNoticePayload(result) {
-  const { stepId, status, callChain, turns, artifacts, answer, error } = result;
+  const { stepId, status, conclusion, answer, error } = result;
   const context = contextMetrics(result.context);
   return {
     stepId: traceId(stepId),
     status,
+    answer: conclusion ?? answer,
     ...(context && { context }),
-    callChain: callChain?.map(traceCall),
-    turns: turns?.map(({ turnId, status, triggers, callCount }) => ({
-      turnId,
-      status,
-      triggers,
-      callCount:
-        callCount ?? callChain?.filter((call) => call.turnId === turnId).length,
-    })),
-    ...(Array.isArray(artifacts) &&
-      artifacts.length > 0 && {
-        artifacts: artifacts.map(({ path, kind }) => ({ path, kind })),
-      }),
-    answer: withoutFileTree(answer),
-    error,
+    ...(error && { error }),
   };
 }
 

@@ -639,17 +639,26 @@ try {
     assert.equal(final.status, "completed");
     const prefix =
       target === "codex" ? "agy-background-" : "toolu_agy_background_";
-    assert.deepEqual(
-      final.callChain.map(({ callId }) => callId),
-      [traceId(prefix + "1"), traceId(prefix + "2")],
-    );
+    assert.equal(final.answer, target.toUpperCase() + "_STAGE_5");
+    assert.deepEqual(Object.keys(final).sort(), [
+      "answer",
+      "context",
+      "status",
+      "stepId",
+    ]);
     const session = (await saved()).sessions[parent.id];
     const transcript = JSON.parse(
       await readFile(join(cwd, session.nativeId + ".json"), "utf8"),
     );
-    const detail = transcript.find(({ evidence }) => evidence)?.evidence;
+    const { calls, evidence: detail } = transcript.find(
+      ({ evidence }) => evidence,
+    );
+    assert.deepEqual(
+      calls.map(({ callId }) => callId),
+      [prefix + "1", prefix + "2"],
+    );
     assert.equal(detail.stepId, final.stepId);
-    assert.equal(detail.call.callId, traceId(prefix + "1"));
+    assert.equal(detail.call.callId, prefix + "1");
     if (target === "codex") {
       assert.match(detail.raw.input.payload.arguments, /codex-release-1/);
       const output = detail.raw.outputs[0].payload.output;
@@ -663,7 +672,8 @@ try {
       assert.match(JSON.stringify(detail.raw[1].block.content), /background/i);
     }
     console.log(
-      target + " 结果带双调用 ID，秘书 MCP 逐项读取原生工具输入和输出。",
+      target +
+        " 秘书 MCP 按终端命令筛出两个调用，凭调用 ID 读取原生输入和输出。",
     );
     const historyResult = (await backgroundTask()).steps[0].result;
     assert.equal(
@@ -688,7 +698,7 @@ try {
       }),
     );
     assert.match(
-      final.answer,
+      historyResult.answer,
       /STAGE_3[\s\S]*terminal 1[\s\S]*STAGE_4[\s\S]*terminal 2[\s\S]*STAGE_5/,
     );
     assert.equal(historyResult.turns[0].triggers.length, 0);
@@ -699,8 +709,7 @@ try {
     assert.equal((await backgroundTask()).status, "completed");
     assert.equal((await notices()).length, 1);
     console.log(
-      target +
-        " 两个终端分批退出，期间零回投，第二次续跑结束后仅回投一次并标注三轮来源。",
+      target + " 两个终端分批退出，全部结束后回投末轮答复，历史保留三轮来源。",
     );
   }
   for (const [target, mode] of [

@@ -229,7 +229,7 @@ export function createDelegationExecution({
     const step = task.steps.at(-1);
     if (task.status === "accepted" && !task.executor && !dispatching.has(id)) {
       await changeStep(id, step.id, (task, _step, data) =>
-        finishDelegation(data, task, "interrupted", {}),
+        finishDelegation(data, task, "stopped_by_user", {}),
       );
     } else {
       if (!task.executor) throw new Error("执行端正在创建原生对话");

@@ -24,7 +24,7 @@ export const delegationStepTool = {
       taskId: text,
       stepId: text,
       callId: text,
-      turnId: text,
+      filter: text,
       offset: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
     },
   },

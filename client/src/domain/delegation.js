@@ -6,6 +6,7 @@ export const delegationLabels = {
   completed: "执行已结束",
   failed: "执行失败",
   interrupted: "已停止",
+  stopped_by_user: "已停止",
   unknown: "待核对",
 };
 

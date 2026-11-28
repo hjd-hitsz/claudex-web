@@ -242,21 +242,25 @@ async function handle({ method, params: p }) {
   }
   if (content.includes("[Claudex delegation notice:")) {
     const payload = JSON.parse(content.split("\n").at(-1));
-    const call = payload.callChain?.find(({ action }) =>
-      /(?:codex|claude)-release-1\b/.test(action),
-    );
-    if (call) {
+    const background = /^(codex|claude)_STAGE_5$/i.exec(payload.answer);
+    if (background) {
       const { tools } = await session.mcp.ready;
       const name = "read_delegation_step";
       if (!tools.some((tool) => tool.name === name))
         throw new Error("详情工具缺失");
-      const result = await session.mcp.call("tools/call", {
+      const ids = { taskId: payload.taskId, stepId: payload.stepId };
+      const listed = await session.mcp.call("tools/call", {
         name,
         arguments: {
-          taskId: payload.taskId,
-          stepId: payload.stepId,
-          callId: call.callId,
+          ...ids,
+          filter: background[1].toLowerCase() + "-release-",
         },
+      });
+      if (listed.isError) throw new Error(listed.content[0].text);
+      record.calls = listed.structuredContent.calls;
+      const result = await session.mcp.call("tools/call", {
+        name,
+        arguments: { ...ids, callId: record.calls[0].callId },
       });
       if (result.isError) throw new Error(result.content[0].text);
       record.evidence = result.structuredContent;

@@ -20,10 +20,10 @@ import {
 import {
   delegationStage,
   delegationResults,
-  summarizeDelegationStages,
   traceVersion,
 } from "../src/backends/delegation/delegation-results.mjs";
 import { formatConversationMessage } from "../src/conversation-manager/message.mjs";
+import { delegationStepTool } from "../src/conversation-manager/tools.mjs";
 import {
   convertMessage,
   historyTurns,
@@ -83,14 +83,14 @@ test("委派通知在实时和历史投影中成为结果卡片，并保留真�
     body: JSON.stringify({
       task_id: "12345678",
       stepId: id.slice(0, 8),
-      status: "completed",
+      status: "stopped_by_user",
       context: card.context,
       answer: "**extend() 执行步进。**",
     }),
   });
   assert.deepEqual(
     convertMessage({ ...peer, message: { content: compact } }, id),
-    [card],
+    [{ ...card, status: "stopped_by_user" }],
   );
   const tool = {
     id,
@@ -162,7 +162,7 @@ test("业务摘要按步骤关联标题与最终结论，原生用量通知沿�
   });
 });
 
-test("命令字段和 exec 脚本保留完整命令，旧回投记录使用精简调用结构", () => {
+test("命令字段和 exec 脚本保留完整命令，回投只携带状态和结论", () => {
   const long = "printf '%s' " + "x".repeat(280);
   const payloads = [
     {
@@ -227,6 +227,9 @@ test("命令字段和 exec 脚本保留完整命令，旧回投记录使用精�
   assert.equal(calls[3].script, payloads[3].input);
   const notice = resultNoticePayload({
     stepId: "a0000000-0000-4000-8000-000000000001",
+    status: "completed",
+    answer: "阶段说明及结论",
+    conclusion: "结论",
     callChain: calls.map((call) => ({
       ...call,
       turnId: turn.id,
@@ -234,22 +237,14 @@ test("命令字段和 exec 脚本保留完整命令，旧回投记录使用精�
     })),
     turns: [{ turnId: turn.id, status: "completed", triggers: [] }],
   });
-  assert.equal(notice.stepId, "a0000000");
-  assert.equal(notice.turns[0].callCount, calls.length);
-  assert(notice.callChain.every((call) => /^[a-f0-9]{8}$/.test(call.callId)));
-  assert(
-    notice.callChain.every(
-      (call) =>
-        !Object.hasOwn(call, "turnId") && !Object.hasOwn(call, "source"),
-    ),
-  );
-  assert.equal(
-    new Set(notice.callChain.map(({ callId }) => callId)).size,
-    calls.length,
-  );
+  assert.deepEqual(notice, {
+    stepId: "a0000000",
+    status: "completed",
+    answer: "结论",
+  });
 });
 
-test("Codex 原生调用按 Rollout 顺序回投，可按步骤读取原始输入输出", async (t) => {
+test("Codex 按步骤筛选调用并完整读取压缩 Rollout 中的原始输入输出", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "claudex-delegation-trace-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "rollout.jsonl");
@@ -407,6 +402,13 @@ test("Codex 原生调用按 Rollout 顺序回投，可按步骤读取原始输�
   const input = { taskId: "aced0001", stepId: "acff0001" };
   const read = (args, parent = owner) =>
     readDelegationStep(store, executor, parent, { ...input, ...args });
+  assert.deepEqual(Object.keys(delegationStepTool.inputSchema.properties), [
+    "taskId",
+    "stepId",
+    "callId",
+    "filter",
+    "offset",
+  ]);
   await assert.rejects(read({}, { ...owner, id: "other" }), /找不到该委派任务/);
   await assert.rejects(
     read({}, { ...owner, runtimeId: "replacement" }),
@@ -414,14 +416,45 @@ test("Codex 原生调用按 Rollout 顺序回投，可按步骤读取原始输�
   );
   await assert.rejects(read({ stepId: "missing" }), /找不到该步骤/);
   assert.deepEqual(
-    (await read({})).result.callChain,
-    resultNoticePayload({ callChain: chain }).callChain,
+    (await read({})).calls.map(({ callId }) => callId),
+    [shellId, patchId],
   );
   assert.equal(reads, 0);
+  for (const filter of ["PRINTF DONE", "max_output_tokens", "26"]) {
+    assert.deepEqual(
+      (await read({ filter })).calls.map(({ callId }) => callId),
+      [shellId],
+    );
+  }
+  for (const filter of ["RENAMED.TXT", "moved.txt", "FULL PATCH TEXT"]) {
+    assert.deepEqual(
+      (await read({ filter })).calls.map(({ callId }) => callId),
+      [patchId],
+    );
+  }
+  assert.deepEqual((await read({ filter: "OTHER" })).calls, []);
+  assert.deepEqual((await read({ filter: "patch complete" })).calls, []);
+  assert.equal((await read({ callId: traceId(patchId) })).call.callId, patchId);
+  const index = task.steps[0].result;
+  index.callChain = Array.from({ length: 14 }, (_, n) => ({
+    callId: "test" + n,
+    tool: "exec_command",
+    action: "n".repeat(158) + "🧪".repeat(100),
+  }));
+  const first = await read({});
+  const second = await read({ offset: first.nextOffset });
+  assert.equal(first.calls.length, 12);
+  assert.equal(first.calls[0].action, "n".repeat(158) + "…");
+  assert(first.calls[0].action.isWellFormed());
+  assert.equal(second.nextOffset, null);
+  assert.deepEqual(
+    [...first.calls, ...second.calls].map(({ callId }) => callId),
+    index.callChain.map(({ callId }) => callId),
+  );
   await assert.rejects(read({ callId: "another" }), /找不到指定调用/);
   await assert.rejects(
     read({ callId: traceId(shellId), turnId: "followup" }),
-    /找不到指定调用/,
+    /参数 turnId 无效/,
   );
   assert.equal(
     (await read({ callId: traceId(patchId) })).raw.outputs[0].payload.output,
@@ -452,7 +485,7 @@ test("Codex 原生调用按 Rollout 顺序回投，可按步骤读取原始输�
   );
 });
 
-test("Codex 按原生开始时间合并并行命令与外层调用，补齐阶段说明并重建旧结果", async (t) => {
+test("Codex 按原生开始时间合并并行命令与外层调用，补齐阶段说明和旧步骤索引", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "claudex-delegation-order-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "rollout.jsonl");
@@ -586,8 +619,8 @@ test("Codex 按原生开始时间合并并行命令与外层调用，补齐阶�
     { taskId: "task", stepId: "step" },
   );
   assert.deepEqual(
-    read.result,
-    resultNoticePayload({ ...summarizeDelegationStages([stage]), context }),
+    read.calls.map(({ callId }) => callId),
+    stage.callChain.map(({ callId }) => callId),
   );
   assert.equal(old.steps[0].result.answer, "结论");
 });

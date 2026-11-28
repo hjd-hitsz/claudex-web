@@ -4,17 +4,21 @@ import {
   conversationArguments,
   delegationStepToolName,
 } from "../../conversation-manager/tools.mjs";
-import {
-  delegationStage,
-  initialTurn,
-  summarizeDelegationStages,
-  traceVersion,
-} from "./delegation-results.mjs";
-import { resultNoticePayload, traceCall, turnCalls } from "./call-chain.mjs";
+import { initialTurn, traceVersion } from "./delegation-results.mjs";
+import { traceCall, turnCalls } from "./call-chain.mjs";
 import { findDelegationTask, traceId, traceMatches } from "./trace-ids.mjs";
-import { delegationContext } from "./context.mjs";
 
 const pageSize = 4000;
+const callsPerPage = 12;
+
+function callsPage(identity, calls, offset = 0) {
+  const end = offset + callsPerPage;
+  return {
+    ...identity,
+    calls: calls.slice(offset, end).map(traceCall),
+    nextOffset: end < calls.length ? end : null,
+  };
+}
 
 function detailPage(detail, offset) {
   const json = JSON.stringify(detail);
@@ -32,7 +36,7 @@ function detailPage(detail, offset) {
 }
 
 export async function readDelegationStep(store, executor, parent, input) {
-  const { taskId, stepId, callId, turnId, offset } = conversationArguments(
+  const { taskId, stepId, callId, filter, offset } = conversationArguments(
     delegationStepToolName,
     input,
   );
@@ -48,15 +52,9 @@ export async function readDelegationStep(store, executor, parent, input) {
     stepId: traceId(step.id),
     backend: task.target,
   };
-  if (!callId && (step.result?.traceVersion === traceVersion || !task.executor))
-    return detailPage(
-      {
-        ...identity,
-        request: step.request,
-        result: step.result && resultNoticePayload(step.result),
-      },
-      offset,
-    );
+  if (!callId && !task.executor) return callsPage(identity, [], offset);
+  if (!callId && !filter && step.result?.traceVersion === traceVersion)
+    return callsPage(identity, step.result.callChain, offset);
   if (!task.executor) throw new Error("委派步骤尚无原生执行记录");
 
   const entry = await executor.resolve(task);
@@ -73,44 +71,22 @@ export async function readDelegationStep(store, executor, parent, input) {
         []),
     ].filter(Boolean),
   );
-  const turns = (thread.turns ?? []).filter(
-    (turn) => ids.has(turn.id) && (!callId || !turnId || turn.id === turnId),
-  );
+  const turns = (thread.turns ?? []).filter((turn) => ids.has(turn.id));
   const rollout =
     task.target === "codex"
       ? await readRolloutTrace(
           thread,
           new Set(turns.map(({ id }) => id)),
           callId && ((id) => id === callId || traceId(id) === callId),
+          { callsOnly: true },
         )
       : new Map();
   if (!callId) {
-    const summaries = new Map(
-      step.result?.turns?.map((turn) => [turn.turnId, turn]),
+    const keyword = filter?.trim().toLowerCase();
+    const calls = turns.flatMap((turn) =>
+      turnCalls(turn, rollout.get(turn.id), task.target, keyword),
     );
-    const stages = turns.map((turn) =>
-      delegationStage(
-        turn,
-        summaries.get(turn.id)?.triggers ?? [],
-        task.target,
-        rollout.get(turn.id),
-      ),
-    );
-    const last = turns.at(-1)?.id;
-    const context =
-      last && delegationContext(thread, last, rollout.get(last)?.context);
-    return detailPage(
-      {
-        ...identity,
-        request: step.request,
-        result: resultNoticePayload({
-          ...step.result,
-          ...(stages.length && summarizeDelegationStages(stages)),
-          ...(context && { context }),
-        }),
-      },
-      offset,
-    );
+    return callsPage(identity, calls, offset);
   }
 
   const chain = turns.flatMap((turn) =>
@@ -121,7 +97,7 @@ export async function readDelegationStep(store, executor, parent, input) {
   );
   const matches = traceMatches(chain, callId, ({ call }) => call.callId);
   if (matches.length > 1)
-    throw new Error("调用 ID 有重复，请提供所属 turnId 或完整调用 ID");
+    throw new Error("调用 ID 有重复，请提供列表中的完整调用 ID");
   const [match] = matches;
   if (!match) throw new Error("该委派步骤中找不到指定调用");
   const { call, turn } = match;

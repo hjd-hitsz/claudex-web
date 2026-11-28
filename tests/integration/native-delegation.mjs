@@ -143,8 +143,7 @@ const codex = createServer(async (request, response) => {
       const output = JSON.stringify(returned.output);
       proof.codex.lookupOutput = output;
       proof.codex.lookup =
-        output.includes("callChain") &&
-        output.includes("CLAUDE_EXECUTOR_PROOF");
+        output.includes("calls") && output.includes("nextOffset");
       answer = "CODEX_RETURNED_PROOF";
     }
   } else if (prompt.includes("[Claudex delegation step:")) {
@@ -261,7 +260,7 @@ const claude = await messagesServer(async (body) => {
     const output = JSON.stringify(returned.content);
     proof.claude.lookupOutput = output;
     proof.claude.lookup =
-      output.includes("callChain") && output.includes("CODEX_EXECUTOR_PROOF");
+      output.includes("calls") && output.includes("nextOffset");
     return [{ type: "text", text: "CLAUDE_RETURNED_PROOF" }];
   }
   if (prompt.includes("[Claudex delegation step:")) {

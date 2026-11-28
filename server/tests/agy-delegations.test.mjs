@@ -103,8 +103,9 @@ test("软检查及未结算的完成续跑保持沉默，最终结果标注两�
   saveDelegationResults(data, task, result);
   const [notice] = Object.values(data.notices);
   assert.equal(notice.kind, "result");
+  assert.equal(notice.payload.answer, result.stages[2].conclusion);
   assert.match(
-    notice.payload.answer,
+    task.steps[0].result.answer,
     /后台终端软检查 · 项目检查（ID job）[\s\S]*后台终端完成 · 项目检查（ID job）/,
   );
 });
@@ -180,7 +181,7 @@ const assignment = {
   input: { request: "首次需求", request_id: "first" },
 };
 
-test("结果通知按序投递完整调用链，任务保留执行证据", () => {
+test("149 次调用的回投载荷只携带最终答复和状态，任务保留完整调用索引", () => {
   const items = Array.from({ length: 148 }, (_, index) => ({
     id: String(index),
     type: index < 143 ? "commandExecution" : "mcpToolCall",
@@ -218,15 +219,12 @@ test("结果通知按序投递完整调用链，任务保留执行证据", () =>
     stepId: traceId(step.id),
     status: "failed",
     context: { compactCount: 0 },
-    callChain: step.result.callChain,
-    turns: step.result.turns,
-    artifacts,
     answer,
     error: turn.error.message,
   };
   assert.deepEqual(notice.payload, expected);
   assert.deepEqual(
-    notice.payload.callChain.map(({ callId }) => callId),
+    step.result.callChain.map(({ callId }) => callId),
     [...items.map(({ id }) => id), "patch"],
   );
   assert.equal(step.result.evidence.length, items.length);
@@ -237,6 +235,7 @@ test("结果通知按序投递完整调用链，任务保留执行证据", () =>
   assert.deepEqual(step.result.turns, [
     { turnId: turn.id, status: "failed", triggers: [], callCount: 149 },
   ]);
+  assert.deepEqual(step.result.artifacts, artifacts);
 
   const legacy = {
     ...notice,
@@ -255,18 +254,20 @@ test("结果通知按序投递完整调用链，任务保留执行证据", () =>
     taskId: traceId(task.id),
     ...expected,
   });
-  assert(Buffer.byteLength(text) < 24000);
-  assert(text.indexOf('"callChain"') < text.indexOf('"answer"'));
+  assert(Buffer.byteLength(text) < 1000);
   assert.equal(legacy.payload.evidence.length, items.length);
 });
 
-test("回投从模型上下文移除目录树并保留技术结论及原始证据", () => {
+test("末轮最终答复逐字回投，阶段说明和调用证据完整保存在步骤中", () => {
   const paths = Array.from(
     { length: 120 },
     (_, index) => `src/file-${index}.mjs`,
   );
   const artifacts = paths.map((path) => ({ path, kind: { type: "add" } }));
   const first = ["已修改 120 个文件", ...paths].join("\n");
+  const final =
+    "  后续验证通过。\n\n```text\nsrc/\n├── file-0.mjs\n└── file-1.mjs\n```\n" +
+    "逐字保留 🧪\n".repeat(2500);
   const stages = [
     {
       turnId: "first",
@@ -282,7 +283,8 @@ test("回投从模型上下文移除目录树并保留技术结论及原始证�
       turnId: "second",
       status: "completed",
       triggers: [],
-      answer: "后续验证通过",
+      answer: "阶段说明\n\n" + final,
+      conclusion: final,
       artifacts: [],
       evidence: [{ id: "follow-up", output: "完整后续结果" }],
     },
@@ -299,19 +301,18 @@ test("回投从模型上下文移除目录树并保留技术结论及原始证�
 
   const notice = data.notices["step:result"];
   const { result } = task.steps[0];
-  const full = `## 当前委派\n\n${first}\n\n## 原生续跑 · 第 2 轮\n\n后续验证通过`;
   assert(result.answer.includes("├── file-0.mjs"));
   assert.deepEqual(
     result.evidence,
     stages.flatMap(({ evidence }) => evidence),
   );
   assert.deepEqual(result.artifacts, artifacts);
-  assert.deepEqual(notice.payload.artifacts, artifacts);
   assert.equal(task.status, "completed");
-  assert.equal(notice.payload.status, task.status);
-  assert.equal(notice.payload.answer, full);
-  assert.equal(notice.payload.fileTree, undefined);
-  assert.equal(notice.payload.evidence, undefined);
+  assert.deepEqual(notice.payload, {
+    stepId: "step",
+    status: task.status,
+    answer: final,
+  });
   for (const record of [
     notice,
     { ...notice, payload: { status: task.status, ...result } },
@@ -323,6 +324,58 @@ test("回投从模型上下文移除目录树并保留技术结论及原始证�
       JSON.parse(JSON.stringify({ taskId: task.id, ...notice.payload })),
     );
   }
+});
+
+test("已排队和已经执行的委派均以用户主动停止状态回投", async () => {
+  const data = { tasks: {}, receipts: {}, notices: {} };
+  const { task_id: id } = acceptDelegation(data, assignment);
+  const task = data.tasks[id];
+  const runner = createDelegationExecution({
+    store: {
+      read: async () => data,
+      change: async (change) => change(data),
+    },
+    wake() {},
+    publish() {},
+  });
+  await runner.cancel(task.parentId, id);
+  assert.equal(task.status, "stopped_by_user");
+  assert(currentResultNotice(data, Object.values(data.notices)[0]));
+  acceptDelegation(data, {
+    ...assignment,
+    input: { ...assignment.input, task_id: id, request_id: "follow-up" },
+  });
+  task.status = "running";
+  task.steps.at(-1).stopRequested = true;
+  const plan = "  研究结论与计划\n";
+  const turn = {
+    id: "native-turn",
+    status: "interrupted",
+    items: [
+      { type: "agentMessage", phase: "commentary", text: "已开始" },
+      { type: "plan", phase: "final_answer", text: plan },
+    ],
+  };
+  saveDelegationResults(
+    data,
+    task,
+    delegationResults(
+      { turns: [turn] },
+      turn,
+      task.steps.at(-1),
+      { jobs: [], terminals: [] },
+      false,
+      "claude",
+    ),
+  );
+  const notice = data.notices[task.steps.at(-1).id + ":result"];
+  assert(currentResultNotice(data, notice));
+  assert.equal(
+    delegationNotice(notice, task).items[0].status,
+    "stopped_by_user",
+  );
+  assert.equal(notice.payload.answer, plan);
+  assert.equal(task.steps.at(-1).result.turns[0].status, "interrupted");
 });
 
 test(

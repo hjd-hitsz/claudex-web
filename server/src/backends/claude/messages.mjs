@@ -186,6 +186,7 @@ export function convertMessage(
               turnId,
               type: "commandExecution",
               command: block.input.command,
+              arguments: block.input,
               cwd: "",
               status: "inProgress",
               aggregatedOutput: "",

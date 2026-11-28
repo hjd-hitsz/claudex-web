@@ -31,14 +31,20 @@ function fixture() {
     kind: "interacted",
     agentThreadId: "backend:agy:delegation%2Fdemo",
     agentPath: "Codex",
-    agentStatus: "completed",
+    agentStatus: "stopped_by_user",
     prompt: "核对报告所需的技术依据",
     model: "gpt-fixture",
     delegation: {
       taskId: "demo",
       target: "codex",
-      status: "completed",
+      status: "stopped_by_user",
       executorThreadId: "native-demo",
+      summaries: {
+        "step-one": {
+          title: "核对报告的技术依据",
+          preview: "已核对原生文件内容。",
+        },
+      },
       result: {
         answer: "已核对技术证据，供秘书写入文档。",
         artifacts: [{ path: "report.md", kind: { type: "add" } }],
@@ -57,6 +63,15 @@ function fixture() {
         content: [{ type: "text", text: "请核对技术证据并写成报告。" }],
       },
       task,
+      {
+        id: "step-one:result",
+        type: "delegationResult",
+        taskId: "demo",
+        stepId: "step-one",
+        target: "codex",
+        status: "stopped_by_user",
+        context: { usedTokens: 120, totalTokens: 200, compactCount: 1 },
+      },
       {
         id: "answer",
         type: "agentMessage",
@@ -396,6 +411,7 @@ function fixture() {
         return { projects };
       }
       if (method === "lan/projectless/read") return { directories: [] };
+      if (method === "thread/backgroundTasks/list") return { tasks: [] };
       if (method === "turn/start")
         return { turn: { id: "submitted", status: "inProgress", items: [] } };
       return {};
@@ -600,10 +616,13 @@ try {
     exact: true,
   });
   if (await detailButton.isVisible()) await detailButton.click();
-  await page
-    .locator(".context-agent-list")
-    .getByRole("button", { name: /Codex/ })
-    .click();
+  const resultCard = page.locator(".delegation-result");
+  await resultCard.getByText("Codex · 已停止").waitFor();
+  await resultCard.getByText("已核对原生文件内容。").waitFor();
+  await page.screenshot({
+    path: new URL("delegation-result-card.png", output).pathname,
+  });
+  await resultCard.getByRole("button", { name: "查看执行记录" }).click();
   const execution = page.getByRole("region", { name: "Codex 委派对话" });
   await execution.getByText("Codex 核对了原生文件内容。").waitFor();
   assert.equal(

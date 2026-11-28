@@ -200,8 +200,8 @@ ACP 能力缺口、桥接侧替代方案与原生切换条件见[Antigravity 能
   - 执行端的提问与审批通过独立事件流中继至主会话，由用户确认后回传；
 - **委派派单与证据调阅 (`claudex_delegation`)**：
   - 秘书端通过 MCP 工具 `ask_codex` / `ask_claude` 发起异步委派，任务与回执持久化存入 `delegation/state.json`；
-  - 底层完成后，Worker 在主会话空闲时调用 `session/prompt`，回投阶段结论、产物路径和变更类型；
-  - 秘书端使用 `read_delegation_step` 按 8 位短 ID 查询原生 Rollout 或工具日志，单次超长详情支持分段流式拼接。
+  - 执行端到达终态后，Worker 在主会话空闲时调用 `session/prompt`，回投任务和步骤标识、状态、末轮最终答复原文、上下文用量和实际执行错误。用户主动停止对应 `stopped_by_user`。Codex 和 Claude Code 发起的委派使用同一结果载荷，已在途的回投沿用其提交正文核对回执。
+  - 步骤的阶段、完整答复和调用链保存在委派状态中。网页卡片用步骤结论生成预览，点击后读取执行端原生会话。秘书端用 `read_delegation_step` 按任务和步骤列出调用，以 `filter` 对命令、参数和路径做忽略大小写的子串检索，以 `callId` 查看原生输入和输出。列表按调用分页，超长详情按 JSON 字符串分段，两者通过 `nextOffset` 继续读取。
 - **后台终端与插件目录**：
   - Worker 按秘书会话、委派执行会话和 Codex 运行时身份，从 Claudex 后台任务服务读取 MCP 后台终端。输出读取保留执行端的完成投递状态。单项停止和 `/stop` 调用任务服务取消对应进程。Codex 原生终端、Claude 原生 Bash 和 agy 原生 `/tasks` 分别由所属运行时管理。
   - 「插件与连接」通过 agy CLI 的只读列表显示已安装插件和 MCP 启停配置。秘书会话的 `claudex_delegation` 使用当前 ACP 连接的 MCP 工具清单与就绪回执显示连接状态。两项本地目录独立读取，读取失败时保留另一项及已确认的会话连接。

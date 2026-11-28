@@ -333,7 +333,7 @@ export function createExecutors({ config, version, onEvent }) {
   };
 }
 
-function executorAnswer(turn, trace) {
+function executorAnswer(turn, trace, target) {
   const messages = traceOrder(
     new Map(
       [...traceItems(turn, trace)].filter(
@@ -364,17 +364,19 @@ function executorAnswer(turn, trace) {
     )
     .join("\n\n");
   const last = messages.at(-1);
+  const final = messages.filter(({ phase }) => phase === "final_answer");
   const conclusion =
-    messages.findLast(
-      ({ type, phase }) => type === "agentMessage" && phase === "final_answer",
-    )?.text ?? (last?.type === "agentMessage" && !last.phase ? last.text : "");
+    (target === "claude" && final.length
+      ? final.map(({ text }) => text).join("\n\n")
+      : final.at(-1)?.text) ??
+    (last?.type === "agentMessage" && !last.phase ? last.text : "");
   return { answer, conclusion };
 }
 
-export function executorResult(turn, trace) {
+export function executorResult(turn, trace, target) {
   const items = turn.items || [];
   return {
-    ...executorAnswer(turn, trace),
+    ...executorAnswer(turn, trace, target),
     evidence: items
       .filter(({ type }) =>
         ["commandExecution", "webSearch", "mcpToolCall"].includes(type),

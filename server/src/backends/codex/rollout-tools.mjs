@@ -44,7 +44,7 @@ function fileChanges(changes) {
   }));
 }
 
-async function scan(path, threadId, turnIds, onlyCallId) {
+async function scan(path, threadId, turnIds, onlyCallId, callsOnly) {
   const matches =
     typeof onlyCallId === "function" ? onlyCallId : (id) => id === onlyCallId;
   const source = createReadStream(path);
@@ -125,7 +125,11 @@ async function scan(path, threadId, turnIds, onlyCallId) {
         if (!item?.id || (onlyCallId && !matches(item.id))) continue;
         if (typeof item.type !== "string") continue;
         const kind = item.type.charAt(0).toLowerCase() + item.type.slice(1);
-        if (!traceItems.has(kind)) continue;
+        if (
+          !traceItems.has(kind) ||
+          (callsOnly && ["agentMessage", "plan"].includes(kind))
+        )
+          continue;
         const start = payload.started_at_ms;
         recordPosition(
           trace,
@@ -153,6 +157,7 @@ async function scan(path, threadId, turnIds, onlyCallId) {
       if (type !== "response_item") continue;
       if (
         !onlyCallId &&
+        !callsOnly &&
         payload.type === "message" &&
         payload.role === "assistant"
       ) {
@@ -194,19 +199,28 @@ async function scan(path, threadId, turnIds, onlyCallId) {
   }
 }
 
-export async function readRolloutTrace(thread, turnIds, callId) {
+export async function readRolloutTrace(
+  thread,
+  turnIds,
+  callId,
+  { callsOnly = false } = {},
+) {
   if (!thread.path) return new Map();
   try {
-    return await scan(thread.path, thread.id, turnIds, callId);
+    return await scan(thread.path, thread.id, turnIds, callId, callsOnly);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
     if (!thread.path.endsWith(".zst"))
-      return scan(thread.path + ".zst", thread.id, turnIds, callId).catch(
-        (error) => {
-          if (error.code !== "ENOENT") throw error;
-          return new Map();
-        },
-      );
+      return scan(
+        thread.path + ".zst",
+        thread.id,
+        turnIds,
+        callId,
+        callsOnly,
+      ).catch((error) => {
+        if (error.code !== "ENOENT") throw error;
+        return new Map();
+      });
     return new Map();
   }
 }

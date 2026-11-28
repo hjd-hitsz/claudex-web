@@ -13,6 +13,7 @@ export const terminal = new Set([
   "completed",
   "failed",
   "interrupted",
+  "stopped_by_user",
   "unknown",
 ]);
 const fields = new Set([

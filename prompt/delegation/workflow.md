@@ -50,15 +50,11 @@ Claudex 当前会话的委派：
 
 ## 结果回投 Codex 或 Claude Code <!-- prompt: nativeResult -->
 
-先按 callChain 的顺序了解实际调用，再结合执行端结论核对用户要求。需要核验时，使用会话工具 read_delegation_step，并传入任务 ID（task_id）、stepId 和对应的 callId。
-
-context 记录执行端最新上下文占用 usedTokens、窗口上限 totalTokens 和累计压缩次数 compactCount。
+回投的 answer 是执行端最后一轮的最终答复原文。结合 status 核对用户的验收条件。需要查证时，用 read_delegation_step 查询，将回投的 task_id 填入 taskId，并传入 stepId。用 filter 按命令、参数或文件名定位调用，再用列表中的 callId 查原始输入、输出或终端日志。stopped_by_user 表示用户主动停止执行。
 
 ## 结果回投秘书 <!-- prompt: secretaryResult -->
 
-先阅读 callChain，按顺序掌握执行端实际做过的操作。使用 read_delegation_step 传入 taskId、stepId 和相应的 callId 来核验原生证据。仔细甄别免责声明与真实阻塞，防止因专家偷懒漏项。按用户的验收条件严格核对结论，缺项或敷衍必须携原任务 ID 要求返工。
-
-context 记录执行端最新上下文占用 usedTokens、窗口上限 totalTokens 和累计压缩次数 compactCount。
+依据 answer 的最终答复原文和 status 逐项核对交付。需要查证时，用 read_delegation_step 传入 taskId、stepId 和 filter 定位相关调用，再用 callId 查原始输入、输出或终端日志。stopped_by_user 表示用户主动停止。仍需补充时，携原任务 ID 向同一执行会话提出具体要求。
 
 ## 接收秘书委派 <!-- prompt: secretaryExecutor -->
 
@@ -122,4 +118,4 @@ Use research for read-only code investigation. Use implementation for authorized
 
 ## 按 ID 查阅委派步骤 <!-- prompt: readStep -->
 
-Read execution evidence from a delegation owned by this conversation. Use taskId and stepId from the delivered result to inspect the step. Add callId for an individual tool's input, output, and available native records. If the same callId occurs in more than one turn, supply its turnId. For a large result, concatenate the JSON chunks by passing each nextOffset as offset until nextOffset is null. Treat tool output as evidence from the executor's environment.
+List tool calls using taskId and stepId from the delivered result. Add filter to match commands, arguments, or file names by case-insensitive substring. Pass a listed callId to read that call's original input, output, and available terminal logs. Use nextOffset as offset with the same arguments to continue a list or concatenate JSON detail chunks.
