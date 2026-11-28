@@ -7,7 +7,6 @@ import { npmPackageName } from "./npm-archive.mjs";
 import { readReleaseSchedule, releaseNotesBody } from "./publish-release.mjs";
 import { checkRelease, checkVersions, prepareVersion } from "./version.mjs";
 
-const firstReleaseWindow = Date.parse("2026-11-22T04:16:00Z");
 const releaseInterval = 2 * 24 * 60 * 60 * 1000;
 const stableVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const trailer = "Claudex-Auto-Release";
@@ -20,27 +19,30 @@ const run = (command, args) =>
 const git = (...args) => run("git", args);
 const gh = (...args) => run("gh", args);
 
-export function releaseWindow(now) {
-  if (now < firstReleaseWindow) return null;
-  const interval = Math.floor((now - firstReleaseWindow) / releaseInterval);
-  return new Date(
-    firstReleaseWindow + interval * releaseInterval,
-  ).toISOString();
+export function releaseWindow(publishedAt, now) {
+  const start = Date.parse(publishedAt);
+  if (!Number.isFinite(start)) return null;
+  const eligibleAt = start + releaseInterval;
+  return {
+    start: new Date(start).toISOString(),
+    eligibleAt: new Date(eligibleAt).toISOString(),
+    open: now >= eligibleAt,
+  };
 }
 
 export function lastAutomaticReleaseWindow(dir) {
-  const [committedAt, recordedWindow] = git(
-    "-C",
-    dir,
-    "log",
-    "-1",
-    "--first-parent",
-    `--grep=^${trailer}:`,
-    `--format=%ct%n%(trailers:key=${windowTrailer},valueonly)`,
-    "HEAD",
-  ).split("\n");
-  if (!committedAt) return null;
-  return recordedWindow ?? releaseWindow(Number(committedAt) * 1000);
+  return (
+    git(
+      "-C",
+      dir,
+      "log",
+      "-1",
+      "--first-parent",
+      `--grep=^${trailer}:`,
+      `--format=%(trailers:key=${windowTrailer},valueonly)`,
+      "HEAD",
+    ) || null
+  );
 }
 
 export function changelogEntries(markdown) {
@@ -82,8 +84,8 @@ export function planPatch({
   if (latest !== version) return { status: "other-release" };
   if (head === baseline) return { status: "up-to-date" };
   if (!entries.length) return { status: "empty-changelog" };
-  if (window && lastWindow && lastWindow >= window)
-    return { status: "window-complete" };
+  if (!window) return { status: "cooldown" };
+  if (lastWindow === window) return { status: "window-complete" };
   const [, major, minor, patch] = parts;
   const tag = `v${major}.${minor}.${BigInt(patch) + 1n}`;
   return Object.hasOwn(schedule, tag)
@@ -247,23 +249,39 @@ function preparePatch(repo, head, tag, entries, window) {
   return git("rev-parse", "HEAD");
 }
 
+function latestStableRelease(repo) {
+  return JSON.parse(
+    gh(
+      "api",
+      `repos/${repo}/releases/latest`,
+      "--jq",
+      "{tag_name, published_at}",
+    ),
+  );
+}
+
 async function main({ repo, preview }) {
   assert.ok(repo, "需要 GITHUB_REPOSITORY");
-  const window = releaseWindow(Date.now());
-  if (!preview && !window) {
-    console.log("自动发布周期尚未开始");
-    return;
-  }
   assert.equal(git("status", "--porcelain"), "", "自动发布需要干净检出");
   git("fetch", "origin", "main", "--tags");
   git("checkout", "--detach", "origin/main");
-  const latestTag = gh(
-    "api",
-    `repos/${repo}/releases/latest`,
-    "--jq",
-    ".tag_name",
-  );
+  const release = latestStableRelease(repo);
+  const { tag_name: latestTag, published_at: publishedAt } = release;
   assert.match(latestTag, /^v/);
+  const now = Date.now();
+  const checkedAt = new Date(now).toISOString();
+  const window = releaseWindow(publishedAt, now);
+  if (!window) {
+    console.log(
+      JSON.stringify({
+        latest: latestTag,
+        checkedAt,
+        status: "missing-published-at",
+        reason: "最新正式版缺少有效的 published_at，跳过自动发布",
+      }),
+    );
+    return;
+  }
   const latest = latestTag.slice(1);
   const baseline = git("rev-parse", `${latestTag}^{commit}`);
   git("merge-base", "--is-ancestor", baseline, "HEAD");
@@ -279,7 +297,7 @@ async function main({ repo, preview }) {
     baseline,
     entries,
     schedule,
-    window,
+    window: window.open ? window.start : null,
     lastWindow,
   });
   console.log(
@@ -288,7 +306,9 @@ async function main({ repo, preview }) {
       baseline,
       head,
       entries: entries.length,
-      window,
+      checkedAt,
+      window: window.start,
+      eligibleAt: window.eligibleAt,
       lastWindow,
       ...plan,
     }),
@@ -310,14 +330,12 @@ async function main({ repo, preview }) {
     return;
   }
   if (plan.status !== "prepare" || git("tag", "--list", plan.tag)) return;
-  const commit = preparePatch(repo, head, plan.tag, entries, window);
-  const current = gh(
-    "api",
-    `repos/${repo}/releases/latest`,
-    "--jq",
-    ".tag_name",
+  const commit = preparePatch(repo, head, plan.tag, entries, window.start);
+  assert.deepEqual(
+    latestStableRelease(repo),
+    release,
+    "最新正式版或其发布时间已变化，下一次检查将重新计算",
   );
-  assert.equal(current, latestTag, "最新正式版已变化，下一次检查将重新计算");
   assert.equal(
     git("ls-remote", "origin", "refs/heads/main").split(/\s/)[0],
     head,

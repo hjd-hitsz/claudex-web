@@ -73,9 +73,9 @@ npm run release:check
 
 ## 每两天自动发布 patch
 
-`Automatic patch releases` 在每小时第 16 分钟检查，默认分支 `main` 上包含 `CHANGELOG.md` 改动的推送也会触发检查。发布窗口从 2026 年 11 月 22 日 04:16 UTC（北京时间 12:16）起每两天开始一次，每个窗口最多准备一个自动 patch。GitHub 计划触发延迟或跳过时，窗口内任意后续检查都可补跑。每次检查以最新公开的稳定版本及其标签提交为基线，在远端 `main` 有新增提交且 CHANGELOG 未发布段含条目时准备 patch。手动发布的新稳定版在公开后立即成为基线，发布窗口仍沿用原周期。 [GitHub Actions 计划触发说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+`Automatic patch releases` 在每小时第 16 分钟检查，默认分支 `main` 上包含 `CHANGELOG.md` 改动的推送也会触发检查。两种触发都从 GitHub 最新正式稳定版的 `published_at` 起算，满 48 小时后才可准备自动 patch。每次手动或自动公开正式稳定版都会重新计时，草稿与预发布沿用原基准。最新正式版缺少有效发布时间时，检查会说明原因并跳过自动发布。GitHub 计划触发延迟或跳过时，满 48 小时后的任意一次检查均可补跑。检查以最新正式版的标签提交为基线，远端 `main` 有新增提交且 CHANGELOG 未发布段含条目时才会准备 patch。 [GitHub Actions 计划触发说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
 
-工作流沿用版本准备和检查命令，按 CHANGELOG 原文生成发布说明与提交链接。发布提交记录版本和窗口起点，再与附注标签一同原子推送；后续检查按主线发布提交识别该窗口已安排的版本。工作流使用 `GITHUB_TOKEN` 显式按标签调用 `Publish release`，沿用现有构建、GitHub 附件校验和 npm 发布。准备后遇到远端更新时，下一次检查重新取基线。标签已推送但 GitHub Release 或 npm 发布尚未完成时，后续检查继续同一版本。
+工作流沿用版本准备和检查命令，按 CHANGELOG 原文生成发布说明与提交链接。发布提交记录版本，并在 `Claudex-Auto-Release-Window` trailer 中记录作为窗口起点的正式版发布时间，再与附注标签一同原子推送。后续检查按主线发布提交识别该窗口已安排的版本，每个窗口最多准备一个自动 patch。工作流使用 `GITHUB_TOKEN` 显式按标签调用 `Publish release`，沿用现有构建、GitHub 附件校验和 npm 发布。准备后遇到远端更新时，下一次检查重新取基线。标签已推送但 GitHub Release 或 npm 发布尚未完成时，后续检查继续同一版本。
 
 Actions 的 `Run workflow` 运行只读预览，显示当前基线和跳过原因或候选版本，并验证主分支的推送连接。要求指定版本和发布时间时使用单版本定时发布。
 

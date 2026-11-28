@@ -19,21 +19,41 @@ import {
   releaseWindow,
 } from "../scripts/auto-release.mjs";
 
-test("错过首个触发后，两日窗口仍可补跑并按原起点跨月延续", () => {
-  for (const [time, expected] of [
-    ["2026-11-22T04:15:59Z", null],
-    ["2026-11-22T04:16:00Z", "2026-11-22T04:16:00.000Z"],
-    ["2026-11-23T04:16:00Z", "2026-11-22T04:16:00.000Z"],
-    ["2026-11-24T04:15:59Z", "2026-11-22T04:16:00.000Z"],
-    ["2026-11-24T04:16:00Z", "2026-11-24T04:16:00.000Z"],
-    ["2026-12-01T04:20:00Z", "2026-11-30T04:16:00.000Z"],
-    ["2026-12-02T04:20:00Z", "2026-12-02T04:16:00.000Z"],
+const manualRelease = {
+  tag_name: "v4.3.0",
+  published_at: "2026-11-28T02:45:11Z",
+};
+const incidentCheck = "2026-11-28T04:46:13Z";
+
+test("最新正式版发布满两天即开放窗口，跨月补跑沿用同一起点", () => {
+  for (const [time, open] of [
+    [incidentCheck, false],
+    ["2026-11-29T02:45:11Z", false],
+    ["2026-11-30T02:44:11Z", false],
+    ["2026-11-30T02:45:10Z", false],
+    ["2026-11-30T02:45:11Z", true],
+    ["2026-12-01T02:45:11Z", true],
+    ["2026-12-07T02:45:11Z", true],
   ]) {
-    assert.equal(releaseWindow(Date.parse(time)), expected, time);
+    assert.deepEqual(
+      releaseWindow(manualRelease.published_at, Date.parse(time)),
+      {
+        start: "2026-11-28T02:45:11.000Z",
+        eligibleAt: "2026-11-30T02:45:11.000Z",
+        open,
+      },
+      time,
+    );
   }
 });
 
-test("发布窗口从主线提交恢复，兼容旧自动发布和期间的手动版本", (t) => {
+test("手动发布立即替换已经开放的窗口", () => {
+  const now = Date.parse(incidentCheck);
+  assert.equal(releaseWindow("2026-11-25T02:45:11Z", now).open, true);
+  assert.equal(releaseWindow(manualRelease.published_at, now).open, false);
+});
+
+test("只从主线自动发布提交读取窗口 trailer，兼容旧提交与后续手动版本", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "claudex-web-auto-release-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const git = (...args) => execFileSync("git", args, { cwd: dir });
@@ -65,7 +85,7 @@ test("发布窗口从主线提交恢复，兼容旧自动发布和期间的手�
   commit("2026-11-22T05:00:00Z", "例行提交");
   assert.equal(lastAutomaticReleaseWindow(dir), null);
   commit("2026-11-23T05:00:00Z", "旧自动发布", "Claudex-Auto-Release: v4.2.1");
-  assert.equal(lastAutomaticReleaseWindow(dir), "2026-11-22T04:16:00.000Z");
+  assert.equal(lastAutomaticReleaseWindow(dir), null);
   commit(
     "2026-11-26T04:20:00Z",
     "跨窗口完成的自动发布",
@@ -87,10 +107,10 @@ test("自动发布跟随手动版本，只发布有新提交与未发布条目�
     lastWindow: "2026-11-22T04:16:00.000Z",
   };
   assert.deepEqual(planPatch(fixture), { status: "prepare", tag: "v4.1.6" });
-  assert.deepEqual(planPatch({ ...fixture, head: "released" }), {
+  assert.deepEqual(planPatch({ ...fixture, head: "released", window: null }), {
     status: "up-to-date",
   });
-  assert.deepEqual(planPatch({ ...fixture, entries: [] }), {
+  assert.deepEqual(planPatch({ ...fixture, entries: [], window: null }), {
     status: "empty-changelog",
   });
   assert.deepEqual(planPatch({ ...fixture, version: "4.2.0" }), {
@@ -104,6 +124,9 @@ test("自动发布跟随手动版本，只发布有新提交与未发布条目�
     planPatch({ ...fixture, schedule: { "v4.1.6": "2026-12-02T00:00:00Z" } }),
     { status: "scheduled-release" },
   );
+  assert.deepEqual(planPatch({ ...fixture, window: null }), {
+    status: "cooldown",
+  });
 });
 
 test("同一窗口保留后续变更，并优先恢复尚未公开的自动版本", () => {
@@ -119,9 +142,12 @@ test("同一窗口保留后续变更，并优先恢复尚未公开的自动版�
     lastWindow: window,
   };
   assert.deepEqual(planPatch(sameWindow), { status: "window-complete" });
-  assert.deepEqual(planPatch({ ...sameWindow, latest: "4.2.0" }), {
-    status: "other-release",
-  });
+  assert.deepEqual(
+    planPatch({ ...sameWindow, latest: "4.2.0", window: null }),
+    {
+      status: "other-release",
+    },
+  );
   assert.deepEqual(
     planPatch({ ...sameWindow, window: "2026-11-24T04:16:00.000Z" }),
     { status: "prepare", tag: "v4.2.2" },
@@ -153,7 +179,7 @@ test("首次检查缺席后，真实提交与标签只推送一次，发布调�
 
   const write = (path, content) => writeFileSync(join(project, path), content);
   const workspaces = ["client", "server", "packages/translation-engine"];
-  const version = "4.2.0";
+  const version = manualRelease.tag_name.slice(1);
   write("package.json", JSON.stringify({ version, workspaces }));
   for (const workspace of workspaces) {
     mkdirSync(join(project, workspace), { recursive: true });
@@ -168,7 +194,7 @@ test("首次检查缺席后，真实提交与标签只推送一次，发布调�
       ),
     }),
   );
-  const changelog = "## 未发布\n\n## [4.2.0] - 2026-11-21\n\n- 初始版本。\n";
+  const changelog = `## 未发布\n\n## [${version}] - 2026-11-28\n\n- 初始版本。\n`;
   write("CHANGELOG.md", changelog);
   for (const path of ["README.md", "docs/deployment.md"])
     write(path, "npm install -g @hjd-hitsz/claudex-web\n");
@@ -187,7 +213,7 @@ test("首次检查缺席后，真实提交与标签只推送一次，发布调�
   git("config", "tag.gpgsign", "false");
   git("add", ".");
   git("commit", "-qm", "初始版本");
-  git("tag", "v4.2.0");
+  git("tag", manualRelease.tag_name);
   write(
     "CHANGELOG.md",
     changelog.replace("## 未发布\n", "## 未发布\n\n- 待发布修复。\n"),
@@ -199,7 +225,7 @@ test("首次检查缺席后，真实提交与标签只推送一次，发布调�
   const preload = join(dir, "runner.mjs");
   writeFileSync(
     preload,
-    `Date.now = () => Date.parse("2026-11-23T10:16:00Z");
+    `Date.now = () => Date.parse(process.env.TEST_CHECKED_AT);
 globalThis.fetch = async () => new Response();\n`,
   );
   writeFileSync(join(bin, "npm"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
@@ -207,7 +233,9 @@ globalThis.fetch = async () => new Response();\n`,
     join(bin, "gh"),
     `#!/bin/sh
 case "$1 $2" in
-  "api repos/example/claudex-web/releases/latest") printf '%s\\n' "$TEST_LATEST_TAG" ;;
+  "api repos/example/claudex-web/releases/latest")
+    [ "$3" = "--jq" ] && [ "$4" = "{tag_name, published_at}" ] || exit 2
+    printf '%s\\n' "$TEST_LATEST_RELEASE" ;;
   "run list") printf '[]\\n' ;;
   "workflow run")
     printf '%s\\n' "$*" >> "$TEST_DISPATCH_LOG"
@@ -218,7 +246,7 @@ esac
     { mode: 0o755 },
   );
   const dispatches = join(dir, "dispatches");
-  const run = (latest, exit) =>
+  const run = (latest, { now, exit = 0, preview = false }) =>
     spawnSync(
       process.execPath,
       ["--import", preload, "scripts/auto-release.mjs"],
@@ -229,23 +257,49 @@ esac
           ...process.env,
           PATH: `${bin}:${process.env.PATH}`,
           GITHUB_REPOSITORY: "example/claudex-web",
-          PREVIEW: "false",
+          PREVIEW: String(preview),
+          TEST_CHECKED_AT: now,
           TEST_DISPATCH_LOG: dispatches,
           TEST_DISPATCH_EXIT: String(exit),
-          TEST_LATEST_TAG: latest,
+          TEST_LATEST_RELEASE: JSON.stringify(latest),
         },
       },
     );
-  const interrupted = run("v4.2.0", 1);
-  assert.equal(interrupted.status, 1, interrupted.stderr);
-  assert.match(interrupted.stdout, /"status":"prepare","tag":"v4.2.1"/);
-  const preparedCommit = git("rev-parse", "v4.2.1^{commit}");
-  assert.equal(git("-C", remote, "rev-parse", "main"), preparedCommit);
-  assert.equal(lastAutomaticReleaseWindow(project), "2026-11-22T04:16:00.000Z");
+  const missing = run(
+    { tag_name: manualRelease.tag_name },
+    { now: incidentCheck },
+  );
+  assert.equal(missing.status, 0, missing.stderr);
+  assert.match(missing.stdout, /"status":"missing-published-at"/);
+  assert.match(missing.stdout, /最新正式版缺少有效的 published_at/);
 
-  const resumed = run("v4.2.0", 0);
+  const cooling = run(manualRelease, { now: incidentCheck });
+  assert.equal(cooling.status, 0, cooling.stderr);
+  const coolingPlan = JSON.parse(cooling.stdout);
+  assert.equal(coolingPlan.status, "cooldown");
+  assert.equal(coolingPlan.checkedAt, "2026-11-28T04:46:13.000Z");
+  assert.equal(coolingPlan.window, "2026-11-28T02:45:11.000Z");
+  assert.equal(coolingPlan.eligibleAt, "2026-11-30T02:45:11.000Z");
+  const eligible = run(manualRelease, {
+    now: "2026-11-30T02:45:11Z",
+    preview: true,
+  });
+  assert.equal(eligible.status, 0, eligible.stderr);
+  assert.match(eligible.stdout, /"status":"prepare","tag":"v4.3.1"/);
+  assert.equal(git("-C", remote, "tag", "--list"), "v4.3.0");
+
+  const retryTime = "2026-12-01T02:45:11Z";
+  const interrupted = run(manualRelease, { now: retryTime, exit: 1 });
+  assert.equal(interrupted.status, 1, interrupted.stderr);
+  assert.match(interrupted.stdout, /"status":"prepare","tag":"v4.3.1"/);
+  const preparedCommit = git("rev-parse", "v4.3.1^{commit}");
+  assert.equal(git("-C", remote, "rev-parse", "main"), preparedCommit);
+  assert.equal(lastAutomaticReleaseWindow(project), "2026-11-28T02:45:11.000Z");
+
+  const resumed = run(manualRelease, { now: retryTime });
   assert.equal(resumed.status, 0, resumed.stderr);
   assert.match(resumed.stdout, /"status":"other-release"/);
+  assert.equal(git("-C", remote, "rev-parse", "main"), preparedCommit);
 
   write(
     "CHANGELOG.md",
@@ -256,13 +310,21 @@ esac
   );
   git("commit", "-qam", "记录后续功能");
   git("push", "origin", "HEAD:refs/heads/main");
-  const repeated = run("v4.2.1", 0);
+  const autoRelease = {
+    tag_name: "v4.3.1",
+    published_at: "2026-12-01T02:50:00Z",
+  };
+  const repeated = run(autoRelease, { now: "2026-12-01T03:16:00Z" });
   assert.equal(repeated.status, 0, repeated.stderr);
-  assert.match(repeated.stdout, /"status":"window-complete"/);
-  assert.equal(git("-C", remote, "tag", "--list"), "v4.2.0\nv4.2.1");
+  const repeatedPlan = JSON.parse(repeated.stdout);
+  assert.equal(repeatedPlan.status, "cooldown");
+  assert.equal(repeatedPlan.window, "2026-12-01T02:50:00.000Z");
+  assert.equal(repeatedPlan.eligibleAt, "2026-12-03T02:50:00.000Z");
+  assert.equal(repeatedPlan.lastWindow, coolingPlan.window);
+  assert.equal(git("-C", remote, "tag", "--list"), "v4.3.0\nv4.3.1");
   assert.equal(
     readFileSync(dispatches, "utf8"),
-    "workflow run release.yml --ref v4.2.1\n".repeat(2),
+    "workflow run release.yml --ref v4.3.1\n".repeat(2),
   );
 });
 
