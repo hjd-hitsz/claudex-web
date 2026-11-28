@@ -27,7 +27,7 @@ import {
 import { openSubAgent, set, useStore } from "../../store.js";
 import {
   agentStatusLabels,
-  isActiveSubAgent,
+  contextAgentRows,
   subAgents,
 } from "../../domain/sub-agents.js";
 import { ChangesPanel } from "./changes-panel.jsx";
@@ -40,9 +40,7 @@ const FilePanel = lazy(() =>
 export function ContextCard() {
   const s = useStore();
   const backgroundTasks = useContext(BackgroundTasks);
-  const agents = subAgents(s.items).sort(
-    (a, b) => Number(isActiveSubAgent(b)) - Number(isActiveSubAgent(a)),
-  );
+  const agents = contextAgentRows(s.items);
   return (
     <section className="context-card" aria-label="对话功能">
       <div className="context-card-heading">
@@ -86,20 +84,26 @@ export function ContextCard() {
             <small>{agents.length}</small>
           </div>
           <div className="context-agent-list">
-            {agents.map((agent) => (
+            {agents.map(({ agent, title, identifier, tooltip }) => (
               <button
                 key={agent.id}
-                title={agent.name}
+                title={tooltip ?? title}
                 onClick={() => openSubAgent(agent)}
               >
                 <Users size={17} />
                 <span>
-                  <b>{agent.name}</b>
-                  <small data-status={agent.status}>
-                    {(agent.delegation && delegationLabels[agent.status]) ||
-                      agentStatusLabels[agent.status] ||
-                      "状态待更新"}
-                  </small>
+                  <span className="context-agent-title">
+                    <b>{title}</b>
+                    {identifier && <code>{identifier}</code>}
+                  </span>
+                  <span className="context-agent-meta">
+                    {agent.delegation && <small>{agent.name}</small>}
+                    <small data-status={agent.status}>
+                      {(agent.delegation && delegationLabels[agent.status]) ||
+                        agentStatusLabels[agent.status] ||
+                        "状态待更新"}
+                    </small>
+                  </span>
                 </span>
                 <ChevronRight size={14} />
               </button>

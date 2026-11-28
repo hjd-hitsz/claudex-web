@@ -41,6 +41,7 @@ export function createDelegationRuntime({
 
   function taskItem(task) {
     const { id, parentId, target, status, selection } = task;
+    const { request, taskSummary } = task.steps[0];
     const agentId = resourceThreadId(task, delegationThreadId(id));
     const item = {
       id: agentId,
@@ -51,13 +52,14 @@ export function createDelegationRuntime({
       agentStatus: status,
       model: selection.model,
       reasoningEffort: selection.effort,
-      prompt: task.steps[0].request,
+      prompt: request,
       delegation: {
         taskId: id,
         parentId,
         target,
         status,
         executorThreadId: task.executor?.threadId,
+        ...(taskSummary && { taskSummary }),
         summaries: delegationSummaries(task.steps),
       },
     };

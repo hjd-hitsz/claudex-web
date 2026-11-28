@@ -1,4 +1,5 @@
 import { appendReasoningSummary } from "./reasoning-summary.js";
+import { delegationSnippet } from "../../../shared/delivery-summary.mjs";
 
 const actions = {
   started: "启动子代理",
@@ -94,6 +95,37 @@ export function subAgents(items) {
     }
   }
   return [...agents.values()];
+}
+
+export function contextAgentRows(items) {
+  const rows = subAgents(items).map((agent) => {
+    const delegation = agent.delegation;
+    if (!delegation) return { agent, title: agent.name };
+    const taskId = delegation.taskId || delegation.executorThreadId || agent.id;
+    const title =
+      delegation.taskSummary?.replace(/\s+/g, " ").trim() ||
+      delegationSnippet(agent.prompt ?? "");
+    return { agent, title, taskId };
+  });
+  const titles = new Map();
+  for (const { title, taskId } of rows)
+    if (taskId) titles.set(title, (titles.get(title) ?? 0) + 1);
+  return rows
+    .map(({ agent, title, taskId }) => {
+      if (!taskId) return { agent, title };
+      const shortId = taskId.slice(0, 8);
+      const duplicate = titles.get(title) > 1;
+      return {
+        agent,
+        title: title || shortId,
+        identifier: title && duplicate ? shortId : undefined,
+        tooltip: title && duplicate ? title + "\n" + taskId : title || taskId,
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(isActiveSubAgent(b.agent)) - Number(isActiveSubAgent(a.agent)),
+    );
 }
 
 export function applyAgentEvent(items, method, params) {

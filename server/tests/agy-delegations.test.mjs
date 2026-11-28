@@ -748,12 +748,35 @@ test("ACP 尚未连接时仍能读取已归档会话及其待派单委派", asyn
     turns: [{ id: "turn", status: "completed", items: [] }],
   };
   const state = { sessions: { parent }, tasks: {}, receipts: {}, notices: {} };
+  const selection = { model: "fixture", effort: "low" };
   const accepted = acceptDelegation(state, {
     parent,
     turn: parent.turns[0],
     target: "codex",
-    snapshot: { model: "fixture", effort: "low" },
-    input: { request: "核对材料", request_id: "request" },
+    snapshot: selection,
+    input: {
+      request: "核对材料",
+      request_id: "request",
+      taskSummary: " 核对材料引用 ",
+    },
+  });
+  const old = acceptDelegation(state, {
+    parent,
+    turn: parent.turns[0],
+    target: "claude",
+    snapshot: selection,
+    input: { request: "检查来源", request_id: "old" },
+  });
+  acceptDelegation(state, {
+    parent,
+    turn: parent.turns[0],
+    target: "codex",
+    input: {
+      task_id: accepted.task_id,
+      request: "追加材料",
+      request_id: "follow-up",
+      taskSummary: "复核补充材料",
+    },
   });
   await writeFile(join(root, "state.json"), JSON.stringify(state));
   const adapter = createAgyAdapter({
@@ -767,8 +790,13 @@ test("ACP 尚未连接时仍能读取已归档会话及其待派单委派", asyn
     threadId: parent.id,
     includeTurns: true,
   });
-  const agent = thread.turns[0].items[0];
+  const [agent, unnamed] = thread.turns[0].items;
   assert.equal(agent.delegation.taskId, accepted.task_id);
+  assert.equal(agent.delegation.taskSummary, "核对材料引用");
+  assert.equal(agent.prompt, "核对材料");
+  assert.equal(unnamed.delegation.taskId, old.task_id);
+  assert.equal(unnamed.delegation.taskSummary, undefined);
+  assert.equal(unnamed.prompt, "检查来源");
   assert.equal(
     (await adapter.request("thread/read", { threadId: agent.agentThreadId }))
       .thread.id,

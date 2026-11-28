@@ -6,6 +6,7 @@ import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { serveDemoSession } from "../helpers/browser-session.mjs";
 import { testElicitation } from "./elicitation.mjs";
+import { testDelegationList } from "./agy-delegation-list.mjs";
 import {
   openSettingsPage,
   settingsBackend,
@@ -39,6 +40,7 @@ function fixture() {
       target: "codex",
       status: "stopped_by_user",
       executorThreadId: "native-demo",
+      taskSummary: "核对报告的技术依据",
       summaries: {
         "step-one": {
           title: "核对报告的技术依据",
@@ -51,6 +53,45 @@ function fixture() {
       },
     },
   };
+  const extraTasks = [
+    [
+      "107ab20d",
+      "检查生产构建的资源路由与文件清单是否完整",
+      "",
+      "completed",
+      "资源路由已核对",
+    ],
+    [
+      "8c67e91e",
+      undefined,
+      "## 任务\n复核网页空闲重启流程",
+      "running",
+      "正在复核重启流程",
+    ],
+    ["249f3dc0", "检查发行包依赖", "", "completed", "发行包甲的依赖已核对"],
+    ["616ed4bf", "检查发行包依赖", "", "failed", "发行包乙缺少依赖"],
+  ].map(([taskId, taskSummary, prompt, status, reply]) => {
+    const id = "backend:agy:delegation%2F" + taskId + "-fixture";
+    return {
+      reply,
+      item: {
+        id,
+        type: "subAgentActivity",
+        kind: "interacted",
+        agentThreadId: id,
+        agentPath: "Codex",
+        agentStatus: status,
+        prompt,
+        delegation: {
+          taskId: taskId + "-fixture",
+          target: "codex",
+          status,
+          taskSummary,
+          executorThreadId: "native-" + taskId,
+        },
+      },
+    };
+  });
   const turn = {
     id: "turn-1",
     status: "completed",
@@ -63,6 +104,7 @@ function fixture() {
         content: [{ type: "text", text: "请核对技术证据并写成报告。" }],
       },
       task,
+      ...extraTasks.map(({ item }) => item),
       {
         id: "step-one:result",
         type: "delegationResult",
@@ -300,6 +342,21 @@ function fixture() {
             })),
             nextCursor: null,
           };
+      }
+      const execution = extraTasks.find(({ item }) => item.id === p.threadId);
+      if (execution) {
+        const item = {
+          id: "fixture-reply",
+          type: "agentMessage",
+          phase: "final_answer",
+          text: execution.reply,
+        };
+        if (method === "thread/read")
+          return { thread: { ...native, id: p.threadId } };
+        if (method === "thread/turns/list")
+          return { data: [{ ...nativeTurn, items: [item] }], nextCursor: null };
+        if (method === "thread/items/list")
+          return { data: [{ item, turnId: nativeTurn.id }], nextCursor: null };
       }
       if (method === "thread/list")
         return { data: p.archived ? [] : [thread], nextCursor: null };
@@ -652,6 +709,7 @@ try {
     path: new URL("delegation-evidence.png", output).pathname,
   });
   await workProcess.click();
+  await testDelegationList({ page, context, output });
   await page.evaluate(() => window.showFixturePermission());
   const allow = page.getByRole("button", { name: "允许一次", exact: true });
   await allow.waitFor();

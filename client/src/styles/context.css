@@ -121,8 +121,14 @@
   overflow: auto;
   scrollbar-width: thin;
 }
+.context-agent-title,
+.context-agent-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.384615rem;
+}
 .context-agent-list b {
-  display: block;
+  min-width: 0;
   font-size: 0.923077rem;
   line-height: 1.25;
   font-weight: 500;
@@ -130,10 +136,21 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.context-agent-title code {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.769231rem;
+}
+.context-agent-meta {
+  flex-wrap: wrap;
+  column-gap: 0.384615rem;
+  row-gap: 0;
+}
 .context-agent-list small {
   display: block;
   margin-top: 0.076923rem;
   line-height: 1.25;
+  white-space: nowrap;
 }
 .context-workspace.showing-panel {
   display: flex;

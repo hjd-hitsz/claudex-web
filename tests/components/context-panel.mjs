@@ -177,6 +177,45 @@ export async function testContextPanel(app, requests, setResponse, emit) {
     );
     assert(text().includes("工作区") && text().includes("子代理"));
     assert.equal(view.root.findAllByProps({ title: "agent-a" }).length, 1);
+    const delegated = (taskId, taskSummary, prompt, agentStatus) => ({
+      ...activity(taskId),
+      agentPath: "Codex",
+      agentStatus,
+      prompt,
+      delegation: { taskId, taskSummary },
+    });
+    const longTitle = "核对滚动区域中文本超长时的键盘操作与焦点恢复".repeat(4);
+    const list = () =>
+      view.root
+        .findByProps({ className: "context-agent-list" })
+        .findAllByType("button");
+    await act(async () =>
+      app.set({
+        items: [
+          delegated("5f61bc3a-task", "核对安装包", "派单原文", "completed"),
+          delegated("15f2b1d0-task", "核对安装包", "另一条正文", "failed"),
+          delegated(
+            "c3947097-task",
+            undefined,
+            "## 任务\n检查启动入口",
+            "running",
+          ),
+          delegated("d7800d5d-task", longTitle, undefined, "completed"),
+          delegated("2dec93bb-task", undefined, undefined, "completed"),
+        ],
+      }),
+    );
+    assert.deepEqual(list().map(nodeText), [
+      "检查启动入口Codex运行中",
+      "核对安装包5f61bc3aCodex执行已结束",
+      "核对安装包15f2b1d0Codex执行失败",
+      longTitle + "Codex执行已结束",
+      "2dec93bbCodex执行已结束",
+    ]);
+    assert.equal(list()[1].props.title, "核对安装包\n5f61bc3a-task");
+    assert.equal(list()[3].props.title, longTitle);
+    assert.equal(list()[4].props.title, "2dec93bb-task");
+    await act(async () => app.set({ items: parentItems }));
     assert.deepEqual(
       tools()
         .findAllByType("button")
