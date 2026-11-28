@@ -1,7 +1,7 @@
 import { readRolloutTrace } from "./rollout-tools.mjs";
 
 function difference(total, baseline) {
-  return Object.fromEntries(
+  const round = Object.fromEntries(
     Object.entries(total).flatMap(([field, count]) =>
       Number.isSafeInteger(count) &&
       Number.isSafeInteger(baseline?.[field]) &&
@@ -10,6 +10,11 @@ function difference(total, baseline) {
         : [],
     ),
   );
+  // Responses counts cache hits inside input_tokens and reasoning inside output_tokens.
+  if (round.inputTokens >= round.cachedInputTokens)
+    round.inputTokens -= round.cachedInputTokens;
+  else delete round.inputTokens;
+  return round;
 }
 
 export function createCodexTurnUsage(call) {

@@ -102,7 +102,7 @@ interface BackendAdapter {
 
 5. **上下文用量与压缩历史**：
    - `thread/tokenUsage/updated` 可更新上下文快照或成功压缩的累计次数。打开对话后，`thread/turns/list` 同时投影压缩次数和已采集的逐轮用量，轮号在分页前确定。
-   - Codex 原样转发 app-server 的实时用量，按 rollout 的轮次边界计算原生累计用量差值。缺少基线的字段保留为空，成功压缩依据 rollout 的 `compacted` 条目。分支沿原生 `history_base` 的字节边界读取继承记录。
+   - Codex 原样转发 app-server 的实时用量，按 rollout 的轮次边界计算原生累计用量差值。轮次明细的未命中输入扣除同轮缓存命中的输入，推理输出包含在输出中。缺少基线的字段保留为空，成功压缩依据 rollout 的 `compacted` 条目。分支沿原生 `history_base` 的字节边界读取继承记录。
    - Claude Code 在主会话内按模型消息 ID 合并流事件的累计字段，结果消息提供主循环的逐轮用量。历史从主会话原生助手记录按 ID 去重恢复，压缩依据主会话的 `compact_boundary` 记录。
    - Antigravity 使用 ACP 实时用量和 `session/prompt` 轮末明细。压缩次数取持久化的已完成压缩轮次。
 

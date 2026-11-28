@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { ChevronUp } from "lucide-react";
 import { rpc } from "../../store.js";
 import { formatTokenCount } from "../../domain/token-format.js";
+import { UsageRoundPicker } from "./usage-round-picker.jsx";
 
 const tokenFields = [
   ["输入", "inputTokens"],
@@ -20,15 +21,26 @@ const hasUsage = (token) =>
   token?.last?.totalTokens != null ||
   Object.keys(token?.round ?? {}).length > 0;
 
-export function ContextUsage({ threadId, activeId, token, turns = [] }) {
+export function ContextUsage({
+  threadId,
+  activeId,
+  compactCount,
+  token,
+  turns = [],
+}) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState("");
   const [page, setPage] = useState([]);
   const trigger = useRef(null);
+  const panel = useRef(null);
   const id = useId();
   useEffect(() => {
     if (!open) return;
     let current = true;
+    const outside = (event) => {
+      if (!panel.current?.contains(event.target)) close();
+    };
+    globalThis.document?.addEventListener?.("pointerdown", outside);
     rpc("thread/turns/list", {
       threadId,
       sortDirection: "desc",
@@ -42,6 +54,7 @@ export function ContextUsage({ threadId, activeId, token, turns = [] }) {
     );
     return () => {
       current = false;
+      globalThis.document?.removeEventListener?.("pointerdown", outside);
     };
   }, [open, threadId, activeId]);
 
@@ -58,7 +71,8 @@ export function ContextUsage({ threadId, activeId, token, turns = [] }) {
     token?.turnId ?? recent.find((turn) => turn.status !== "inProgress")?.id;
   const current = recent.find((turn) => turn.id === currentId);
   const history = recent.filter(
-    (turn) => turn.id === currentId || hasUsage(turn.tokenUsage),
+    (turn) =>
+      turn.id === currentId || (turn.turnNumber && hasUsage(turn.tokenUsage)),
   );
   if (!current && token) history.unshift({ id: currentId ?? "" });
   const selectedTurn =
@@ -82,6 +96,21 @@ export function ContextUsage({ threadId, activeId, token, turns = [] }) {
         ? `上下文 ${formatTokenCount(used)} / ${formatTokenCount(capacity)}（${Math.round((used / capacity) * 100)}%）`
         : `上下文 ${formatTokenCount(used)}`
       : "查看本轮 Token 用量";
+  const options = history.map((turn) => {
+    const usage =
+      turn.id === currentId
+        ? { ...turn.tokenUsage, ...token }
+        : turn.tokenUsage;
+    const tokens = usage?.last?.totalTokens;
+    return {
+      value: turn.id,
+      label:
+        turn.turnNumber && hasUsage(usage) ? `#${turn.turnNumber}` : "本轮",
+      context: tokens == null ? undefined : formatTokenCount(tokens),
+      title: turnDate(turn),
+    };
+  });
+  const selection = options.find(({ value }) => value === selectedTurn?.id);
 
   function close() {
     setOpen(false);
@@ -92,6 +121,7 @@ export function ContextUsage({ threadId, activeId, token, turns = [] }) {
   return (
     <div
       className="context-info context-usage"
+      ref={panel}
       title={
         !open && capacity
           ? `模型窗口上限 ${formatTokenCount(capacity)} tokens`
@@ -112,12 +142,28 @@ export function ContextUsage({ threadId, activeId, token, turns = [] }) {
         type="button"
         ref={trigger}
         aria-label="查看 Token 用量明细"
-        aria-describedby={`${id}-summary`}
+        aria-describedby={
+          compactCount != null
+            ? `${id}-summary ${id}-compactions`
+            : `${id}-summary`
+        }
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => (open ? close() : setOpen(true))}
       >
-        <span id={`${id}-summary`}>{summary}</span>
+        <span id={`${id}-summary`} className="context-summary">
+          {summary}
+        </span>
+        {compactCount != null && (
+          <>
+            <span className="context-usage-separator" aria-hidden="true">
+              ·
+            </span>
+            <span id={`${id}-compactions`} className="context-compaction-count">
+              {`压缩 ${compactCount} 次`}
+            </span>
+          </>
+        )}
         <ChevronUp size={12} aria-hidden="true" />
       </button>
       {open && (
@@ -128,27 +174,15 @@ export function ContextUsage({ threadId, activeId, token, turns = [] }) {
           aria-label="Token 用量明细"
         >
           <div className="context-usage-heading">
-            {history.length ? (
-              <select
-                aria-label="选择用量轮次"
-                title={turnDate(selectedTurn)}
-                value={selectedTurn.id}
-                onChange={(event) => setSelected(event.target.value)}
-              >
-                {history.map((turn) => (
-                  <option key={turn.id} value={turn.id} title={turnDate(turn)}>
-                    {turn.turnNumber &&
-                    (hasUsage(turn.tokenUsage) ||
-                      (turn.id === currentId && hasUsage(token)))
-                      ? `#${turn.turnNumber}`
-                      : "本轮"}
-                  </option>
-                ))}
-              </select>
+            {selection ? (
+              <UsageRoundPicker
+                options={options}
+                selected={selection}
+                onSelect={setSelected}
+              />
             ) : (
               <strong>本轮用量</strong>
             )}
-            <span>tokens</span>
           </div>
           {rows.length === 0 && <p>本轮明细未上报</p>}
           <dl>

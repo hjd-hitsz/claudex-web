@@ -459,23 +459,26 @@ export function Composer({ inputRef }) {
               key={s.current?.id}
               threadId={s.current?.id}
               activeId={s.active[s.current?.id]}
+              compactCount={compactCount}
               token={token}
               turns={turns}
             />
           ) : (
-            <span
-              className="context-info"
-              role={matching ? "status" : undefined}
-            >
-              {matching
-                ? "正在匹配代码文件…"
-                : unavailable
-                  ? null
-                  : "Ctrl + Enter 发送"}
-            </span>
-          )}
-          {compactCount != null && (
-            <span className="context-compaction-count">{`压缩 ${compactCount} 次`}</span>
+            <>
+              <span
+                className="context-info"
+                role={matching ? "status" : undefined}
+              >
+                {matching
+                  ? "正在匹配代码文件…"
+                  : unavailable
+                    ? null
+                    : "Ctrl + Enter 发送"}
+              </span>
+              {compactCount != null && (
+                <span className="context-compaction-count">{`压缩 ${compactCount} 次`}</span>
+              )}
+            </>
           )}
         </div>
       </div>

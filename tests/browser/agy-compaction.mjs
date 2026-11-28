@@ -296,7 +296,7 @@ try {
           )
           .map(([key, value]) => [labels[key], formatTokenCount(value)]),
       ),
-      模型窗口上限: "1048.6K",
+      模型窗口上限: "1M",
     };
   };
   async function inspectUsage(label, expected, selectPrevious = false) {
@@ -304,10 +304,15 @@ try {
       .getByRole("button", { name: "停止任务", exact: true })
       .waitFor({ state: "hidden" });
     await usageButton.click();
-    if (selectPrevious)
+    if (selectPrevious) {
+      await usageDetails.getByRole("combobox").click();
       await usageDetails
-        .getByRole("combobox")
-        .selectOption((await state()).turns.at(-2).id);
+        .getByRole("option")
+        .and(
+          page.locator(`[data-turn-id="${(await state()).turns.at(-2).id}"]`),
+        )
+        .click();
+    }
     const rows = await usageRows();
     const usage = selectPrevious
       ? (await state()).turns.at(-2).tokenUsage
@@ -335,19 +340,19 @@ try {
     assert(current && historical.length >= 2);
     await usageButton.click();
     const select = usageDetails.getByRole("combobox", { name: "选择用量轮次" });
-    const options = select.locator("option");
+    await select.click();
+    const options = usageDetails.getByRole("option");
     await options
-      .filter({
-        hasText: new RegExp(
-          `^#${turns.length - turns.indexOf(historical[0])}$`,
-        ),
+      .getByText(`#${turns.length - turns.indexOf(historical[0])}`, {
+        exact: true,
       })
       .waitFor({ state: "attached" });
     const available = await options.evaluateAll((nodes) =>
-      nodes.map(({ value, textContent, title }) => ({
-        value,
-        label: textContent,
-        title,
+      nodes.map((node) => ({
+        value: node.dataset.turnId,
+        label: node.children[0].textContent,
+        context: node.children[1].textContent,
+        title: node.title,
       })),
     );
     assert.deepEqual(
@@ -368,12 +373,19 @@ try {
       available.map(({ title }) => title),
       timestamps,
     );
+    assert.deepEqual(
+      available.map(({ context }) => context),
+      [current, ...historical].map(({ tokenUsage }) =>
+        tokenUsage.last ? formatTokenCount(tokenUsage.last.totalTokens) : "",
+      ),
+    );
     const displayed = [];
     for (const [index, turn] of [
       current,
       ...historical.slice(0, 2),
     ].entries()) {
-      await select.selectOption({ index });
+      if (index !== 0) await select.click();
+      await options.nth(index).click();
       const rows = await usageRows();
       assert.deepEqual(rows, expectRows(turn.tokenUsage.round));
       assert.equal(
@@ -384,10 +396,8 @@ try {
       if (takeScreenshots) {
         assert.equal(turn.status, "completed");
         entry.geometry = await select.evaluate((element) => {
-          // Measure the native control with only the selected option to include
-          // the space Chromium reserves for the arrow and padding.
-          const probe = element.cloneNode(false);
-          probe.append(element.selectedOptions[0].cloneNode(true));
+          // Measure the full trigger with its label, occupancy and arrow.
+          const probe = element.cloneNode(true);
           Object.assign(probe.style, {
             position: "fixed",
             visibility: "hidden",
@@ -449,6 +459,8 @@ try {
               scale,
             );
             await usageButton.click();
+            await usageDetails.getByRole("combobox").click();
+            await usageDetails.getByRole("listbox").waitFor();
             const geometry = await usageDetails.evaluate((element) => {
               const { left, right, top, bottom } =
                 element.getBoundingClientRect();
@@ -473,6 +485,10 @@ try {
             checks.push({ width, colorScheme, scale, ...geometry });
             if (scale === 1 || (width === 390 && scale === 2))
               await screenshot(`tokens-${width}-${colorScheme}-${scale * 100}`);
+            await page.keyboard.press("Escape");
+            await usageDetails
+              .getByRole("listbox")
+              .waitFor({ state: "hidden" });
             await page.keyboard.press("Escape");
             await usageDetails.waitFor({ state: "hidden" });
           }
@@ -589,7 +605,7 @@ try {
     );
     assert(!JSON.stringify(summaryRequest.contents).includes("/plan "));
     assert.match(await contextInfo.innerText(), /整理后用量/);
-    assert.match(await contextInfo.getAttribute("title"), /1048\.6K/);
+    assert.match(await contextInfo.getAttribute("title"), /1M/);
     await inspectUsage("manual-summary", summaryUsage);
   }
   assert.equal(
@@ -618,7 +634,7 @@ try {
   assert.equal(followupContents.includes(original), before);
   await screenshot("manual-continued");
   if (!before) {
-    await page.getByText(/上下文 713 \/ 1048\.6K/).waitFor();
+    await page.getByText(/上下文 713 \/ 1M/).waitFor();
     await inspectUsage("after-manual", {
       inputTokens: 673,
       cachedInputTokens: 27,
@@ -629,11 +645,11 @@ try {
     await inspectUsage("previous-round", summaryUsage, true);
     await send(heavy);
     await page.getByText("已记录高占用量。", { exact: true }).waitFor();
-    await page.getByText(/上下文 400K \/ 1048\.6K/).waitFor();
+    await page.getByText(/上下文 400K \/ 1M/).waitFor();
     await send(automaticFollowup);
     await page.getByText("已在自动检查点后继续。", { exact: true }).waitFor();
     await page.getByText("已自动整理上下文", { exact: true }).waitFor();
-    assert.match(await contextInfo.innerText(), /上下文 713 \/ 1048\.6K/);
+    assert.match(await contextInfo.innerText(), /上下文 713 \/ 1M/);
     const automaticUsage = Object.fromEntries(
       Object.keys(normalUsage).map((key) => [
         key,

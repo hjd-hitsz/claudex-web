@@ -230,3 +230,59 @@ test("Codex 分页历史继承真实累计基线，缺用量和缺字段仍保�
   assert.equal(older.data[0].tokenUsage.round.totalTokens, undefined);
   assert.equal(older.data[0].tokenUsage.last.totalTokens, 10);
 });
+
+test("逐轮 Codex 输入扣除原生缓存命中，保留已包含推理的输出", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "codex-exclusive-usage-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const thread = { id: "main", path: join(directory, "main.jsonl") };
+  const started = (turn_id) => ({
+    type: "event_msg",
+    payload: { type: "task_started", turn_id },
+  });
+  const measured = (
+    input_tokens,
+    cached_input_tokens,
+    output_tokens,
+    reasoning_output_tokens,
+  ) => {
+    const snapshot = usage(input_tokens + output_tokens);
+    snapshot.payload.info.total_token_usage = {
+      input_tokens,
+      cached_input_tokens,
+      output_tokens,
+      reasoning_output_tokens,
+      total_tokens: input_tokens + output_tokens,
+    };
+    return snapshot;
+  };
+  await writeFile(
+    thread.path,
+    [
+      { type: "session_meta", payload: { id: thread.id } },
+      started("previous"),
+      measured(1000, 256, 40, 25),
+      started("tools"),
+      measured(50870, 49280, 152, 52),
+    ]
+      .map(line)
+      .join(""),
+  );
+  const read = createCodexTurnUsage(async () => ({ thread }));
+  const {
+    data: [
+      {
+        tokenUsage: { round },
+      },
+    ],
+  } = await read.project(thread.id, {
+    data: [{ id: "tools" }],
+  });
+  assert.equal(round.inputTokens, 846);
+  assert.equal(round.cachedInputTokens, 49024);
+  assert.equal(round.outputTokens, 112);
+  assert.equal(round.reasoningOutputTokens, 27);
+  assert.equal(
+    round.inputTokens + round.cachedInputTokens + round.outputTokens,
+    round.totalTokens,
+  );
+});
